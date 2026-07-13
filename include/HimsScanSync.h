@@ -31,6 +31,10 @@ struct SyncResponse {
   std::size_t acceptedCount = 0;
   bool hasResult = false;
   SyncResult result;
+  bool hasLookupResult = false;
+  String lookupId;
+  String lookupStatus;
+  String lookupItemName;
 };
 
 inline const char* syncEventType(DeviceEventKind kind) {
@@ -41,7 +45,9 @@ inline String buildSyncRequestJson(const String& requestId, const String& device
                                    const String& firmwareVersion, const String& mode, int rssi,
                                    std::size_t queueDepth, const DeviceEventRecord* events,
                                    std::size_t eventCount, const String* resultAcks,
-                                   std::size_t resultAckCount) {
+                                   std::size_t resultAckCount,
+                                   const String& lookupId = String(),
+                                   const String& lookupCode = String()) {
   String out;
   out.reserve(512);
   out += "{\"protocolVersion\":1,\"requestId\":\"";
@@ -56,7 +62,7 @@ inline String buildSyncRequestJson(const String& requestId, const String& device
   out += String(rssi);
   out += ",\"queueDepth\":";
   out += String(queueDepth);
-  out += ",\"capabilities\":[\"lcd.128x64\",\"keypad.4x4\",\"scanner.gm65\"],\"events\":[";
+  out += ",\"capabilities\":[\"lcd.128x64\",\"keypad.4x4\",\"scanner.gm65\",\"lookup.machine_code_name\"],\"events\":[";
   for (std::size_t index = 0; index < eventCount; ++index) {
     if (index != 0) out += ',';
     out += "{\"eventId\":\"";
@@ -76,7 +82,15 @@ inline String buildSyncRequestJson(const String& requestId, const String& device
     out += escapeJson(resultAcks[index]);
     out += '"';
   }
-  out += "]}";
+  out += ']';
+  if (lookupId.length() > 0 && lookupCode.length() > 0) {
+    out += ",\"lookup\":{\"lookupId\":\"";
+    out += escapeJson(lookupId);
+    out += "\",\"code\":\"";
+    out += escapeJson(lookupCode);
+    out += "\"}";
+  }
+  out += '}';
   return out;
 }
 
@@ -146,6 +160,27 @@ inline String jsonArrayValue(const String& body, const char* key) {
   return {};
 }
 
+inline String jsonObjectValue(const String& body, const char* key) {
+  const int position = jsonValueStart(body, key);
+  if (position < 0 || body[position] != '{') return {};
+  bool inString = false;
+  bool escaped = false;
+  int depth = 0;
+  for (int index = position; index < static_cast<int>(body.length()); ++index) {
+    const char ch = body[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch == '\\') escaped = true;
+      else if (ch == '"') inString = false;
+      continue;
+    }
+    if (ch == '"') inString = true;
+    else if (ch == '{') ++depth;
+    else if (ch == '}' && --depth == 0) return body.substring(position, index + 1);
+  }
+  return {};
+}
+
 inline SyncResponse parseSyncResponseJson(const String& body) {
   SyncResponse response;
   if (jsonIntValue(body, "protocolVersion") != kHimsScanProtocolVersion) return response;
@@ -181,8 +216,19 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
     response.result.message = jsonStringValue(object, "message");
     response.hasResult = response.result.resultId.length() > 0 && response.result.eventId.length() > 0;
   }
+  const auto lookup = jsonObjectValue(body, "lookupResult");
+  if (lookup.length() > 0) {
+    response.lookupId = jsonStringValue(lookup, "lookupId");
+    response.lookupStatus = jsonStringValue(lookup, "status");
+    response.lookupItemName = jsonStringValue(lookup, "itemName");
+    response.hasLookupResult = response.lookupId.length() > 0 && response.lookupStatus.length() > 0;
+  }
   response.valid = true;
   return response;
+}
+
+inline bool isCurrentLookupResult(const SyncResponse& response, const String& activeLookupId) {
+  return response.hasLookupResult && activeLookupId.length() > 0 && response.lookupId == activeLookupId;
 }
 
 }  // namespace hims_scan

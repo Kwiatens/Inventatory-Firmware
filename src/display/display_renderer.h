@@ -14,7 +14,8 @@ class DisplayRenderer {
   void render(const DisplayModel& model, bool pulseArrow);
 
  private:
-  void drawHeader(const DisplayModel& model);
+  void drawHeader(const DisplayModel&);
+  void drawSplash(const DisplayModel& model);
   void drawArrow(bool filled);
   void drawBody(const DisplayModel& model);
   void drawFooter(const String& footer);

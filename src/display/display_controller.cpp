@@ -10,15 +10,28 @@ void DisplayController::begin() {
 
 void DisplayController::markDirty() { dirty_ = true; }
 
-void DisplayController::setConnectivity(bool wifiOnline, bool pcOnline, std::size_t queueDepth) {
-  if (model_.wifiOnline == wifiOnline && model_.pcOnline == pcOnline && model_.queueDepth == queueDepth) return;
+void DisplayController::setConnectivity(DisplayConnectivityState state, bool wifiOnline, bool pcOnline,
+                                        std::size_t queueDepth) {
+  if (model_.connectivity == state && model_.wifiOnline == wifiOnline && model_.pcOnline == pcOnline &&
+      model_.queueDepth == queueDepth) return;
+  model_.connectivity = state;
   model_.wifiOnline = wifiOnline;
   model_.pcOnline = pcOnline;
   model_.queueDepth = queueDepth;
+  if (state != DisplayConnectivityState::Online) model_.headerAlternate = false;
   if (model_.mode == DisplayUiMode::Ready) {
-    model_.line1 = pcOnline ? "PC ONLINE" : "OFFLINE - WILL QUEUE";
-    model_.line2 = queueDepth > 0 ? String("PENDING ") + queueDepth : String("READY");
+    model_.line1 = "READY";
+    model_.line2 = queueDepth > 0 ? String("PENDING ") + queueDepth : String();
   }
+  markDirty();
+}
+
+void DisplayController::showSplash() {
+  model_.mode = DisplayUiMode::Splash;
+  model_.title = "INVENTATORY";
+  model_.line1 = "SCAN R1";
+  model_.line2.clear();
+  model_.footer.clear();
   markDirty();
 }
 
@@ -34,24 +47,34 @@ void DisplayController::showBoot(const String& stage) {
 void DisplayController::showReady() {
   model_.mode = DisplayUiMode::Ready;
   model_.title = "SCAN ITEM";
-  model_.line1 = model_.pcOnline ? "PC ONLINE" : "OFFLINE - WILL QUEUE";
-  model_.line2 = model_.queueDepth > 0 ? String("PENDING ") + model_.queueDepth : String("READY");
+  model_.line1 = "READY";
+  model_.line2 = model_.queueDepth > 0 ? String("PENDING ") + model_.queueDepth : String();
   model_.footer = "HOLD D: STANDBY";
   resultUntilMs_ = 0;
   markDirty();
 }
 
-void DisplayController::showQuantity(const String& code, int quantity, bool supplier) {
+void DisplayController::showQuantity(const String& itemText, const String& quantityText,
+                                     std::size_t cursor, bool supplier) {
   model_.mode = DisplayUiMode::Quantity;
   model_.supplierQuantity = supplier;
-  model_.title = supplier ? String("CONFIRM ") + code : String("QTY FOR ") + code;
-  model_.quantity = quantity;
-  model_.footer = supplier ? "A OK   C CANCEL" : "A +  B -  C CANCEL";
+  model_.title = supplier ? "CONFIRM RECEIPT" : "CHANGE QTY FOR";
+  model_.line1 = itemText;
+  model_.quantityText = quantityText;
+  model_.quantityCursor = cursor;
+  model_.footer = supplier ? "A OK  C CANCEL  D CUR" : "A+ B- C CANCEL D CUR";
   markDirty();
 }
 
-void DisplayController::updateQuantity(int quantity) {
-  model_.quantity = quantity;
+void DisplayController::updateQuantity(const String& quantityText, std::size_t cursor) {
+  model_.quantityText = quantityText;
+  model_.quantityCursor = cursor;
+  markDirty();
+}
+
+void DisplayController::updateQuantityItem(const String& itemText) {
+  if (model_.mode != DisplayUiMode::Quantity || model_.line1 == itemText) return;
+  model_.line1 = itemText;
   markDirty();
 }
 
@@ -130,6 +153,12 @@ void DisplayController::showOta(const String& text, int percent) {
 
 void DisplayController::tick() {
   const auto now = millis();
+  if (model_.connectivity == DisplayConnectivityState::Online &&
+      now - lastHeaderAlternateMs_ >= 2500U) {
+    lastHeaderAlternateMs_ = now;
+    model_.headerAlternate = !model_.headerAlternate;
+    dirty_ = true;
+  }
   const bool pulseFrame = pulseUntilMs_ > now && ((now / 100U) % 2U == 0U);
   if (pulseFrame != lastPulseFrame_) {
     lastPulseFrame_ = pulseFrame;

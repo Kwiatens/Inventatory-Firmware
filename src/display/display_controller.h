@@ -10,11 +10,15 @@ class DisplayController {
  public:
   void begin();
   void tick();
-  void setConnectivity(bool wifiOnline, bool pcOnline, std::size_t queueDepth);
+  void setConnectivity(DisplayConnectivityState state, bool wifiOnline, bool pcOnline,
+                       std::size_t queueDepth);
+  void showSplash();
   void showBoot(const String& stage);
   void showReady();
-  void showQuantity(const String& code, int quantity, bool supplier);
-  void updateQuantity(int quantity);
+  void showQuantity(const String& itemText, const String& quantityText,
+                    std::size_t cursor, bool supplier);
+  void updateQuantity(const String& quantityText, std::size_t cursor);
+  void updateQuantityItem(const String& itemText);
   void pulseScan();
   void showQueued();
   bool showResult(const SyncResult& result);
@@ -36,6 +40,7 @@ class DisplayController {
   unsigned long pulseUntilMs_ = 0;
   unsigned long resultUntilMs_ = 0;
   bool lastPulseFrame_ = false;
+  unsigned long lastHeaderAlternateMs_ = 0;
 };
 
 }  // namespace hims_scan

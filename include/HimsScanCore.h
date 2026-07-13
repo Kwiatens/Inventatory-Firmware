@@ -32,6 +32,27 @@ inline String stripAimSymbologyPrefix(const String& value) {
   return value;
 }
 
+inline bool isStandardMachineCode(const String& value) {
+  const auto code = trimCopy(value);
+  if (code.length() != 4U) return false;
+  for (size_t index = 0; index < code.length(); ++index) {
+    if (!std::isdigit(static_cast<unsigned char>(code[index]))) return false;
+  }
+  return true;
+}
+
+inline bool isStandardSupplierPartCode(const String& value) {
+  const auto code = trimCopy(value);
+  if (code.length() < 5U || code.length() > 64U || !code.endsWith("-ND")) return false;
+  bool hasDigit = false;
+  for (size_t index = 0; index < code.length(); ++index) {
+    const auto ch = static_cast<unsigned char>(code[index]);
+    if (std::isdigit(ch)) hasDigit = true;
+    if (!std::isalnum(ch) && ch != '-' && ch != '.' && ch != '_') return false;
+  }
+  return hasDigit;
+}
+
 inline String hexByte(unsigned char value) {
   static const char kHex[] = "0123456789abcdef";
   String out;
@@ -86,6 +107,7 @@ class QuantityComposer {
   void clear() {
     digits_.clear();
     defaultValue_ = 1;
+    cursor_ = 0;
   }
 
   bool empty() const {
@@ -96,15 +118,29 @@ class QuantityComposer {
     if (digit < '0' || digit > '9') {
       return;
     }
-    if (digits_.length() >= 4) {
-      return;
+    ensureDigits();
+    if (cursor_ < digits_.length()) {
+      digits_.setCharAt(cursor_, digit);
+    } else if (digits_.length() < 4) {
+      digits_ += digit;
     }
-    digits_ += digit;
+    advanceCursor();
   }
 
   void setDefaultValue(int value) {
     defaultValue_ = value <= 0 ? 1 : value;
+    digits_ = String(defaultValue_);
+    if (digits_.length() > 4) digits_.remove(4);
+    cursor_ = 0;
   }
+
+  void cycleCursor() {
+    ensureDigits();
+    const auto slots = editableSlots();
+    cursor_ = slots == 0 ? 0 : (cursor_ + 1U) % slots;
+  }
+
+  std::size_t cursor() const { return cursor_; }
 
   int valueOrOne() const {
     if (digits_.length() == 0) {
@@ -125,8 +161,29 @@ class QuantityComposer {
   }
 
  private:
+  void ensureDigits() {
+    if (digits_.length() == 0) digits_ = String(defaultValue_);
+    if (cursor_ >= editableSlots()) cursor_ = 0;
+  }
+
+  std::size_t editableSlots() const {
+    return digits_.length() < 4 ? digits_.length() + 1U : digits_.length();
+  }
+
+  void advanceCursor() {
+    const auto slots = editableSlots();
+    if (slots == 0) {
+      cursor_ = 0;
+    } else if (cursor_ + 1U < slots) {
+      ++cursor_;
+    } else {
+      cursor_ = 0;
+    }
+  }
+
   String digits_;
   int defaultValue_ = 1;
+  std::size_t cursor_ = 0;
 };
 
 struct ScanRequest {

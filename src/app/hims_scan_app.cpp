@@ -168,6 +168,9 @@ bool isQrScan(const String& value) {
 bool HimsScanApp::begin() {
   Serial.println("HIMS Scan R1 booting");
   display_.begin();
+  display_.showSplash();
+  display_.tick();
+  delay(1000);
   display_.showBoot("KEYPAD");
   display_.tick();
   keypadInit();
@@ -180,6 +183,7 @@ bool HimsScanApp::begin() {
   otaActive_ = false;
   lastSyncAttempt_ = 0;
   syncSequence_ = 1;
+  lookupSequence_ = 1;
 
   clientConfig_.deviceId = DEVICE_ID;
   clientConfig_.token = DEVICE_TOKEN;
@@ -189,29 +193,24 @@ bool HimsScanApp::begin() {
   outbox_.begin("hims_scan", DEVICE_ID);
   outbox_.load();
 
-  client_.begin(clientConfig_);
-  wifiStarted_ = true;
-
   if (!WIFI_AUTOSTART) {
     Serial.println("Wi-Fi auto-start disabled; running offline for keypad/scanner testing.");
   } else if (trimCopy(WIFI_SSID).length() == 0) {
     Serial.println("Wi-Fi credentials are empty; staying offline.");
-  } else {
-    Serial.print("Connecting to local Wi-Fi SSID: ");
-    Serial.println(WIFI_SSID);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   }
+
+  startNetworkWorker();
 
   sendDebugMessage("boot");
   logState("boot");
-  display_.setConnectivity(WiFi.isConnected(), false, outbox_.size());
+  updateConnectivityDisplay();
   display_.showReady();
   display_.tick();
   return true;
 }
 
 void HimsScanApp::loop() {
-  display_.setConnectivity(WiFi.isConnected(), pcOnline_, outbox_.size());
+  updateConnectivityDisplay();
   display_.tick();
   HimsKeyEvent event;
   while (keypadPoll(event)) {
@@ -241,13 +240,11 @@ void HimsScanApp::loop() {
     return;
   }
 
-  reconnectWiFi();
-  primeHimsSoftwareConnection();
-
+  processNetworkResult();
   maybeSync();
   // Drain anything received while the HTTP client was active.
   pollScanner();
-  display_.setConnectivity(WiFi.isConnected(), pcOnline_, outbox_.size());
+  updateConnectivityDisplay();
   display_.tick();
   delay(2);
 }
@@ -275,14 +272,18 @@ void HimsScanApp::handleScan(const String& code) {
 
   if (isDataMatrixScan(raw)) {
     const auto lookupCode = digikeyLookupCodeFromDataMatrix(trimmed);
-    const auto forwardedCode = lookupCode.length() > 0 ? lookupCode : trimmed;
+    if (!hasIso15434Macro06Envelope(trimmed) || !isStandardSupplierPartCode(lookupCode)) {
+      Serial.println("Rejected non-standard Data Matrix scan.");
+      return;
+    }
+    const auto forwardedCode = lookupCode;
     const auto defaultQuantity = digikeyQuantityFromDataMatrix(trimmed);
     resetPending();
     scannedCode_ = forwardedCode;
     quantity_.setDefaultValue(defaultQuantity);
     pendingScanType_ = PendingScanType::DigiKeyDataMatrix;
     setAwaitingQuantity();
-    display_.showQuantity(scannedCode_, quantity_.valueOrOne(), true);
+    display_.showQuantity(scannedCode_, quantity_.displayText(), quantity_.cursor(), true);
     Serial.print("DigiKey default quantity: ");
     Serial.println(quantity_.displayText().c_str());
     Serial.println("Enter quantity, then press A to add. C cancels.");
@@ -291,13 +292,28 @@ void HimsScanApp::handleScan(const String& code) {
   }
 
   if (isQrScan(raw) || isQuantityCode(trimmed)) {
+    if (!isStandardMachineCode(trimmed)) {
+      Serial.println("Rejected non-standard inventory ID scan.");
+      return;
+    }
+    resetPending();
     scannedCode_ = trimmed;
-    quantity_.clear();
+    quantity_.setDefaultValue(1);
     pendingScanType_ = PendingScanType::HimsQuantity;
+    activeLookupCode_ = trimmed;
+    activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
+    lookupMissCount_ = 0;
     setAwaitingQuantity();
-    display_.showQuantity(scannedCode_, quantity_.valueOrOne(), false);
+    display_.showQuantity(WiFi.isConnected() ? String("LOOKING UP...") : String("PC OFFLINE"),
+                          quantity_.displayText(), quantity_.cursor(), false);
+    lastSyncAttempt_ = 0;
     Serial.println("Enter quantity, then press A to add or B to subtract. C cancels.");
     sendDebugMessage(String("qr quantity scan ") + trimmed, "scan");
+    return;
+  }
+
+  if (!isStandardSupplierPartCode(trimmed)) {
+    Serial.println("Rejected unrecognized scanner data.");
     return;
   }
 
@@ -330,9 +346,17 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
       return;
     }
     quantity_.appendDigit(event.value);
-    display_.updateQuantity(quantity_.valueOrOne());
+    display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
     Serial.print("Quantity: ");
     Serial.println(quantity_.displayText().c_str());
+    return;
+  }
+
+  if (event.type == HimsKeyEventType::CycleCursor) {
+    if (state_ == State::AwaitQuantity) {
+      quantity_.cycleCursor();
+      display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
+    }
     return;
   }
 
@@ -369,7 +393,8 @@ void HimsScanApp::requestOtaUpdate() {
   resetPending();
   otaRequested_ = true;
   otaActive_ = false;
-  client_.end();
+  networkPowerOffRequested_ = false;
+  networkPaused_ = true;
   scanner_.flushInput();
   if (powerMode_ == PowerMode::Standby) {
     Serial.println("Waking standby path for OTA update.");
@@ -388,8 +413,11 @@ bool HimsScanApp::serviceOta() {
     Serial.println("OTA request ignored because Wi-Fi credentials are empty.");
     otaRequested_ = false;
     otaActive_ = false;
+    networkPaused_ = false;
     return false;
   }
+
+  if (!networkPauseAcknowledged_) return true;
 
   if (!ensureWiFiForOta()) {
     return true;
@@ -400,6 +428,7 @@ bool HimsScanApp::serviceOta() {
       Serial.println("OTA service failed to start; resuming normal operation.");
       otaRequested_ = false;
       otaActive_ = false;
+      networkPaused_ = false;
       return false;
     }
   }
@@ -505,36 +534,132 @@ bool HimsScanApp::startOtaService() {
 }
 
 void HimsScanApp::sendDebugMessage(const String& message, const String& level) {
-  if (!WiFi.isConnected() || trimCopy(message).length() == 0) {
+  if (networkPaused_ || !WiFi.isConnected() || trimCopy(message).length() == 0) {
     return;
   }
-  client_.postDebug(message, level);
+  if (networkMutex_ == nullptr || xSemaphoreTake(networkMutex_, pdMS_TO_TICKS(5)) != pdTRUE) return;
+  if (!debugJobPending_) {
+    debugJobMessage_ = message;
+    debugJobLevel_ = level;
+    debugJobPending_ = true;
+  }
+  xSemaphoreGive(networkMutex_);
 }
 
-String HimsScanApp::buildWifiDebugText() const {
-  String out;
-  if (powerMode_ == PowerMode::Standby) {
-    out = "standby";
-  } else if (!WIFI_AUTOSTART) {
-    out = "wifi autostart disabled";
-  } else if (trimCopy(WIFI_SSID).length() == 0) {
-    out = "wifi credentials empty";
-  } else if (WiFi.status() == WL_CONNECTED) {
-    out = "wifi connected ssid=";
-    out += WiFi.SSID();
-    out += " ip=";
-    out += WiFi.localIP().toString();
-  } else {
-    out = "wifi disconnected target=";
-    out += WIFI_SSID;
+bool HimsScanApp::startNetworkWorker() {
+  if (networkTask_ != nullptr) return true;
+  networkMutex_ = xSemaphoreCreateMutex();
+  if (networkMutex_ == nullptr) {
+    Serial.println("Network worker: mutex allocation failed");
+    return false;
   }
+  const auto created = xTaskCreatePinnedToCore(networkTaskEntry, "inventatory-net", 8192, this, 1,
+                                                &networkTask_, 0);
+  if (created != pdPASS) {
+    Serial.println("Network worker: task allocation failed");
+    vSemaphoreDelete(networkMutex_);
+    networkMutex_ = nullptr;
+    networkTask_ = nullptr;
+    return false;
+  }
+  return true;
+}
 
-  out += " endpoint=";
-  out += client_.endpointSummary();
-  if (otaRequested_) {
-    out += " ota=pending";
+void HimsScanApp::networkTaskEntry(void* context) {
+  static_cast<HimsScanApp*>(context)->networkTaskLoop();
+}
+
+void HimsScanApp::networkTaskLoop() {
+  client_.begin(clientConfig_);
+  wifiStarted_ = true;
+  networkStarted_ = true;
+  for (;;) {
+    if (networkPaused_) {
+      if (!networkPauseAcknowledged_) {
+        client_.end();
+        if (networkPowerOffRequested_) {
+          WiFi.disconnect(true);
+          WiFi.mode(WIFI_OFF);
+          wifiStarted_ = false;
+          wifiConnectedReported_ = false;
+        }
+        networkPauseAcknowledged_ = true;
+      }
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+
+    if (networkPauseAcknowledged_) {
+      networkPauseAcknowledged_ = false;
+      client_.begin(clientConfig_);
+      wifiStarted_ = true;
+      lastReconnectAttempt_ = 0;
+      wifiConnectedReported_ = false;
+    }
+
+    reconnectWiFiWorker();
+
+    String requestId;
+    String payload;
+    String debugMessage;
+    String debugLevel;
+    bool hasSync = false;
+    bool hasDebug = false;
+    if (xSemaphoreTake(networkMutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
+      if (syncJobPending_) {
+        requestId = syncJobRequestId_;
+        payload = syncJobPayload_;
+        syncJobPending_ = false;
+        syncJobRequestId_.clear();
+        syncJobPayload_.clear();
+        hasSync = true;
+      } else if (debugJobPending_) {
+        debugMessage = debugJobMessage_;
+        debugLevel = debugJobLevel_;
+        debugJobPending_ = false;
+        debugJobMessage_.clear();
+        debugJobLevel_.clear();
+        hasDebug = true;
+      }
+      xSemaphoreGive(networkMutex_);
+    }
+
+    if (hasSync) {
+      int status = 0;
+      String body;
+      networkBusy_ = true;
+      const bool sent = WiFi.isConnected() && client_.postSync(payload, status, body);
+      networkBusy_ = false;
+      if (xSemaphoreTake(networkMutex_, portMAX_DELAY) == pdTRUE) {
+        syncResultRequestId_ = requestId;
+        syncResultSent_ = sent;
+        syncResultStatus_ = status;
+        syncResultBody_ = body;
+        syncResultPending_ = true;
+        xSemaphoreGive(networkMutex_);
+      }
+    } else if (hasDebug && WiFi.isConnected()) {
+      networkBusy_ = true;
+      client_.postDebug(debugMessage, debugLevel);
+      networkBusy_ = false;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
-  return out;
+}
+
+bool HimsScanApp::queueSyncJob(const String& requestId, const String& payload) {
+  if (!networkStarted_ || networkMutex_ == nullptr || xSemaphoreTake(networkMutex_, pdMS_TO_TICKS(5)) != pdTRUE) {
+    return false;
+  }
+  const bool available = !syncJobPending_ && !syncResultPending_;
+  if (available) {
+    syncJobRequestId_ = requestId;
+    syncJobPayload_ = payload;
+    syncJobPending_ = true;
+  }
+  xSemaphoreGive(networkMutex_);
+  return available;
 }
 
 void HimsScanApp::enterStandby() {
@@ -551,9 +676,8 @@ void HimsScanApp::enterStandby() {
   wifiConnectedReported_ = false;
   himsSoftwarePrimed_ = false;
 
-  client_.end();
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
+  networkPowerOffRequested_ = true;
+  networkPaused_ = true;
   scanner_.suspend();
   powerMode_ = PowerMode::Standby;
   pcOnline_ = false;
@@ -569,8 +693,8 @@ void HimsScanApp::exitStandby() {
 
   Serial.println("Waking from standby mode.");
   scanner_.resume();
-  client_.begin(clientConfig_);
-  wifiStarted_ = true;
+  networkPowerOffRequested_ = false;
+  networkPaused_ = false;
   wifiConnectedReported_ = false;
   himsSoftwarePrimed_ = false;
   lastReconnectAttempt_ = 0;
@@ -578,11 +702,7 @@ void HimsScanApp::exitStandby() {
   powerMode_ = PowerMode::Normal;
   display_.setStandby(false);
 
-  if (WIFI_AUTOSTART && trimCopy(WIFI_SSID).length() > 0) {
-    Serial.print("Reconnecting after standby to local Wi-Fi SSID: ");
-    Serial.println(WIFI_SSID);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  } else {
+  if (!WIFI_AUTOSTART || trimCopy(WIFI_SSID).length() == 0) {
     Serial.println("Standby exit complete; Wi-Fi remains offline.");
   }
   sendDebugMessage("standby exited", "warn");
@@ -639,7 +759,7 @@ bool HimsScanApp::queueEvent(DeviceEventKind kind, const String& code, int value
   return true;
 }
 
-void HimsScanApp::reconnectWiFi() {
+void HimsScanApp::reconnectWiFiWorker() {
   if (!wifiStarted_) {
     return;
   }
@@ -661,7 +781,6 @@ void HimsScanApp::reconnectWiFi() {
       Serial.print(WiFi.SSID());
       Serial.print(" @ ");
       Serial.println(WiFi.localIP());
-      sendDebugMessage(buildWifiDebugText(), "status");
     }
     return;
   }
@@ -669,7 +788,7 @@ void HimsScanApp::reconnectWiFi() {
   wifiConnectedReported_ = false;
   himsSoftwarePrimed_ = false;
   pcOnline_ = false;
-  if (millis() - lastReconnectAttempt_ < WIFI_RECONNECT_INTERVAL_MS) {
+  if (lastReconnectAttempt_ != 0 && millis() - lastReconnectAttempt_ < WIFI_RECONNECT_INTERVAL_MS) {
     return;
   }
   lastReconnectAttempt_ = millis();
@@ -682,19 +801,6 @@ void HimsScanApp::reconnectWiFi() {
   Serial.print("Reconnecting to local Wi-Fi SSID: ");
   Serial.println(WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-}
-
-void HimsScanApp::primeHimsSoftwareConnection() {
-  if (!wifiConnectedReported_ || himsSoftwarePrimed_) {
-    return;
-  }
-
-  himsSoftwarePrimed_ = true;
-  Serial.println("Local Wi-Fi ready; discovering HIMS software endpoint...");
-  if (client_.resolveEndpoint(true)) {
-    Serial.print("HIMS software endpoint: ");
-    Serial.println(client_.endpointSummary().c_str());
-  }
 }
 
 String HimsScanApp::syncMode() const {
@@ -710,12 +816,7 @@ void HimsScanApp::maybeSync() {
     return;
   }
   const unsigned long interval = (!outbox_.empty() || pendingResultAck_.length() > 0) ? 1000UL : 5000UL;
-  if (lastSyncAttempt_ != 0 && millis() - lastSyncAttempt_ < interval) return;
-  lastSyncAttempt_ = millis();
-  if (!client_.resolveEndpoint()) {
-    pcOnline_ = false;
-    return;
-  }
+  if (syncInFlight_ || (lastSyncAttempt_ != 0 && millis() - lastSyncAttempt_ < interval)) return;
 
   DeviceEventRecord events[kSyncBatchSize];
   std::size_t eventCount = 0;
@@ -726,10 +827,28 @@ void HimsScanApp::maybeSync() {
   const auto requestId = clientConfig_.deviceId + String("-sync-") + String(syncSequence_++);
   const auto payload = buildSyncRequestJson(requestId, clientConfig_.deviceId, kFirmwareVersion, syncMode(),
                                             WiFi.RSSI(), outbox_.size(), events, eventCount,
-                                            acknowledgements, ackCount);
-  int status = 0;
-  String body;
-  const auto sent = client_.postSync(payload, status, body);
+                                            acknowledgements, ackCount, activeLookupId_, activeLookupCode_);
+  if (queueSyncJob(requestId, payload)) {
+    syncInFlight_ = true;
+    lastSyncAttempt_ = millis();
+  }
+}
+
+void HimsScanApp::processNetworkResult() {
+  if (networkMutex_ == nullptr || xSemaphoreTake(networkMutex_, 0) != pdTRUE) return;
+  if (!syncResultPending_) {
+    xSemaphoreGive(networkMutex_);
+    return;
+  }
+  const auto requestId = syncResultRequestId_;
+  const auto sent = syncResultSent_;
+  const auto status = syncResultStatus_;
+  const auto body = syncResultBody_;
+  syncResultPending_ = false;
+  syncResultBody_.clear();
+  xSemaphoreGive(networkMutex_);
+  syncInFlight_ = false;
+
   if (!sent || status != 200) {
     pcOnline_ = false;
     Serial.print("POST /api/v1/device/sync failed, status ");
@@ -753,7 +872,7 @@ void HimsScanApp::maybeSync() {
     return;
   }
   pcOnline_ = true;
-  if (ackCount > 0 && pendingResultAck_ == acknowledgements[0]) pendingResultAck_.clear();
+  if (pendingResultAck_.length() > 0) pendingResultAck_.clear();
   handleSyncResponse(response);
 }
 
@@ -771,7 +890,28 @@ void HimsScanApp::handleSyncResponse(const SyncResponse& response) {
     if (!accepted) break;
     outbox_.pop();
   }
-  display_.setConnectivity(WiFi.isConnected(), true, outbox_.size());
+  if (isCurrentLookupResult(response, activeLookupId_)) {
+    lookupMissCount_ = 0;
+    if (response.lookupStatus == "found" && response.lookupItemName.length() > 0) {
+      display_.updateQuantityItem(response.lookupItemName);
+      activeLookupId_.clear();
+      activeLookupCode_.clear();
+    } else if (response.lookupStatus == "not_found") {
+      display_.updateQuantityItem("UNKNOWN ITEM");
+      activeLookupId_.clear();
+      activeLookupCode_.clear();
+    } else if (response.lookupStatus == "unavailable") {
+      display_.updateQuantityItem("NAME UNAVAILABLE");
+      activeLookupId_.clear();
+      activeLookupCode_.clear();
+    }
+  } else if (activeLookupId_.length() > 0 && ++lookupMissCount_ >= 3U) {
+    display_.updateQuantityItem("NAME UNAVAILABLE");
+    activeLookupId_.clear();
+    activeLookupCode_.clear();
+    lookupMissCount_ = 0;
+  }
+  updateConnectivityDisplay();
   if (response.hasResult && display_.showResult(response.result)) {
     pendingResultAck_ = response.result.resultId;
     lastSyncAttempt_ = 0;
@@ -792,8 +932,34 @@ void HimsScanApp::setAwaitingQuantity() {
 void HimsScanApp::resetPending() {
   scannedCode_.clear();
   quantity_.clear();
+  activeLookupId_.clear();
+  activeLookupCode_.clear();
+  lookupMissCount_ = 0;
   state_ = State::Idle;
   pendingScanType_ = PendingScanType::None;
+}
+
+DisplayConnectivityState HimsScanApp::connectivityState() const {
+  if (!WiFi.isConnected()) {
+    if (WIFI_AUTOSTART && trimCopy(WIFI_SSID).length() > 0 && powerMode_ == PowerMode::Normal) {
+      return DisplayConnectivityState::WifiConnecting;
+    }
+    return DisplayConnectivityState::Offline;
+  }
+  if (!pcOnline_) return DisplayConnectivityState::PcSearching;
+  if (!outbox_.empty() || pendingResultAck_.length() > 0 || activeLookupId_.length() > 0) {
+    return DisplayConnectivityState::Syncing;
+  }
+  return DisplayConnectivityState::Online;
+}
+
+void HimsScanApp::updateConnectivityDisplay() {
+  const bool wifiOnline = WiFi.isConnected();
+  display_.setConnectivity(connectivityState(), wifiOnline, pcOnline_, outbox_.size());
+  if (state_ == State::AwaitQuantity && pendingScanType_ == PendingScanType::HimsQuantity &&
+      activeLookupId_.length() > 0) {
+    display_.updateQuantityItem(wifiOnline ? String("LOOKING UP...") : String("PC OFFLINE"));
+  }
 }
 
 }  // namespace hims_scan

@@ -31,13 +31,32 @@ void DisplayRenderer::drawHeader(const DisplayModel& model) {
   lcd_.drawBox(0, 0, 128, 11);
   lcd_.setDrawColor(0);
   lcd_.setFont(u8g2_font_5x7_tf);
-  lcd_.drawStr(3, 8, "HIMS SCAN");
-  lcd_.drawStr(79, 8, model.wifiOnline ? "W+" : "W-");
-  lcd_.drawStr(94, 8, model.pcOnline ? "P+" : "P-");
-  lcd_.setCursor(109, 8);
-  lcd_.print('Q');
-  lcd_.print(model.queueDepth);
+  String status;
+  if (model.mode == DisplayUiMode::Ota) {
+    status = "OTA UPDATE";
+  } else {
+    switch (model.connectivity) {
+      case DisplayConnectivityState::WifiConnecting: status = "CONNECTING TO WIFI"; break;
+      case DisplayConnectivityState::PcSearching: status = "CONNECTING TO PC"; break;
+      case DisplayConnectivityState::Syncing: status = String("SYNCING Q") + model.queueDepth; break;
+      case DisplayConnectivityState::Online:
+        status = model.headerAlternate ? "CONNECTED TO PC" : "ONLINE";
+        break;
+      case DisplayConnectivityState::Offline: status = "OFFLINE"; break;
+    }
+  }
+  drawClipped(3, 8, 122, status);
   lcd_.setDrawColor(1);
+}
+
+void DisplayRenderer::drawSplash(const DisplayModel& model) {
+  lcd_.setDrawColor(1);
+  lcd_.setFont(u8g2_font_7x13B_tf);
+  const int titleX = (128 - lcd_.getStrWidth(model.title.c_str())) / 2;
+  lcd_.drawStr(max(0, titleX), 30, model.title.c_str());
+  lcd_.setFont(u8g2_font_6x10_tf);
+  const int subtitleX = (128 - lcd_.getStrWidth(model.line1.c_str())) / 2;
+  lcd_.drawStr(max(0, subtitleX), 45, model.line1.c_str());
 }
 
 void DisplayRenderer::drawArrow(bool filled) {
@@ -55,10 +74,19 @@ void DisplayRenderer::drawBody(const DisplayModel& model) {
   constexpr int width = 111;
   if (model.mode == DisplayUiMode::Quantity) {
     lcd_.setFont(u8g2_font_5x7_tf);
-    drawClipped(x, 20, width, model.title);
+    drawClipped(x, 18, width, model.title);
+    drawClipped(x, 27, width, model.line1);
     lcd_.setFont(u8g2_font_logisoso18_tn);
-    lcd_.setCursor(x, 45);
-    lcd_.print(model.quantity);
+    lcd_.setCursor(x, 49);
+    lcd_.print(model.quantityText);
+    const auto prefix = model.quantityText.substring(0, min(model.quantityCursor, model.quantityText.length()));
+    const int cursorX = x + lcd_.getStrWidth(prefix.c_str());
+    int cursorWidth = 9;
+    if (model.quantityCursor < model.quantityText.length()) {
+      const auto digit = model.quantityText.substring(model.quantityCursor, model.quantityCursor + 1);
+      cursorWidth = max(6, static_cast<int>(lcd_.getStrWidth(digit.c_str())));
+    }
+    lcd_.drawHLine(cursorX, 50, cursorWidth);
     return;
   }
   if (model.mode == DisplayUiMode::Ota) {
@@ -84,11 +112,18 @@ void DisplayRenderer::drawFooter(const String& footer) {
 
 void DisplayRenderer::render(const DisplayModel& model, bool pulseArrow) {
   lcd_.clearBuffer();
+  if (model.mode == DisplayUiMode::Splash) {
+    drawSplash(model);
+    lcd_.sendBuffer();
+    lcd_.sendF("c", 0x40);  // ST7565: force display start line back to the top.
+    return;
+  }
   drawHeader(model);
   if (model.mode != DisplayUiMode::Standby) drawArrow(pulseArrow);
   drawBody(model);
   drawFooter(model.footer);
   lcd_.sendBuffer();
+  lcd_.sendF("c", 0x40);  // ST7565: prevent a stale start-line offset after a refresh.
 }
 
 }  // namespace hims_scan

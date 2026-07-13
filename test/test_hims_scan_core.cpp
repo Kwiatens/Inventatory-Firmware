@@ -6,6 +6,15 @@
 
 using namespace hims_scan;
 
+void test_standardized_scanner_codes() {
+  TEST_ASSERT_TRUE(isStandardMachineCode("0002"));
+  TEST_ASSERT_FALSE(isStandardMachineCode("31"));
+  TEST_ASSERT_FALSE(isStandardMachineCode("12A4"));
+  TEST_ASSERT_TRUE(isStandardSupplierPartCode("718-2362-1-ND"));
+  TEST_ASSERT_FALSE(isStandardSupplierPartCode("boot garbage 123"));
+  TEST_ASSERT_FALSE(isStandardSupplierPartCode("718-2362-1"));
+}
+
 void test_quantity_composer_defaults_and_limit() {
   QuantityComposer composer;
   TEST_ASSERT_EQUAL_STRING("1", composer.displayText().c_str());
@@ -16,11 +25,28 @@ void test_quantity_composer_defaults_and_limit() {
   composer.appendDigit('5');
   composer.appendDigit('7');
   composer.appendDigit('9');
-  TEST_ASSERT_EQUAL_STRING("0257", composer.displayText().c_str());
-  TEST_ASSERT_EQUAL_INT(257, composer.valueOrOne());
+  TEST_ASSERT_EQUAL_STRING("9257", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_UINT32(1, composer.cursor());
+  TEST_ASSERT_EQUAL_INT(9257, composer.valueOrOne());
 
-  TEST_ASSERT_EQUAL_INT(257, composer.consume(true));
+  TEST_ASSERT_EQUAL_INT(9257, composer.consume(true));
   TEST_ASSERT_TRUE(composer.empty());
+}
+
+void test_quantity_composer_cursor_replaces_and_appends() {
+  QuantityComposer composer;
+  composer.setDefaultValue(25);
+  TEST_ASSERT_EQUAL_STRING("25", composer.displayText().c_str());
+  composer.cycleCursor();
+  TEST_ASSERT_EQUAL_UINT32(1, composer.cursor());
+  composer.appendDigit('7');
+  TEST_ASSERT_EQUAL_STRING("27", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_UINT32(2, composer.cursor());
+  composer.appendDigit('9');
+  TEST_ASSERT_EQUAL_STRING("279", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_UINT32(3, composer.cursor());
+  composer.cycleCursor();
+  TEST_ASSERT_EQUAL_UINT32(0, composer.cursor());
 }
 
 void test_quantity_composer_subtract_and_invalid_digits() {
@@ -83,17 +109,20 @@ void test_protocol_v1_sync_round_trip() {
   event.value = -3;
   const String ack = "R1-41-result";
   const auto json = buildSyncRequestJson("sync-7", "R1", "0.2.0", "ready", -51, 1,
-                                         &event, 1, &ack, 1);
+                                         &event, 1, &ack, 1, "lookup-9", "0002");
   TEST_ASSERT_TRUE(json.indexOf("\"protocolVersion\":1") >= 0);
   TEST_ASSERT_TRUE(json.indexOf("\"type\":\"inventory.adjust\"") >= 0);
   TEST_ASSERT_TRUE(json.indexOf("\"value\":-3") >= 0);
+  TEST_ASSERT_TRUE(json.indexOf("\"lookup\":{\"lookupId\":\"lookup-9\",\"code\":\"0002\"}") >= 0);
 
   const auto response = parseSyncResponseJson(
       "{\"protocolVersion\":1,\"requestId\":\"sync-7\",\"acceptedEventIds\":[\"R1-42\"],"
       "\"results\":[{\"resultId\":\"R1-42-result\",\"eventId\":\"R1-42\","
       "\"status\":\"completed\",\"existing\":true,\"itemName\":\"10k resistor\","
       "\"requestedDelta\":-3,\"appliedDelta\":-3,\"quantity\":17,"
-      "\"location\":\"R2-B4\",\"code\":\"\",\"message\":\"Quantity updated\"}]}" );
+      "\"location\":\"R2-B4\",\"code\":\"\",\"message\":\"Quantity updated\"}],"
+      "\"lookupResult\":{\"lookupId\":\"lookup-9\",\"status\":\"found\","
+      "\"itemName\":\"10k resistor\"}}" );
   TEST_ASSERT_TRUE(response.valid);
   TEST_ASSERT_EQUAL_STRING("sync-7", response.requestId.c_str());
   TEST_ASSERT_EQUAL_UINT32(1, response.acceptedCount);
@@ -101,11 +130,26 @@ void test_protocol_v1_sync_round_trip() {
   TEST_ASSERT_TRUE(response.result.existing);
   TEST_ASSERT_EQUAL_INT(17, response.result.quantity);
   TEST_ASSERT_EQUAL_STRING("R2-B4", response.result.location.c_str());
+  TEST_ASSERT_TRUE(response.hasLookupResult);
+  TEST_ASSERT_EQUAL_STRING("lookup-9", response.lookupId.c_str());
+  TEST_ASSERT_EQUAL_STRING("found", response.lookupStatus.c_str());
+  TEST_ASSERT_EQUAL_STRING("10k resistor", response.lookupItemName.c_str());
+  TEST_ASSERT_TRUE(isCurrentLookupResult(response, "lookup-9"));
+  TEST_ASSERT_FALSE(isCurrentLookupResult(response, "lookup-stale"));
+
+  const auto unavailable = parseSyncResponseJson(
+      "{\"protocolVersion\":1,\"requestId\":\"sync-8\",\"acceptedEventIds\":[],"
+      "\"results\":[],\"lookupResult\":{\"lookupId\":\"lookup-10\","
+      "\"status\":\"unavailable\",\"itemName\":\"\"}}");
+  TEST_ASSERT_TRUE(unavailable.hasLookupResult);
+  TEST_ASSERT_EQUAL_STRING("unavailable", unavailable.lookupStatus.c_str());
 }
 
 void setup() {
   UNITY_BEGIN();
+  RUN_TEST(test_standardized_scanner_codes);
   RUN_TEST(test_quantity_composer_defaults_and_limit);
+  RUN_TEST(test_quantity_composer_cursor_replaces_and_appends);
   RUN_TEST(test_quantity_composer_subtract_and_invalid_digits);
   RUN_TEST(test_request_json_serialization);
   RUN_TEST(test_scan_json_escapes_datamatrix_separators);
