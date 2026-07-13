@@ -188,15 +188,26 @@ void DisplayController::showMenu() {
   markDirty();
 }
 
-void DisplayController::showQuickLabels(const String* labels, std::size_t count, std::size_t page) {
+void DisplayController::showQuickLabels(const String* labels, std::size_t count, std::size_t page,
+                                        bool snapshotReceived, bool pcSupportsQuickLabels) {
   model_.mode = DisplayUiMode::QuickLabels;
   model_.title = count > 4U ? "LABELS D/NEXT C/BACK" : "LABELS C/BACK";
   clearMenuLines();
-  const auto first = page * 4U;
-  for (std::size_t index = 0; index < 4U && first + index < count; ++index) {
-    model_.menuLines[model_.menuLineCount++] = String(index + 1U) + " " + labels[first + index];
+  if (!snapshotReceived) {
+    model_.menuLines[model_.menuLineCount++] = "SYNCING PC PRESETS";
+  } else if (!pcSupportsQuickLabels) {
+    model_.menuLines[model_.menuLineCount++] = "UPDATE PC SOFTWARE";
+    model_.menuLines[model_.menuLineCount++] = "LABELS NOT SUPPORTED";
+  } else {
+    const auto first = page * 4U;
+    for (std::size_t index = 0; index < 4U && first + index < count; ++index) {
+      model_.menuLines[model_.menuLineCount++] = String(index + 1U) + " " + labels[first + index];
+    }
+    if (model_.menuLineCount == 0) {
+      model_.menuLines[model_.menuLineCount++] = "NO PRESETS ON PC";
+      model_.menuLines[model_.menuLineCount++] = "ADD IN QUICK LABELS";
+    }
   }
-  if (model_.menuLineCount == 0) model_.menuLines[model_.menuLineCount++] = "WAITING FOR PC PRESETS";
   model_.footer.clear();
   markDirty();
 }

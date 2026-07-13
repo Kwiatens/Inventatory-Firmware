@@ -132,6 +132,8 @@ class HimsScanApp {
   uint8_t lookupMissCount_ = 0;
   uint8_t lcdContrast_ = 45;
   uint8_t quickLabelPage_ = 0;
+  bool quickLabelSnapshotReceived_ = false;
+  bool pcSupportsQuickLabels_ = false;
   String quickLabelPresets_[kQuickLabelPresetLimit];
   std::size_t quickLabelPresetCount_ = 0;
   uint32_t quickLabelRevision_ = 0;
