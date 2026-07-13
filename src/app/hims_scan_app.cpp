@@ -191,6 +191,12 @@ bool HimsScanApp::begin() {
 
   outbox_.begin("hims_scan", DEVICE_ID);
   outbox_.load();
+  if (!deviceSettings_.begin()) {
+    Serial.println("Device settings storage unavailable; using default contrast.");
+  } else {
+    lcdContrast_ = deviceSettings_.contrast();
+    display_.setContrast(lcdContrast_);
+  }
   if (!setupStore_.begin() || !setupStore_.load(provisionedSettings_)) {
     setupMode_ = true;
     if (!provisioning_.begin(clientConfig_.deviceId)) {
@@ -309,6 +315,10 @@ void HimsScanApp::pollScanner() {
 }
 
 void HimsScanApp::handleScan(const String& code) {
+  if (state_ != State::Idle && state_ != State::AwaitQuantity) {
+    Serial.println("Scan ignored while device menu is open.");
+    return;
+  }
   // Some GM65 profiles prepend an AIM symbology identifier (for example ]C1
   // for Code 128, ]Q3 for QR, or ]d2 for Data Matrix). We use that marker to
   // route Data Matrix scans to DigiKey and QR scans to the HIMS path.
@@ -392,6 +402,7 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
   }
 
   if (event.type == HimsKeyEventType::PowerToggle) {
+    if (state_ != State::Idle) return;
     if (powerMode_ == PowerMode::Standby) {
       exitStandby();
     } else {
@@ -401,6 +412,32 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
   }
 
   if (event.type == HimsKeyEventType::Digit) {
+    if (state_ == State::Menu) {
+      if (event.value == '1') openQuickLabels();
+      else if (event.value == '2') openQuickSettings();
+      return;
+    }
+    if (state_ == State::QuickLabels) {
+      const uint8_t selected = static_cast<uint8_t>(event.value - '0');
+      if (selected >= 1 && selected <= 4) requestQuickLabelPrint(quickLabelPage_ * 4U + selected);
+      return;
+    }
+    if (state_ == State::QuickSettings) {
+      if (event.value == '1') {
+        state_ = State::AdjustContrast;
+        display_.showContrast(lcdContrast_);
+      } else if (event.value == '2') {
+        state_ = State::Idle;
+        enterStandby();
+      } else if (event.value == '3') {
+        state_ = State::ConfirmReprovision;
+        display_.showResetConfirm();
+      } else if (event.value == '4') {
+        state_ = State::Idle;
+        requestOtaUpdate();
+      }
+      return;
+    }
     if (state_ == State::Idle) {
       Serial.println("Digit ignored, scan a code first.");
       return;
@@ -413,6 +450,12 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
   }
 
   if (event.type == HimsKeyEventType::CycleCursor) {
+    if (state_ == State::QuickLabels && quickLabelPresetCount_ > 4U) {
+      const uint8_t pages = static_cast<uint8_t>((quickLabelPresetCount_ + 3U) / 4U);
+      quickLabelPage_ = static_cast<uint8_t>((quickLabelPage_ + 1U) % pages);
+      display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_);
+      return;
+    }
     if (state_ == State::AwaitQuantity) {
       quantity_.cycleCursor();
       display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
@@ -421,8 +464,29 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
   }
 
   if (event.type == HimsKeyEventType::Cancel) {
-    if (state_ == State::Idle && display_.errorVisible()) {
-      display_.dismissError();
+    if (state_ == State::Idle) {
+      if (display_.errorVisible()) display_.dismissError();
+      else {
+        state_ = State::Menu;
+        display_.showMenu();
+      }
+      return;
+    }
+    if (state_ == State::Menu || state_ == State::QuickLabels || state_ == State::QuickSettings ||
+        state_ == State::PrintingLabel) {
+      pendingQuickLabelPrintId_.clear();
+      pendingQuickLabelPresetIndex_ = 0;
+      state_ = State::Idle;
+      display_.showReady();
+      return;
+    }
+    if (state_ == State::AdjustContrast) {
+      persistContrast();
+      openQuickSettings();
+      return;
+    }
+    if (state_ == State::ConfirmReprovision) {
+      openQuickSettings();
       return;
     }
     resetPending();
@@ -432,6 +496,22 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
   }
 
   if (event.type == HimsKeyEventType::Add || event.type == HimsKeyEventType::Subtract) {
+    if (state_ == State::AdjustContrast) {
+      if (event.type == HimsKeyEventType::Add && lcdContrast_ > 0) --lcdContrast_;
+      if (event.type == HimsKeyEventType::Subtract && lcdContrast_ < 63) ++lcdContrast_;
+      display_.setContrast(lcdContrast_);
+      display_.showContrast(lcdContrast_);
+      return;
+    }
+    if (state_ == State::ConfirmReprovision && event.type == HimsKeyEventType::Add) {
+      if (setupStore_.clear()) {
+        Serial.println("Re-pair requested from quick settings; restarting BLE setup.");
+        ESP.restart();
+      }
+      display_.showQuickLabelPrintResult(false, "RESET FAILED");
+      state_ = State::Idle;
+      return;
+    }
     if (state_ == State::Idle || scannedCode_.length() == 0) {
       Serial.println("No scanned code to submit.");
       return;
@@ -859,6 +939,7 @@ String HimsScanApp::syncMode() const {
   if (otaRequested_ || otaActive_) return "ota";
   if (powerMode_ == PowerMode::Standby) return "standby";
   if (state_ == State::AwaitQuantity) return "await_quantity";
+  if (state_ == State::PrintingLabel) return "label_print";
   return "ready";
 }
 
@@ -867,7 +948,10 @@ void HimsScanApp::maybeSync() {
     pcOnline_ = false;
     return;
   }
-  const unsigned long interval = (!outbox_.empty() || pendingResultAck_.length() > 0) ? 1000UL : 5000UL;
+  const unsigned long interval = (!outbox_.empty() || pendingResultAck_.length() > 0 ||
+                                  pendingQuickLabelPrintId_.length() > 0)
+                                     ? 1000UL
+                                     : 5000UL;
   if (syncInFlight_ || (lastSyncAttempt_ != 0 && millis() - lastSyncAttempt_ < interval)) return;
 
   DeviceEventRecord events[kSyncBatchSize];
@@ -876,10 +960,18 @@ void HimsScanApp::maybeSync() {
   String acknowledgements[1];
   const std::size_t ackCount = pendingResultAck_.length() > 0 ? 1U : 0U;
   if (ackCount > 0) acknowledgements[0] = pendingResultAck_;
+  QuickLabelPrintRequest quickLabelPrint;
+  const QuickLabelPrintRequest* quickLabelPrintPtr = nullptr;
+  if (pendingQuickLabelPrintId_.length() > 0) {
+    quickLabelPrint.requestId = pendingQuickLabelPrintId_;
+    quickLabelPrint.presetIndex = pendingQuickLabelPresetIndex_;
+    quickLabelPrint.revision = pendingQuickLabelRevision_;
+    quickLabelPrintPtr = &quickLabelPrint;
+  }
   const auto requestId = clientConfig_.deviceId + String("-sync-") + String(syncSequence_++);
   const auto payload = buildSyncRequestJson(requestId, clientConfig_.deviceId, kFirmwareVersion, syncMode(),
                                             WiFi.RSSI(), outbox_.size(), events, eventCount,
-                                            acknowledgements, ackCount, activeLookupId_, activeLookupCode_);
+                                            acknowledgements, ackCount, activeLookupId_, activeLookupCode_, quickLabelPrintPtr);
   if (queueSyncJob(requestId, payload)) {
     syncInFlight_ = true;
     lastSyncAttempt_ = millis();
@@ -905,6 +997,12 @@ void HimsScanApp::processNetworkResult() {
     pcOnline_ = false;
     Serial.print("POST /api/v1/device/sync failed, status ");
     Serial.println(status);
+    if (pendingQuickLabelPrintId_.length() > 0) {
+      pendingQuickLabelPrintId_.clear();
+      pendingQuickLabelPresetIndex_ = 0;
+      state_ = State::Idle;
+      display_.showQuickLabelPrintResult(false, "PC OR PRINTER OFFLINE");
+    }
     if ((status == 401 || status == 426) && !outbox_.empty()) {
       SyncResult result;
       result.resultId = "local-protocol";
@@ -929,6 +1027,27 @@ void HimsScanApp::processNetworkResult() {
 }
 
 void HimsScanApp::handleSyncResponse(const SyncResponse& response) {
+  if (response.hasQuickLabels) {
+    quickLabelPresetCount_ = 0;
+    quickLabelRevision_ = response.quickLabelRevision;
+    for (std::size_t index = 0; index < response.quickLabelPresetCount && index < kQuickLabelPresetLimit; ++index) {
+      if (response.quickLabelPresets[index].length() > 0 &&
+          response.quickLabelPresets[index].length() <= kQuickLabelPresetTextLimit) {
+        quickLabelPresets_[quickLabelPresetCount_++] = response.quickLabelPresets[index];
+      }
+    }
+    if (quickLabelPage_ * 4U >= quickLabelPresetCount_) quickLabelPage_ = 0;
+    if (state_ == State::QuickLabels) display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_);
+  }
+  if (response.hasQuickLabelPrintResult && response.quickLabelPrintRequestId == pendingQuickLabelPrintId_) {
+    const bool success = response.quickLabelPrintStatus == "completed";
+    const auto message = response.quickLabelPrintMessage.length() > 0 ? response.quickLabelPrintMessage
+                                                                       : response.quickLabelPrintCode;
+    pendingQuickLabelPrintId_.clear();
+    pendingQuickLabelPresetIndex_ = 0;
+    state_ = State::Idle;
+    display_.showQuickLabelPrintResult(success, message.length() > 0 ? message : "PRINT RESULT UNKNOWN");
+  }
   while (!outbox_.empty()) {
     DeviceEventRecord front;
     if (!outbox_.peek(0, front)) break;
@@ -974,7 +1093,7 @@ void HimsScanApp::logState(const char* reason) const {
   Serial.print("State update [");
   Serial.print(reason);
   Serial.print("]: ");
-  Serial.println(state_ == State::Idle ? "idle" : "awaiting quantity");
+  Serial.println(state_ == State::Idle ? "idle" : state_ == State::AwaitQuantity ? "awaiting quantity" : "menu");
 }
 
 void HimsScanApp::setAwaitingQuantity() {
@@ -989,6 +1108,48 @@ void HimsScanApp::resetPending() {
   lookupMissCount_ = 0;
   state_ = State::Idle;
   pendingScanType_ = PendingScanType::None;
+  pendingQuickLabelPrintId_.clear();
+  pendingQuickLabelPresetIndex_ = 0;
+  pendingQuickLabelRevision_ = 0;
+}
+
+void HimsScanApp::openQuickLabels() {
+  state_ = State::QuickLabels;
+  if (quickLabelPage_ * 4U >= quickLabelPresetCount_) quickLabelPage_ = 0;
+  display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_);
+  refreshQuickLabels();
+}
+
+void HimsScanApp::openQuickSettings() {
+  state_ = State::QuickSettings;
+  display_.showQuickSettings(lcdContrast_);
+}
+
+void HimsScanApp::refreshQuickLabels() {
+  lastSyncAttempt_ = 0;
+}
+
+void HimsScanApp::requestQuickLabelPrint(uint8_t presetIndex) {
+  if (presetIndex < 1 || presetIndex > quickLabelPresetCount_ || quickLabelRevision_ == 0) {
+    display_.showQuickLabelPrintResult(false, "REFRESH PRESETS FIRST");
+    state_ = State::Idle;
+    return;
+  }
+  if (!WiFi.isConnected()) {
+    display_.showQuickLabelPrintResult(false, "PC OFFLINE");
+    state_ = State::Idle;
+    return;
+  }
+  pendingQuickLabelPrintId_ = clientConfig_.deviceId + String("-label-") + String(syncSequence_++);
+  pendingQuickLabelPresetIndex_ = presetIndex;
+  pendingQuickLabelRevision_ = quickLabelRevision_;
+  state_ = State::PrintingLabel;
+  display_.showPrinting(quickLabelPresets_[presetIndex - 1]);
+  lastSyncAttempt_ = 0;
+}
+
+void HimsScanApp::persistContrast() {
+  if (!deviceSettings_.saveContrast(lcdContrast_)) Serial.println("Could not save LCD contrast.");
 }
 
 DisplayConnectivityState HimsScanApp::connectivityState() const {
@@ -999,7 +1160,8 @@ DisplayConnectivityState HimsScanApp::connectivityState() const {
     return DisplayConnectivityState::Offline;
   }
   if (!pcOnline_) return DisplayConnectivityState::PcSearching;
-  if (!outbox_.empty() || pendingResultAck_.length() > 0 || activeLookupId_.length() > 0) {
+  if (!outbox_.empty() || pendingResultAck_.length() > 0 || activeLookupId_.length() > 0 ||
+      pendingQuickLabelPrintId_.length() > 0) {
     return DisplayConnectivityState::Syncing;
   }
   return DisplayConnectivityState::Online;

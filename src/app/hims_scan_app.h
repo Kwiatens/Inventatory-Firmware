@@ -8,6 +8,7 @@
 #include "net/hims_client.h"
 #include "HimsScanOutbox.h"
 #include "storage/outbox_store.h"
+#include "storage/device_settings_store.h"
 #include "setup/ble_provisioning.h"
 #include "setup/setup_state_store.h"
 
@@ -26,6 +27,12 @@ class HimsScanApp {
   enum class State {
     Idle,
     AwaitQuantity,
+    Menu,
+    QuickLabels,
+    QuickSettings,
+    AdjustContrast,
+    ConfirmReprovision,
+    PrintingLabel,
   };
 
   enum class PowerMode {
@@ -65,11 +72,17 @@ class HimsScanApp {
   void logState(const char* reason) const;
   void setAwaitingQuantity();
   void resetPending();
+  void openQuickLabels();
+  void openQuickSettings();
+  void requestQuickLabelPrint(uint8_t presetIndex);
+  void refreshQuickLabels();
+  void persistContrast();
   void serviceProvisioning();
   bool beginNormalRuntime(const ProvisionedSettings& settings);
 
   Gm65Scanner scanner_;
   OutboxStore outbox_;
+  DeviceSettingsStore deviceSettings_;
   SetupStateStore setupStore_;
   BleProvisioning provisioning_;
   ProvisionedSettings provisionedSettings_;
@@ -117,6 +130,14 @@ class HimsScanApp {
   uint32_t syncSequence_ = 1;
   uint32_t lookupSequence_ = 1;
   uint8_t lookupMissCount_ = 0;
+  uint8_t lcdContrast_ = 45;
+  uint8_t quickLabelPage_ = 0;
+  String quickLabelPresets_[kQuickLabelPresetLimit];
+  std::size_t quickLabelPresetCount_ = 0;
+  uint32_t quickLabelRevision_ = 0;
+  String pendingQuickLabelPrintId_;
+  uint8_t pendingQuickLabelPresetIndex_ = 0;
+  uint32_t pendingQuickLabelRevision_ = 0;
 };
 
 }  // namespace hims_scan

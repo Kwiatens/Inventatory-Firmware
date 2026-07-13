@@ -1,5 +1,7 @@
 #include "display/display_controller.h"
 
+#include "config/hardware.h"
+
 namespace hims_scan {
 
 void DisplayController::begin() {
@@ -9,6 +11,11 @@ void DisplayController::begin() {
 }
 
 void DisplayController::markDirty() { dirty_ = true; }
+
+void DisplayController::clearMenuLines() {
+  model_.menuLineCount = 0;
+  for (auto& line : model_.menuLines) line.clear();
+}
 
 void DisplayController::setConnectivity(DisplayConnectivityState state, bool wifiOnline, bool pcOnline,
                                         std::size_t queueDepth) {
@@ -51,6 +58,7 @@ void DisplayController::showReady() {
   model_.line2 = model_.queueDepth > 0 ? String("PENDING ") + model_.queueDepth : String();
   model_.footer = "HOLD D: STANDBY";
   resultUntilMs_ = 0;
+  clearMenuLines();
   markDirty();
 }
 
@@ -138,11 +146,18 @@ void DisplayController::dismissError() {
 }
 
 void DisplayController::setStandby(bool standby) {
+  standby_ = standby;
   renderer_.setPowerSave(standby);
   if (!standby) showReady();
 }
 
+void DisplayController::setContrast(uint8_t contrast) {
+  renderer_.setContrast(contrast);
+  markDirty();
+}
+
 void DisplayController::showOta(const String& text, int percent) {
+  standby_ = false;
   renderer_.setPowerSave(false);
   model_.mode = DisplayUiMode::Ota;
   model_.title = text;
@@ -152,6 +167,7 @@ void DisplayController::showOta(const String& text, int percent) {
 }
 
 void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
+  standby_ = false;
   renderer_.setPowerSave(false);
   model_.mode = DisplayUiMode::Setup;
   model_.title = "BLE SETUP";
@@ -159,6 +175,82 @@ void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
   model_.line2 = String("CODE ") + String(pairingCode);
   model_.setupCode = pairingCode;
   model_.footer = "USE INVENTATORY PC";
+  markDirty();
+}
+
+void DisplayController::showMenu() {
+  model_.mode = DisplayUiMode::Menu;
+  model_.title = "MENU  C/BACK";
+  clearMenuLines();
+  model_.menuLines[model_.menuLineCount++] = "1 QUICK LABELS";
+  model_.menuLines[model_.menuLineCount++] = "2 QUICK SETTINGS";
+  model_.footer.clear();
+  markDirty();
+}
+
+void DisplayController::showQuickLabels(const String* labels, std::size_t count, std::size_t page) {
+  model_.mode = DisplayUiMode::QuickLabels;
+  model_.title = count > 4U ? "LABELS D/NEXT C/BACK" : "LABELS C/BACK";
+  clearMenuLines();
+  const auto first = page * 4U;
+  for (std::size_t index = 0; index < 4U && first + index < count; ++index) {
+    model_.menuLines[model_.menuLineCount++] = String(index + 1U) + " " + labels[first + index];
+  }
+  if (model_.menuLineCount == 0) model_.menuLines[model_.menuLineCount++] = "WAITING FOR PC PRESETS";
+  model_.footer.clear();
+  markDirty();
+}
+
+void DisplayController::showQuickSettings(uint8_t contrast) {
+  model_.mode = DisplayUiMode::QuickSettings;
+  model_.title = "SETTINGS C/BACK";
+  clearMenuLines();
+  model_.menuLines[model_.menuLineCount++] = "1  LCD CONTRAST  " + String(contrast);
+  model_.menuLines[model_.menuLineCount++] = "2  STANDBY";
+  model_.menuLines[model_.menuLineCount++] = "3  RE-PAIR DEVICE";
+  model_.menuLines[model_.menuLineCount++] = "4  OTA UPDATE";
+  model_.footer.clear();
+  markDirty();
+}
+
+void DisplayController::showContrast(uint8_t contrast) {
+  model_.mode = DisplayUiMode::Contrast;
+  model_.title = "LCD CONTRAST";
+  model_.line1 = String(contrast);
+  model_.line2 = "A- B+";
+  model_.footer = "C SAVE AND BACK";
+  clearMenuLines();
+  markDirty();
+}
+
+void DisplayController::showResetConfirm() {
+  model_.mode = DisplayUiMode::ConfirmReset;
+  model_.title = "RE-PAIR R1?";
+  model_.line1 = "WIFI WILL BE ERASED";
+  model_.line2 = "OUTBOX IS KEPT";
+  model_.footer = "A CONFIRM C CANCEL";
+  clearMenuLines();
+  markDirty();
+}
+
+void DisplayController::showPrinting(const String& label) {
+  model_.mode = DisplayUiMode::Printing;
+  model_.title = "PRINTING LABEL";
+  model_.line1 = label;
+  model_.line2 = "WAITING FOR PC";
+  model_.footer = "C CANCEL";
+  clearMenuLines();
+  markDirty();
+}
+
+void DisplayController::showQuickLabelPrintResult(bool success, const String& message) {
+  model_.mode = success ? DisplayUiMode::Success : DisplayUiMode::Error;
+  model_.title = success ? "LABEL SENT" : "PRINT FAILED";
+  model_.line1 = message;
+  model_.line2.clear();
+  model_.footer = success ? "DONE" : "C DISMISS";
+  resultUntilMs_ = success ? millis() + 3000U : 0;
+  clearMenuLines();
   markDirty();
 }
 
@@ -179,9 +271,16 @@ void DisplayController::tick() {
     resultUntilMs_ = 0;
     showReady();
   }
-  if (!dirty_) return;
+  if (!dirty_) {
+    if (!standby_ && now - lastStartLineRecoveryMs_ >= hardware::kLcdStartLineRecoveryIntervalMs) {
+      renderer_.normalizeStartLine();
+      lastStartLineRecoveryMs_ = now;
+    }
+    return;
+  }
   renderer_.render(model_, pulseFrame);
   dirty_ = false;
+  lastStartLineRecoveryMs_ = now;
 }
 
 }  // namespace hims_scan

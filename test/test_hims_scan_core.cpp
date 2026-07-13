@@ -145,6 +145,28 @@ void test_protocol_v1_sync_round_trip() {
   TEST_ASSERT_EQUAL_STRING("unavailable", unavailable.lookupStatus.c_str());
 }
 
+void test_quick_label_protocol_extensions() {
+  QuickLabelPrintRequest print;
+  print.requestId = "R1-label-7";
+  print.presetIndex = 2;
+  print.revision = 4;
+  const auto request = buildSyncRequestJson("sync-label", "R1", "0.4.0", "label_print", -40, 0,
+                                            nullptr, 0, nullptr, 0, {}, {}, &print);
+  TEST_ASSERT_TRUE(request.indexOf("\"quickLabelPrint\":{\"requestId\":\"R1-label-7\"") >= 0);
+  const auto response = parseSyncResponseJson(
+      "{\"protocolVersion\":1,\"requestId\":\"sync-label\",\"acceptedEventIds\":[],\"results\":[],"
+      "\"quickLabels\":{\"revision\":4,\"presets\":[\"5V\",\"12V\"]},"
+      "\"quickLabelPrintResult\":{\"requestId\":\"R1-label-7\",\"status\":\"completed\","
+      "\"code\":\"\",\"message\":\"Label sent\"}}");
+  TEST_ASSERT_TRUE(response.valid);
+  TEST_ASSERT_TRUE(response.hasQuickLabels);
+  TEST_ASSERT_EQUAL_UINT32(4, response.quickLabelRevision);
+  TEST_ASSERT_EQUAL_UINT32(2, response.quickLabelPresetCount);
+  TEST_ASSERT_EQUAL_STRING("12V", response.quickLabelPresets[1].c_str());
+  TEST_ASSERT_TRUE(response.hasQuickLabelPrintResult);
+  TEST_ASSERT_EQUAL_STRING("completed", response.quickLabelPrintStatus.c_str());
+}
+
 void setup() {
   UNITY_BEGIN();
   RUN_TEST(test_standardized_scanner_codes);
@@ -156,6 +178,7 @@ void setup() {
   RUN_TEST(test_request_id_format);
   RUN_TEST(test_fixed_ring_buffer_fifo_and_overwrite);
   RUN_TEST(test_protocol_v1_sync_round_trip);
+  RUN_TEST(test_quick_label_protocol_extensions);
   UNITY_END();
 }
 

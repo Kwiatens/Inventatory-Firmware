@@ -11,6 +11,8 @@ class DisplayRenderer {
   DisplayRenderer();
   void begin();
   void setPowerSave(bool enabled);
+  void setContrast(uint8_t contrast);
+  void normalizeStartLine();
   void render(const DisplayModel& model, bool pulseArrow);
 
  private:
