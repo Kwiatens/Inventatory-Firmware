@@ -29,7 +29,8 @@ class DisplayController {
   void showOta(const String& text, int percent = 0);
   void showSetup(uint32_t pairingCode, const String& status = "BLE READY");
   void showMenu();
-  void showQuickLabels(const String* labels, std::size_t count, std::size_t page);
+  void showQuickLabels(const String* labels, std::size_t count, std::size_t page, bool snapshotReceived,
+                       bool pcSupportsQuickLabels);
   void showQuickSettings(uint8_t contrast);
   void showContrast(uint8_t contrast);
   void showResetConfirm();

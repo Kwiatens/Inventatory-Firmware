@@ -453,7 +453,8 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
     if (state_ == State::QuickLabels && quickLabelPresetCount_ > 4U) {
       const uint8_t pages = static_cast<uint8_t>((quickLabelPresetCount_ + 3U) / 4U);
       quickLabelPage_ = static_cast<uint8_t>((quickLabelPage_ + 1U) % pages);
-      display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_);
+      display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
+                               quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
       return;
     }
     if (state_ == State::AwaitQuantity) {
@@ -949,7 +950,8 @@ void HimsScanApp::maybeSync() {
     return;
   }
   const unsigned long interval = (!outbox_.empty() || pendingResultAck_.length() > 0 ||
-                                  pendingQuickLabelPrintId_.length() > 0)
+                                  pendingQuickLabelPrintId_.length() > 0 ||
+                                  (state_ == State::QuickLabels && !quickLabelSnapshotReceived_))
                                      ? 1000UL
                                      : 5000UL;
   if (syncInFlight_ || (lastSyncAttempt_ != 0 && millis() - lastSyncAttempt_ < interval)) return;
@@ -1028,6 +1030,8 @@ void HimsScanApp::processNetworkResult() {
 
 void HimsScanApp::handleSyncResponse(const SyncResponse& response) {
   if (response.hasQuickLabels) {
+    quickLabelSnapshotReceived_ = true;
+    pcSupportsQuickLabels_ = true;
     quickLabelPresetCount_ = 0;
     quickLabelRevision_ = response.quickLabelRevision;
     for (std::size_t index = 0; index < response.quickLabelPresetCount && index < kQuickLabelPresetLimit; ++index) {
@@ -1037,7 +1041,16 @@ void HimsScanApp::handleSyncResponse(const SyncResponse& response) {
       }
     }
     if (quickLabelPage_ * 4U >= quickLabelPresetCount_) quickLabelPage_ = 0;
-    if (state_ == State::QuickLabels) display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_);
+    if (state_ == State::QuickLabels) {
+      display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
+                               quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
+    }
+  } else if (state_ == State::QuickLabels) {
+    // A normal protocol-v1 response without the optional extension means the paired desktop app is older.
+    quickLabelSnapshotReceived_ = true;
+    pcSupportsQuickLabels_ = false;
+    display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
+                             quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
   }
   if (response.hasQuickLabelPrintResult && response.quickLabelPrintRequestId == pendingQuickLabelPrintId_) {
     const bool success = response.quickLabelPrintStatus == "completed";
@@ -1116,7 +1129,10 @@ void HimsScanApp::resetPending() {
 void HimsScanApp::openQuickLabels() {
   state_ = State::QuickLabels;
   if (quickLabelPage_ * 4U >= quickLabelPresetCount_) quickLabelPage_ = 0;
-  display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_);
+  quickLabelSnapshotReceived_ = false;
+  pcSupportsQuickLabels_ = false;
+  display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
+                           quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
   refreshQuickLabels();
 }
 
@@ -1130,7 +1146,8 @@ void HimsScanApp::refreshQuickLabels() {
 }
 
 void HimsScanApp::requestQuickLabelPrint(uint8_t presetIndex) {
-  if (presetIndex < 1 || presetIndex > quickLabelPresetCount_ || quickLabelRevision_ == 0) {
+  if (!quickLabelSnapshotReceived_ || !pcSupportsQuickLabels_ || presetIndex < 1 ||
+      presetIndex > quickLabelPresetCount_ || quickLabelRevision_ == 0) {
     display_.showQuickLabelPrintResult(false, "REFRESH PRESETS FIRST");
     state_ = State::Idle;
     return;
