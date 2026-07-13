@@ -16,6 +16,15 @@ void DisplayRenderer::begin() {
 
 void DisplayRenderer::setPowerSave(bool enabled) { lcd_.setPowerSave(enabled ? 1 : 0); }
 
+void DisplayRenderer::setContrast(uint8_t contrast) { lcd_.setContrast(constrain(contrast, 0, 63)); }
+
+void DisplayRenderer::normalizeStartLine() {
+  for (uint8_t attempt = 0; attempt < hardware::kLcdStartLineRecoveryAttempts; ++attempt) {
+    // Separate transactions make one corrupted command unlikely to leave the panel shifted.
+    lcd_.sendF("c", 0x40);  // ST7565: display start line = 0.
+  }
+}
+
 void DisplayRenderer::drawClipped(int x, int y, int maxWidth, const String& text) {
   String clipped = text;
   while (clipped.length() > 0 && lcd_.getStrWidth(clipped.c_str()) > maxWidth) clipped.remove(clipped.length() - 1);
@@ -75,6 +84,16 @@ void DisplayRenderer::drawArrow(bool filled) {
 void DisplayRenderer::drawBody(const DisplayModel& model) {
   constexpr int x = 15;
   constexpr int width = 111;
+  if (model.mode == DisplayUiMode::Menu || model.mode == DisplayUiMode::QuickLabels ||
+      model.mode == DisplayUiMode::QuickSettings) {
+    // Menus intentionally use the entire panel: no connectivity bar, scan arrow, or footer competes with controls.
+    lcd_.setFont(u8g2_font_6x10_tf);
+    drawClipped(4, 10, 120, model.title);
+    for (std::size_t index = 0; index < model.menuLineCount && index < 5U; ++index) {
+      drawClipped(7, 24 + static_cast<int>(index) * 10, 118, model.menuLines[index]);
+    }
+    return;
+  }
   if (model.mode == DisplayUiMode::Quantity) {
     lcd_.setFont(u8g2_font_5x7_tf);
     drawClipped(x, 18, width, model.title);
@@ -99,7 +118,6 @@ void DisplayRenderer::drawBody(const DisplayModel& model) {
     lcd_.drawBox(x + 2, 34, (102 * constrain(model.otaPercent, 0, 100)) / 100, 6);
     return;
   }
-
   lcd_.setFont(u8g2_font_6x10_tf);
   drawClipped(x, 23, width, model.title);
   lcd_.setFont(u8g2_font_5x7_tf);
@@ -118,15 +136,17 @@ void DisplayRenderer::render(const DisplayModel& model, bool pulseArrow) {
   if (model.mode == DisplayUiMode::Splash) {
     drawSplash(model);
     lcd_.sendBuffer();
-    lcd_.sendF("c", 0x40);  // ST7565: force display start line back to the top.
+    normalizeStartLine();
     return;
   }
-  drawHeader(model);
-  if (model.mode != DisplayUiMode::Standby) drawArrow(pulseArrow);
+  const bool fullScreenMenu = model.mode == DisplayUiMode::Menu || model.mode == DisplayUiMode::QuickLabels ||
+                              model.mode == DisplayUiMode::QuickSettings;
+  if (!fullScreenMenu) drawHeader(model);
+  if (!fullScreenMenu && model.mode != DisplayUiMode::Standby) drawArrow(pulseArrow);
   drawBody(model);
-  drawFooter(model.footer);
+  if (!fullScreenMenu) drawFooter(model.footer);
   lcd_.sendBuffer();
-  lcd_.sendF("c", 0x40);  // ST7565: prevent a stale start-line offset after a refresh.
+  normalizeStartLine();
 }
 
 }  // namespace hims_scan

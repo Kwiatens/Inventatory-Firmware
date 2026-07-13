@@ -9,6 +9,14 @@ namespace hims_scan {
 
 constexpr int kHimsScanProtocolVersion = 1;
 constexpr std::size_t kSyncBatchSize = 4;
+constexpr std::size_t kQuickLabelPresetLimit = 12;
+constexpr std::size_t kQuickLabelPresetTextLimit = 24;
+
+struct QuickLabelPrintRequest {
+  String requestId;
+  uint8_t presetIndex = 0;  // One-based index in the ordered PC preset list.
+  uint32_t revision = 0;
+};
 
 struct SyncResult {
   String resultId;
@@ -35,6 +43,15 @@ struct SyncResponse {
   String lookupId;
   String lookupStatus;
   String lookupItemName;
+  bool hasQuickLabels = false;
+  uint32_t quickLabelRevision = 0;
+  String quickLabelPresets[kQuickLabelPresetLimit];
+  std::size_t quickLabelPresetCount = 0;
+  bool hasQuickLabelPrintResult = false;
+  String quickLabelPrintRequestId;
+  String quickLabelPrintStatus;
+  String quickLabelPrintCode;
+  String quickLabelPrintMessage;
 };
 
 inline const char* syncEventType(DeviceEventKind kind) {
@@ -47,7 +64,8 @@ inline String buildSyncRequestJson(const String& requestId, const String& device
                                    std::size_t eventCount, const String* resultAcks,
                                    std::size_t resultAckCount,
                                    const String& lookupId = String(),
-                                   const String& lookupCode = String()) {
+                                   const String& lookupCode = String(),
+                                   const QuickLabelPrintRequest* quickLabelPrint = nullptr) {
   String out;
   out.reserve(512);
   out += "{\"protocolVersion\":1,\"requestId\":\"";
@@ -62,7 +80,7 @@ inline String buildSyncRequestJson(const String& requestId, const String& device
   out += String(rssi);
   out += ",\"queueDepth\":";
   out += String(queueDepth);
-  out += ",\"capabilities\":[\"lcd.128x64\",\"keypad.4x4\",\"scanner.gm65\",\"lookup.machine_code_name\"],\"events\":[";
+  out += ",\"capabilities\":[\"lcd.128x64\",\"keypad.4x4\",\"scanner.gm65\",\"lookup.machine_code_name\",\"quick_labels.v1\"],\"events\":[";
   for (std::size_t index = 0; index < eventCount; ++index) {
     if (index != 0) out += ',';
     out += "{\"eventId\":\"";
@@ -89,6 +107,16 @@ inline String buildSyncRequestJson(const String& requestId, const String& device
     out += "\",\"code\":\"";
     out += escapeJson(lookupCode);
     out += "\"}";
+  }
+  if (quickLabelPrint != nullptr && quickLabelPrint->requestId.length() > 0 &&
+      quickLabelPrint->presetIndex > 0 && quickLabelPrint->revision > 0) {
+    out += ",\"quickLabelPrint\":{\"requestId\":\"";
+    out += escapeJson(quickLabelPrint->requestId);
+    out += "\",\"presetIndex\":";
+    out += String(quickLabelPrint->presetIndex);
+    out += ",\"revision\":";
+    out += String(quickLabelPrint->revision);
+    out += '}';
   }
   out += '}';
   return out;
@@ -181,6 +209,37 @@ inline String jsonObjectValue(const String& body, const char* key) {
   return {};
 }
 
+inline std::size_t jsonStringArrayValues(const String& body, const char* key, String* values,
+                                         std::size_t capacity) {
+  const auto array = jsonArrayValue(body, key);
+  std::size_t count = 0;
+  int position = 0;
+  while (position < static_cast<int>(array.length()) && count < capacity) {
+    const int begin = array.indexOf('"', position);
+    if (begin < 0) break;
+    String value;
+    bool escaped = false;
+    int index = begin + 1;
+    for (; index < static_cast<int>(array.length()); ++index) {
+      const char ch = array[index];
+      if (escaped) {
+        value += ch;
+        escaped = false;
+      } else if (ch == '\\') {
+        escaped = true;
+      } else if (ch == '"') {
+        break;
+      } else {
+        value += ch;
+      }
+    }
+    if (index >= static_cast<int>(array.length())) break;
+    values[count++] = value;
+    position = index + 1;
+  }
+  return count;
+}
+
 inline SyncResponse parseSyncResponseJson(const String& body) {
   SyncResponse response;
   if (jsonIntValue(body, "protocolVersion") != kHimsScanProtocolVersion) return response;
@@ -222,6 +281,23 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
     response.lookupStatus = jsonStringValue(lookup, "status");
     response.lookupItemName = jsonStringValue(lookup, "itemName");
     response.hasLookupResult = response.lookupId.length() > 0 && response.lookupStatus.length() > 0;
+  }
+  const auto quickLabels = jsonObjectValue(body, "quickLabels");
+  if (quickLabels.length() > 0) {
+    const int revision = jsonIntValue(quickLabels, "revision");
+    response.quickLabelPresetCount = jsonStringArrayValues(quickLabels, "presets", response.quickLabelPresets,
+                                                            kQuickLabelPresetLimit);
+    response.quickLabelRevision = revision > 0 ? static_cast<uint32_t>(revision) : 0;
+    response.hasQuickLabels = response.quickLabelRevision > 0;
+  }
+  const auto quickLabelPrint = jsonObjectValue(body, "quickLabelPrintResult");
+  if (quickLabelPrint.length() > 0) {
+    response.quickLabelPrintRequestId = jsonStringValue(quickLabelPrint, "requestId");
+    response.quickLabelPrintStatus = jsonStringValue(quickLabelPrint, "status");
+    response.quickLabelPrintCode = jsonStringValue(quickLabelPrint, "code");
+    response.quickLabelPrintMessage = jsonStringValue(quickLabelPrint, "message");
+    response.hasQuickLabelPrintResult = response.quickLabelPrintRequestId.length() > 0 &&
+                                         response.quickLabelPrintStatus.length() > 0;
   }
   response.valid = true;
   return response;

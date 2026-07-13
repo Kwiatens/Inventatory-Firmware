@@ -16,6 +16,12 @@ enum class DisplayUiMode {
   Standby,
   Ota,
   Setup,
+  Menu,
+  QuickLabels,
+  QuickSettings,
+  Contrast,
+  ConfirmReset,
+  Printing,
 };
 
 enum class DisplayConnectivityState {
@@ -42,6 +48,8 @@ struct DisplayModel {
   String line1;
   String line2;
   String footer;
+  String menuLines[5];
+  std::size_t menuLineCount = 0;
 };
 
 }  // namespace hims_scan
