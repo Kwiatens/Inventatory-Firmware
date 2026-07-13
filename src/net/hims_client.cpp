@@ -35,7 +35,6 @@ bool HimsClient::begin(const HimsClientConfig& config) {
   // Leaving modem sleep disabled raises current draw and can disturb peripherals
   // powered from the same small board/regulator, especially during transmission.
   WiFi.setSleep(true);
-  client_.setNoDelay(true);
   client_.setTimeout(250);
   return true;
 }
@@ -134,6 +133,9 @@ bool HimsClient::connectToResolved() {
   }
   client_.stop();
   if (client_.connect(endpointIp_, endpointPort_)) {
+    // Socket options require a live socket; applying this in begin() produces
+    // a harmless but alarming EBADF warning on a fresh boot.
+    client_.setNoDelay(true);
     return true;
   }
   Serial.print("HIMS endpoint: TCP connection failed to ");

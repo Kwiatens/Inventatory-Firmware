@@ -15,6 +15,7 @@ enum class DisplayUiMode {
   Error,
   Standby,
   Ota,
+  Setup,
 };
 
 enum class DisplayConnectivityState {
@@ -36,6 +37,7 @@ struct DisplayModel {
   String quantityText = "1";
   std::size_t quantityCursor = 0;
   int otaPercent = 0;
+  uint32_t setupCode = 0;
   String title;
   String line1;
   String line2;

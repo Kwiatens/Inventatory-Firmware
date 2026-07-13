@@ -45,6 +45,9 @@ void DisplayRenderer::drawHeader(const DisplayModel& model) {
       case DisplayConnectivityState::Offline: status = "OFFLINE"; break;
     }
   }
+  if (model.mode == DisplayUiMode::Setup) {
+    status = "BLE SETUP";
+  }
   drawClipped(3, 8, 122, status);
   lcd_.setDrawColor(1);
 }

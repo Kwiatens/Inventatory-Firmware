@@ -3,12 +3,7 @@
 // Copy this file to config.h and fill in your real values.
 // config.h is private and ignored by git.
 
-const char WIFI_SSID[] = "your-wifi-name";
-const char WIFI_PASSWORD[] = "your-wifi-password";
-const bool WIFI_AUTOSTART = true;
-
 const char DEVICE_ID[] = "HIMS-SCAN-R1";
-const char DEVICE_TOKEN[] = "paste-your-hims-pairing-token-here";
 const char OTA_PASSWORD[] = "paste-your-ota-password-here";
 
 // Optional fallback if mDNS discovery fails.

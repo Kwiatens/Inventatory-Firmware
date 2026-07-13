@@ -12,6 +12,7 @@ enum class HoldGesture {
   None,
   Power,
   Ota,
+  ProvisioningReset,
 };
 
 HoldGesture holdGesture_ = HoldGesture::None;
@@ -89,10 +90,12 @@ bool keypadPoll(HimsKeyEvent& event) {
   const auto keyCount = keypad.numKeys();
   const int starIndex = findKeyIndexForChar(keypad, '*');
   const int dIndex = findKeyIndexForChar(keypad, 'D');
+  const int hashIndex = findKeyIndexForChar(keypad, '#');
   const bool starActive = starIndex >= 0 && isActiveState(keypad.key[starIndex].kstate);
   const bool dActive = dIndex >= 0 && isActiveState(keypad.key[dIndex].kstate);
   const bool starHeld = starIndex >= 0 && isHeldState(keypad.key[starIndex].kstate);
   const bool dHeld = dIndex >= 0 && isHeldState(keypad.key[dIndex].kstate);
+  const bool hashHeld = hashIndex >= 0 && isHeldState(keypad.key[hashIndex].kstate);
 
   if (holdGesture_ == HoldGesture::Ota) {
     if (!starActive || !dActive) {
@@ -105,6 +108,10 @@ bool keypadPoll(HimsKeyEvent& event) {
     if (!dActive) {
       holdGesture_ = HoldGesture::None;
     }
+    return false;
+  }
+  if (holdGesture_ == HoldGesture::ProvisioningReset) {
+    if (hashIndex < 0 || !isActiveState(keypad.key[hashIndex].kstate)) holdGesture_ = HoldGesture::None;
     return false;
   }
 
@@ -143,6 +150,13 @@ bool keypadPoll(HimsKeyEvent& event) {
     holdGesture_ = HoldGesture::Ota;
     event.type = HimsKeyEventType::OtaUpdate;
     event.value = 'D';
+    return true;
+  }
+
+  if (hashHeld && !starActive && !dActive) {
+    holdGesture_ = HoldGesture::ProvisioningReset;
+    event.type = HimsKeyEventType::ProvisioningReset;
+    event.value = '#';
     return true;
   }
 

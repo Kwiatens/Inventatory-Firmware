@@ -186,30 +186,33 @@ bool HimsScanApp::begin() {
   lookupSequence_ = 1;
 
   clientConfig_.deviceId = DEVICE_ID;
-  clientConfig_.token = DEVICE_TOKEN;
   clientConfig_.fallbackHost = FALLBACK_HOST;
   clientConfig_.fallbackPort = FALLBACK_PORT;
 
   outbox_.begin("hims_scan", DEVICE_ID);
   outbox_.load();
-
-  if (!WIFI_AUTOSTART) {
-    Serial.println("Wi-Fi auto-start disabled; running offline for keypad/scanner testing.");
-  } else if (trimCopy(WIFI_SSID).length() == 0) {
-    Serial.println("Wi-Fi credentials are empty; staying offline.");
+  if (!setupStore_.begin() || !setupStore_.load(provisionedSettings_)) {
+    setupMode_ = true;
+    if (!provisioning_.begin(clientConfig_.deviceId)) {
+      Serial.println("BLE provisioning could not start");
+      return false;
+    }
+    display_.showSetup(provisioning_.pairingCode());
+    display_.tick();
+    return true;
   }
-
-  startNetworkWorker();
-
-  sendDebugMessage("boot");
-  logState("boot");
-  updateConnectivityDisplay();
-  display_.showReady();
-  display_.tick();
-  return true;
+  return beginNormalRuntime(provisionedSettings_);
 }
 
 void HimsScanApp::loop() {
+  if (setupMode_) {
+    HimsKeyEvent event;
+    while (keypadPoll(event)) handleKey(event);
+    serviceProvisioning();
+    display_.tick();
+    delay(10);
+    return;
+  }
   updateConnectivityDisplay();
   display_.tick();
   HimsKeyEvent event;
@@ -247,6 +250,55 @@ void HimsScanApp::loop() {
   updateConnectivityDisplay();
   display_.tick();
   delay(2);
+}
+
+bool HimsScanApp::beginNormalRuntime(const ProvisionedSettings& settings) {
+  provisionedSettings_ = settings;
+  clientConfig_.token = settings.deviceToken;
+  if (!startNetworkWorker()) return false;
+  sendDebugMessage("boot");
+  logState("boot");
+  updateConnectivityDisplay();
+  display_.showReady();
+  display_.tick();
+  return true;
+}
+
+void HimsScanApp::serviceProvisioning() {
+  ProvisionedSettings request;
+  if (provisioning_.takeRequest(request)) {
+    provisionedSettings_ = request;
+    setupWifiConnecting_ = true;
+    setupWifiStartedAt_ = millis();
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(request.wifiSsid.c_str(), request.wifiPassword.c_str());
+    display_.showSetup(provisioning_.pairingCode(), "CONNECTING WIFI");
+  }
+  if (!setupWifiConnecting_) return;
+  if (WiFi.status() == WL_CONNECTED) {
+    setupWifiConnecting_ = false;
+    if (!setupStore_.save(provisionedSettings_)) {
+      provisioning_.setResult(false, "SAVE FAILED");
+      display_.showSetup(provisioning_.pairingCode(), "SAVE FAILED");
+      WiFi.disconnect(false);
+      return;
+    }
+    provisioning_.setResult(true, "WIFI OK");
+    provisioning_.end();
+    setupMode_ = false;
+    if (!beginNormalRuntime(provisionedSettings_)) {
+      setupMode_ = true;
+      provisioning_.begin(clientConfig_.deviceId);
+      display_.showSetup(provisioning_.pairingCode(), "NETWORK ERROR");
+    }
+    return;
+  }
+  if (millis() - setupWifiStartedAt_ > 20000UL) {
+    setupWifiConnecting_ = false;
+    WiFi.disconnect(false);
+    provisioning_.setResult(false, "WIFI FAILED");
+    display_.showSetup(provisioning_.pairingCode(), "WIFI FAILED");
+  }
 }
 
 void HimsScanApp::pollScanner() {
@@ -326,6 +378,14 @@ void HimsScanApp::handleScan(const String& code) {
 }
 
 void HimsScanApp::handleKey(const HimsKeyEvent& event) {
+  if (event.type == HimsKeyEventType::ProvisioningReset) {
+    if (setupStore_.clear()) {
+      Serial.println("Provisioning reset requested; restarting into BLE setup.");
+      ESP.restart();
+    }
+    Serial.println("Provisioning reset could not clear NVS.");
+    return;
+  }
   if (event.type == HimsKeyEventType::OtaUpdate) {
     requestOtaUpdate();
     return;
@@ -409,8 +469,8 @@ bool HimsScanApp::serviceOta() {
     return false;
   }
 
-  if (trimCopy(WIFI_SSID).length() == 0) {
-    Serial.println("OTA request ignored because Wi-Fi credentials are empty.");
+  if (provisionedSettings_.wifiSsid.length() == 0) {
+    Serial.println("OTA request ignored because setup is incomplete.");
     otaRequested_ = false;
     otaActive_ = false;
     networkPaused_ = false;
@@ -442,8 +502,8 @@ bool HimsScanApp::ensureWiFiForOta() {
     return true;
   }
 
-  if (trimCopy(WIFI_SSID).length() == 0) {
-    Serial.println("OTA request ignored because Wi-Fi credentials are empty.");
+  if (provisionedSettings_.wifiSsid.length() == 0) {
+    Serial.println("OTA request ignored because setup is incomplete.");
     otaRequested_ = false;
     otaActive_ = false;
     return false;
@@ -459,9 +519,8 @@ bool HimsScanApp::ensureWiFiForOta() {
   }
   lastReconnectAttempt_ = millis();
 
-  Serial.print("Connecting for OTA to local Wi-Fi SSID: ");
-  Serial.println(WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.println("Connecting for OTA to saved local Wi-Fi.");
+  WiFi.begin(provisionedSettings_.wifiSsid.c_str(), provisionedSettings_.wifiPassword.c_str());
   return false;
 }
 
@@ -702,7 +761,7 @@ void HimsScanApp::exitStandby() {
   powerMode_ = PowerMode::Normal;
   display_.setStandby(false);
 
-  if (!WIFI_AUTOSTART || trimCopy(WIFI_SSID).length() == 0) {
+  if (provisionedSettings_.wifiSsid.length() == 0) {
     Serial.println("Standby exit complete; Wi-Fi remains offline.");
   }
   sendDebugMessage("standby exited", "warn");
@@ -768,19 +827,13 @@ void HimsScanApp::reconnectWiFiWorker() {
     return;
   }
 
-  if (!WIFI_AUTOSTART && !otaRequested_ && !otaActive_) {
-    return;
-  }
-
   if (WiFi.status() == WL_CONNECTED) {
     if (!wifiConnectedReported_) {
       wifiConnectedReported_ = true;
       himsSoftwarePrimed_ = false;
       lastSyncAttempt_ = 0;
-      Serial.print("Local Wi-Fi connected: ");
-      Serial.print(WiFi.SSID());
-      Serial.print(" @ ");
-      Serial.println(WiFi.localIP());
+      // Do not disclose provisioning metadata through the serial console.
+      Serial.println("Local Wi-Fi connected");
     }
     return;
   }
@@ -793,14 +846,13 @@ void HimsScanApp::reconnectWiFiWorker() {
   }
   lastReconnectAttempt_ = millis();
 
-  if (trimCopy(WIFI_SSID).length() == 0) {
-    Serial.println("Wi-Fi credentials are empty; staying offline.");
+  if (provisionedSettings_.wifiSsid.length() == 0) {
+    Serial.println("Wi-Fi setup is incomplete; staying offline.");
     return;
   }
 
-  Serial.print("Reconnecting to local Wi-Fi SSID: ");
-  Serial.println(WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.println("Reconnecting to saved local Wi-Fi.");
+  WiFi.begin(provisionedSettings_.wifiSsid.c_str(), provisionedSettings_.wifiPassword.c_str());
 }
 
 String HimsScanApp::syncMode() const {
@@ -941,7 +993,7 @@ void HimsScanApp::resetPending() {
 
 DisplayConnectivityState HimsScanApp::connectivityState() const {
   if (!WiFi.isConnected()) {
-    if (WIFI_AUTOSTART && trimCopy(WIFI_SSID).length() > 0 && powerMode_ == PowerMode::Normal) {
+    if (provisionedSettings_.wifiSsid.length() > 0 && powerMode_ == PowerMode::Normal) {
       return DisplayConnectivityState::WifiConnecting;
     }
     return DisplayConnectivityState::Offline;
