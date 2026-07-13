@@ -11,6 +11,7 @@ enum class HimsKeyEventType {
   CycleCursor,
   PowerToggle,
   OtaUpdate,
+  ProvisioningReset,
   Other,
 };
 

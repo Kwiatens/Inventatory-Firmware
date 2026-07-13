@@ -8,6 +8,8 @@
 #include "net/hims_client.h"
 #include "HimsScanOutbox.h"
 #include "storage/outbox_store.h"
+#include "setup/ble_provisioning.h"
+#include "setup/setup_state_store.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -63,9 +65,14 @@ class HimsScanApp {
   void logState(const char* reason) const;
   void setAwaitingQuantity();
   void resetPending();
+  void serviceProvisioning();
+  bool beginNormalRuntime(const ProvisionedSettings& settings);
 
   Gm65Scanner scanner_;
   OutboxStore outbox_;
+  SetupStateStore setupStore_;
+  BleProvisioning provisioning_;
+  ProvisionedSettings provisionedSettings_;
   DisplayController display_;
   HimsClient client_;
   HimsClientConfig clientConfig_;
@@ -82,6 +89,9 @@ class HimsScanApp {
   bool pcOnline_ = false;
   bool syncInFlight_ = false;
   bool networkStarted_ = false;
+  bool setupMode_ = false;
+  bool setupWifiConnecting_ = false;
+  unsigned long setupWifiStartedAt_ = 0;
   volatile bool networkPaused_ = false;
   volatile bool networkPauseAcknowledged_ = false;
   volatile bool networkPowerOffRequested_ = false;

@@ -151,6 +151,17 @@ void DisplayController::showOta(const String& text, int percent) {
   markDirty();
 }
 
+void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
+  renderer_.setPowerSave(false);
+  model_.mode = DisplayUiMode::Setup;
+  model_.title = "BLE SETUP";
+  model_.line1 = status;
+  model_.line2 = String("CODE ") + String(pairingCode);
+  model_.setupCode = pairingCode;
+  model_.footer = "USE INVENTATORY PC";
+  markDirty();
+}
+
 void DisplayController::tick() {
   const auto now = millis();
   if (model_.connectivity == DisplayConnectivityState::Online &&

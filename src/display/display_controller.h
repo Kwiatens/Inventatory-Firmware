@@ -26,6 +26,7 @@ class DisplayController {
   void dismissError();
   void setStandby(bool standby);
   void showOta(const String& text, int percent = 0);
+  void showSetup(uint32_t pairingCode, const String& status = "BLE READY");
   bool errorVisible() const { return model_.mode == DisplayUiMode::Error; }
 
  private:
