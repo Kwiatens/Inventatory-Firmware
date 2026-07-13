@@ -5,6 +5,7 @@
 namespace hims_scan {
 
 enum class DisplayUiMode {
+  Splash,
   Boot,
   Ready,
   Quantity,
@@ -16,13 +17,24 @@ enum class DisplayUiMode {
   Ota,
 };
 
+enum class DisplayConnectivityState {
+  Offline,
+  WifiConnecting,
+  PcSearching,
+  Syncing,
+  Online,
+};
+
 struct DisplayModel {
   DisplayUiMode mode = DisplayUiMode::Boot;
   bool wifiOnline = false;
   bool pcOnline = false;
   bool supplierQuantity = false;
   std::size_t queueDepth = 0;
-  int quantity = 1;
+  DisplayConnectivityState connectivity = DisplayConnectivityState::Offline;
+  bool headerAlternate = false;
+  String quantityText = "1";
+  std::size_t quantityCursor = 0;
   int otaPercent = 0;
   String title;
   String line1;

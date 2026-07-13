@@ -9,6 +9,10 @@
 #include "HimsScanOutbox.h"
 #include "storage/outbox_store.h"
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
+
 namespace hims_scan {
 
 class HimsScanApp {
@@ -39,18 +43,23 @@ class HimsScanApp {
   void handleKey(const HimsKeyEvent& event);
   void requestOtaUpdate();
   void sendDebugMessage(const String& message, const String& level = "info");
+  bool startNetworkWorker();
+  static void networkTaskEntry(void* context);
+  void networkTaskLoop();
+  bool queueSyncJob(const String& requestId, const String& payload);
+  void processNetworkResult();
   bool serviceOta();
   bool startOtaService();
   bool ensureWiFiForOta();
-  String buildWifiDebugText() const;
   void enterStandby();
   void exitStandby();
   void submitCurrent(char action);
   void maybeSync();
   void handleSyncResponse(const SyncResponse& response);
+  void updateConnectivityDisplay();
+  DisplayConnectivityState connectivityState() const;
   String syncMode() const;
-  void reconnectWiFi();
-  void primeHimsSoftwareConnection();
+  void reconnectWiFiWorker();
   void logState(const char* reason) const;
   void setAwaitingQuantity();
   void resetPending();
@@ -71,10 +80,33 @@ class HimsScanApp {
   bool otaRequested_ = false;
   bool otaActive_ = false;
   bool pcOnline_ = false;
+  bool syncInFlight_ = false;
+  bool networkStarted_ = false;
+  volatile bool networkPaused_ = false;
+  volatile bool networkPauseAcknowledged_ = false;
+  volatile bool networkPowerOffRequested_ = false;
+  volatile bool networkBusy_ = false;
+  TaskHandle_t networkTask_ = nullptr;
+  SemaphoreHandle_t networkMutex_ = nullptr;
+  bool syncJobPending_ = false;
+  String syncJobRequestId_;
+  String syncJobPayload_;
+  bool syncResultPending_ = false;
+  String syncResultRequestId_;
+  bool syncResultSent_ = false;
+  int syncResultStatus_ = 0;
+  String syncResultBody_;
+  bool debugJobPending_ = false;
+  String debugJobMessage_;
+  String debugJobLevel_;
   String pendingResultAck_;
+  String activeLookupId_;
+  String activeLookupCode_;
   unsigned long lastReconnectAttempt_ = 0;
   unsigned long lastSyncAttempt_ = 0;
   uint32_t syncSequence_ = 1;
+  uint32_t lookupSequence_ = 1;
+  uint8_t lookupMissCount_ = 0;
 };
 
 }  // namespace hims_scan

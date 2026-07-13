@@ -2,6 +2,6 @@
 
 namespace hims_scan {
 
-constexpr char kFirmwareVersion[] = "0.2.0";
+constexpr char kFirmwareVersion[] = "0.3.1";
 
 }  // namespace hims_scan

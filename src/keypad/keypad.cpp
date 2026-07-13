@@ -15,6 +15,7 @@ enum class HoldGesture {
 };
 
 HoldGesture holdGesture_ = HoldGesture::None;
+bool dShortPressPending_ = false;
 
 bool isActiveState(KeyState state) {
   return state == PRESSED || state == HOLD;
@@ -115,6 +116,10 @@ bool keypadPoll(HimsKeyEvent& event) {
 
     const char key = keyState.kchar;
     event.value = key;
+    if (key == 'D') {
+      dShortPressPending_ = true;
+      continue;
+    }
     if (key >= '0' && key <= '9') {
       event.type = HimsKeyEventType::Digit;
       return true;
@@ -134,6 +139,7 @@ bool keypadPoll(HimsKeyEvent& event) {
   }
 
   if (starActive && dActive && (starHeld || dHeld)) {
+    dShortPressPending_ = false;
     holdGesture_ = HoldGesture::Ota;
     event.type = HimsKeyEventType::OtaUpdate;
     event.value = 'D';
@@ -141,8 +147,17 @@ bool keypadPoll(HimsKeyEvent& event) {
   }
 
   if (dHeld && !starActive) {
+    dShortPressPending_ = false;
     holdGesture_ = HoldGesture::Power;
     event.type = HimsKeyEventType::PowerToggle;
+    event.value = 'D';
+    return true;
+  }
+
+  if (dIndex >= 0 && keypad.key[dIndex].stateChanged && keypad.key[dIndex].kstate == RELEASED &&
+      dShortPressPending_) {
+    dShortPressPending_ = false;
+    event.type = HimsKeyEventType::CycleCursor;
     event.value = 'D';
     return true;
   }

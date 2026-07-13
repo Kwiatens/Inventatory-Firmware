@@ -12,6 +12,7 @@ namespace hims_scan {
 namespace {
 
 constexpr size_t kMaxScanLength = 1024U;
+constexpr unsigned long kStartupSettleMs = 250U;
 
 struct ZoneWrite {
   uint16_t address;
@@ -57,12 +58,14 @@ bool Gm65Scanner::begin(uint32_t baudRate) {
   buffer_.clear();
   lastByteAt_ = 0;
   discardingOversized_ = false;
+  frameCorrupt_ = false;
   serial_.setRxBufferSize(1024);
   serial_.begin(baudRate_, SERIAL_8N1, GM65_RX_PIN, GM65_TX_PIN);
   serial_.setTimeout(5);
   delay(100);
   applyBootProfile();
   flushInput();
+  acceptAfterMs_ = millis() + kStartupSettleMs;
   active_ = true;
   return true;
 }
@@ -73,6 +76,8 @@ void Gm65Scanner::end() {
   buffer_.clear();
   lastByteAt_ = 0;
   discardingOversized_ = false;
+  frameCorrupt_ = false;
+  acceptAfterMs_ = 0;
 }
 
 bool Gm65Scanner::suspend() {
@@ -93,6 +98,7 @@ bool Gm65Scanner::resume() {
   delay(100);
   const bool ok = applyBootProfile();
   flushInput();
+  acceptAfterMs_ = millis() + kStartupSettleMs;
   active_ = true;
   return ok;
 }
@@ -104,6 +110,7 @@ void Gm65Scanner::flushInput() {
   buffer_.clear();
   lastByteAt_ = 0;
   discardingOversized_ = false;
+  frameCorrupt_ = false;
 }
 
 bool Gm65Scanner::active() const {
@@ -175,9 +182,16 @@ bool Gm65Scanner::poll(String& code) {
       break;
     }
     const char ch = static_cast<char>(raw);
+    if (static_cast<long>(millis() - acceptAfterMs_) < 0) {
+      buffer_.clear();
+      frameCorrupt_ = false;
+      lastByteAt_ = 0;
+      continue;
+    }
     if (ch == '\r' || ch == '\n') {
-      if (discardingOversized_) {
+      if (discardingOversized_ || frameCorrupt_) {
         discardingOversized_ = false;
+        frameCorrupt_ = false;
         buffer_.clear();
         lastByteAt_ = 0;
         continue;
@@ -197,6 +211,10 @@ bool Gm65Scanner::poll(String& code) {
     if (isPayloadCharacter(ch)) {
       buffer_ += ch;
       lastByteAt_ = millis();
+    } else {
+      buffer_.clear();
+      frameCorrupt_ = true;
+      lastByteAt_ = millis();
     }
     if (buffer_.length() > kMaxScanLength) {
       buffer_.clear();
@@ -209,6 +227,12 @@ bool Gm65Scanner::poll(String& code) {
   // after a short idle gap so a delayed network pass or lost terminator cannot
   // leave a valid barcode stuck in the receive buffer forever.
   if (buffer_.length() > 0 && lastByteAt_ != 0 && millis() - lastByteAt_ >= 30U) {
+    if (frameCorrupt_) {
+      buffer_.clear();
+      frameCorrupt_ = false;
+      lastByteAt_ = 0;
+      return false;
+    }
     code = buffer_;
     buffer_.clear();
     lastByteAt_ = 0;
@@ -216,6 +240,10 @@ bool Gm65Scanner::poll(String& code) {
   }
   if (discardingOversized_ && lastByteAt_ != 0 && millis() - lastByteAt_ >= 30U) {
     discardingOversized_ = false;
+    lastByteAt_ = 0;
+  }
+  if (frameCorrupt_ && lastByteAt_ != 0 && millis() - lastByteAt_ >= 30U) {
+    frameCorrupt_ = false;
     lastByteAt_ = 0;
   }
   return false;

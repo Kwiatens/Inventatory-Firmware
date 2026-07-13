@@ -27,6 +27,8 @@ class Gm65Scanner {
   uint32_t baudRate_ = 9600;
   bool active_ = false;
   bool discardingOversized_ = false;
+  bool frameCorrupt_ = false;
+  unsigned long acceptAfterMs_ = 0;
 };
 
 }  // namespace hims_scan
