@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 class DeviceSettingsStore {
  public:
@@ -16,4 +16,4 @@ class DeviceSettingsStore {
   mutable Preferences prefs_;
 };
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

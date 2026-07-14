@@ -2,11 +2,11 @@
 
 #include <algorithm>
 
-#include "HimsScanUiPolicy.h"
+#include "InventatoryScanUiPolicy.h"
 #include "config/hardware.h"
 #include "display/display_style.h"
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 void DisplayController::begin() {
   renderer_.begin();
@@ -42,7 +42,7 @@ void DisplayController::refreshReadyContent() {
   }
   model_.rail = model_.connectivity == DisplayConnectivityState::Syncing
                     ? DisplayRailStyle::Activity
-                    : DisplayRailStyle::Thin;
+                    : DisplayRailStyle::Static;
 }
 
 void DisplayController::setConnectivity(DisplayConnectivityState state, bool wifiOnline, bool pcOnline,
@@ -128,15 +128,15 @@ void DisplayController::updateQuantityLookup(const String& itemText,
       break;
     case QuantityLookupState::Found:
       model_.header = "Part found";
-      model_.rail = DisplayRailStyle::Thin;
+      model_.rail = DisplayRailStyle::Static;
       break;
     case QuantityLookupState::NotFound:
       model_.header = model_.supplierQuantity ? "New part" : "Part not found";
-      model_.rail = model_.supplierQuantity ? DisplayRailStyle::Thin : DisplayRailStyle::Warning;
+      model_.rail = DisplayRailStyle::Static;
       break;
     case QuantityLookupState::Unavailable:
       model_.header = "Part details";
-      model_.rail = DisplayRailStyle::Thin;
+      model_.rail = DisplayRailStyle::Static;
       break;
   }
   if (model_.primary != previousPrimary || model_.header != previousHeader ||
@@ -149,7 +149,7 @@ void DisplayController::showQueued() {
   clearContent();
   model_.mode = DisplayUiMode::Queued;
   model_.bodyKind = DisplayBodyKind::Task;
-  model_.rail = DisplayRailStyle::Thin;
+  model_.rail = DisplayRailStyle::Static;
   model_.showPcStatus = true;
   model_.header = model_.connectivity == DisplayConnectivityState::Online ? "Sent to PC" : "Saved on device";
   model_.primary = "Quantity change queued";
@@ -186,14 +186,14 @@ void DisplayController::applyResult(const SyncResult& result) {
   model_.bodyKind = DisplayBodyKind::Task;
   model_.showPcStatus = true;
   if (failed) {
-    model_.rail = DisplayRailStyle::Error;
+    model_.rail = DisplayRailStyle::Static;
     model_.header = "Needs attention";
     model_.primary = result.message.length() > 0 ? result.message : String("Could not update inventory");
     model_.secondary = result.code.length() > 0 ? result.code : String("Try again");
     model_.actions = "C Dismiss";
     resultUntilMs_ = 0;
   } else if (warning) {
-    model_.rail = DisplayRailStyle::Warning;
+    model_.rail = DisplayRailStyle::Static;
     model_.header = "Check result";
     model_.primary = result.itemName.length() > 0 ? result.itemName : String("Inventory updated");
     model_.secondary = result.message.length() > 0 ? result.message : String("Updated with warning");
@@ -201,7 +201,7 @@ void DisplayController::applyResult(const SyncResult& result) {
     model_.actions = "C Dismiss";
     resultUntilMs_ = millis() + kUiWarningDwellMs;
   } else {
-    model_.rail = DisplayRailStyle::Solid;
+    model_.rail = DisplayRailStyle::Static;
     model_.header = "Done";
     model_.primary = result.itemName.length() > 0 ? result.itemName : String("Inventory updated");
     model_.secondary = String(result.appliedDelta >= 0 ? "Added " : "Removed ") +
@@ -261,7 +261,7 @@ void DisplayController::showOta(const String& text, int percent) {
   model_.otaPercent = constrain(percent, 0, 100);
   if (text == "RESTARTING") {
     model_.bodyKind = DisplayBodyKind::Result;
-    model_.rail = DisplayRailStyle::Solid;
+    model_.rail = DisplayRailStyle::Static;
     model_.primary = "Restarting scanner";
     model_.secondary = "Please wait";
   } else if (text == "UPDATING") {
@@ -288,7 +288,7 @@ void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
     model_.rail = DisplayRailStyle::None;
     model_.header = "Pair this scanner";
     model_.primary = "Open Inventatory on PC";
-    model_.secondary = "Settings / HIMS Scan";
+    model_.secondary = "Settings / Inventatory Scan";
   } else if (status == "CONNECTING WIFI") {
     model_.bodyKind = DisplayBodyKind::Task;
     model_.rail = DisplayRailStyle::Activity;
@@ -297,7 +297,7 @@ void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
     model_.secondary = "Keep Inventatory open";
   } else {
     model_.bodyKind = DisplayBodyKind::Result;
-    model_.rail = DisplayRailStyle::Error;
+    model_.rail = DisplayRailStyle::Static;
     model_.header = "Pairing failed";
     model_.primary = status == "SAVE FAILED" ? "Could not save setup" : "Could not connect";
     model_.secondary = status == "WIFI FAILED" ? "Check Wi-Fi details" : "Try pairing again";
@@ -332,12 +332,12 @@ void DisplayController::showQuickLabels(const String* labels, std::size_t count,
     model_.secondary = "From your PC";
   } else if (!pcSupportsQuickLabels) {
     model_.bodyKind = DisplayBodyKind::Task;
-    model_.rail = DisplayRailStyle::Error;
+    model_.rail = DisplayRailStyle::Static;
     model_.primary = "Update Inventatory";
     model_.secondary = "Quick labels unavailable";
   } else if (count == 0) {
     model_.bodyKind = DisplayBodyKind::Task;
-    model_.rail = DisplayRailStyle::Thin;
+    model_.rail = DisplayRailStyle::Static;
     model_.primary = "No labels yet";
     model_.secondary = "Add them on your PC";
   } else {
@@ -411,7 +411,7 @@ void DisplayController::showQuickLabelPrintResult(bool success, const String& me
   clearContent();
   model_.mode = success ? DisplayUiMode::Success : DisplayUiMode::Error;
   model_.bodyKind = DisplayBodyKind::Result;
-  model_.rail = success ? DisplayRailStyle::Solid : DisplayRailStyle::Error;
+  model_.rail = DisplayRailStyle::Static;
   model_.showPcStatus = true;
   model_.header = success ? "Done" : "Print failed";
   model_.primary = success ? String("Label sent") : message;
@@ -425,6 +425,9 @@ RenderActivity DisplayController::computeActivity(unsigned long now) const {
   RenderActivity activity;
   if (uiActivityEnabled(standby_, model_.rail == DisplayRailStyle::Activity)) {
     activity.alternate = uiActivityAlternate(now);
+    activity.railActivityOffset = uiRailSweepOffset(
+        now, style::kRailActivityStepMs, style::kRailActivityTravel,
+        style::kRailActivityStepsPerLeg);
   }
   if (!standby_ && model_.mode == DisplayUiMode::Quantity) {
     activity.quantityCursorVisible = !uiActivityAlternate(now);
@@ -433,7 +436,8 @@ RenderActivity DisplayController::computeActivity(unsigned long now) const {
 }
 
 bool DisplayController::activityEquals(const RenderActivity& a, const RenderActivity& b) {
-  return a.alternate == b.alternate && a.quantityCursorVisible == b.quantityCursorVisible;
+  return a.alternate == b.alternate && a.quantityCursorVisible == b.quantityCursorVisible &&
+         a.railActivityOffset == b.railActivityOffset;
 }
 
 void DisplayController::tick() {
@@ -457,4 +461,4 @@ void DisplayController::tick() {
   lastStartLineRecoveryMs_ = now;
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

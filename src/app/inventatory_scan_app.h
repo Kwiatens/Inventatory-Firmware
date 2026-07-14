@@ -1,12 +1,12 @@
 #pragma once
 
-#include "HimsScanCore.h"
-#include "HimsScanSync.h"
+#include "InventatoryScanCore.h"
+#include "InventatoryScanSync.h"
 #include "display/display_controller.h"
 #include "gm65/gm65_scanner.h"
 #include "keypad/keypad.h"
-#include "net/hims_client.h"
-#include "HimsScanOutbox.h"
+#include "net/inventatory_client.h"
+#include "InventatoryScanOutbox.h"
 #include "storage/outbox_store.h"
 #include "storage/device_settings_store.h"
 #include "setup/ble_provisioning.h"
@@ -16,9 +16,9 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
-class HimsScanApp {
+class InventatoryScanApp {
  public:
   bool begin();
   void loop();
@@ -43,7 +43,7 @@ class HimsScanApp {
 
   enum class PendingScanType {
     None,
-    HimsQuantity,
+    InventatoryQuantity,
     DigiKeyDataMatrix,
   };
 
@@ -51,7 +51,7 @@ class HimsScanApp {
   void pollScanner();
   bool queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId = nullptr);
   void waitForInventoryResult(const String& eventId);
-  void handleKey(const HimsKeyEvent& event);
+  void handleKey(const InventatoryKeyEvent& event);
   void requestOtaUpdate();
   void sendDebugMessage(const String& message, const String& level = "info");
   bool startNetworkWorker();
@@ -89,8 +89,8 @@ class HimsScanApp {
   BleProvisioning provisioning_;
   ProvisionedSettings provisionedSettings_;
   DisplayController display_;
-  HimsClient client_;
-  HimsClientConfig clientConfig_;
+  InventatoryClient client_;
+  InventatoryClientConfig clientConfig_;
   QuantityComposer quantity_;
   String scannedCode_;
   State state_ = State::Idle;
@@ -98,7 +98,7 @@ class HimsScanApp {
   PowerMode powerMode_ = PowerMode::Normal;
   bool wifiStarted_ = false;
   bool wifiConnectedReported_ = false;
-  bool himsSoftwarePrimed_ = false;
+  bool inventatorySoftwarePrimed_ = false;
   bool otaRequested_ = false;
   bool otaActive_ = false;
   bool pcOnline_ = false;
@@ -145,4 +145,4 @@ class HimsScanApp {
   uint32_t pendingQuickLabelRevision_ = 0;
 };
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

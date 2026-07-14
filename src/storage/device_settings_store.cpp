@@ -4,7 +4,7 @@
 
 #include "config/hardware.h"
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 namespace {
 constexpr char kSettingsNamespace[] = "inv_device";
@@ -21,4 +21,4 @@ bool DeviceSettingsStore::saveContrast(uint8_t contrast) {
   return prefs_.putUChar("contrast", constrain(contrast, 0, kMaxContrast)) == 1;
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

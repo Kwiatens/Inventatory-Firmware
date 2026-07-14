@@ -1,13 +1,13 @@
-#include "net/hims_client.h"
+#include "net/inventatory_client.h"
 
-#include "HimsScanCore.h"
+#include "InventatoryScanCore.h"
 #include "config/config.h"
 #include "config/version.h"
 
 #include <ESPmDNS.h>
 #include <WiFi.h>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 namespace {
 
@@ -15,7 +15,7 @@ constexpr unsigned long kHttpResponseTimeoutMs = 600U;
 
 }  // namespace
 
-bool HimsClient::begin(const HimsClientConfig& config) {
+bool InventatoryClient::begin(const InventatoryClientConfig& config) {
   config_ = config;
   endpointValid_ = false;
   endpointIp_ = IPAddress(0, 0, 0, 0);
@@ -39,15 +39,15 @@ bool HimsClient::begin(const HimsClientConfig& config) {
   return true;
 }
 
-void HimsClient::end() {
+void InventatoryClient::end() {
   client_.stop();
 }
 
-bool HimsClient::connected() {
+bool InventatoryClient::connected() {
   return WiFi.status() == WL_CONNECTED;
 }
 
-bool HimsClient::resolveEndpoint(bool force) {
+bool InventatoryClient::resolveEndpoint(bool force) {
   if (!connected()) {
     endpointValid_ = false;
     return false;
@@ -65,7 +65,7 @@ bool HimsClient::resolveEndpoint(bool force) {
   if (!mdnsStarted_) {
     mdnsStarted_ = MDNS.begin(config_.deviceId.c_str());
     if (!mdnsStarted_) {
-      Serial.println("HIMS endpoint: failed to start mDNS client");
+      Serial.println("Inventatory endpoint: failed to start mDNS client");
     }
   }
 
@@ -76,7 +76,7 @@ bool HimsClient::resolveEndpoint(bool force) {
     endpointName_ = MDNS.hostname(0);
     endpointValid_ = endpointPort_ != 0U;
     if (endpointValid_) {
-      Serial.print("HIMS endpoint: discovered ");
+      Serial.print("Inventatory endpoint: discovered ");
       Serial.print(endpointIp_);
       Serial.print(':');
       Serial.println(endpointPort_);
@@ -91,18 +91,18 @@ bool HimsClient::resolveEndpoint(bool force) {
       endpointPort_ = config_.fallbackPort;
       endpointName_ = config_.fallbackHost.c_str();
       endpointValid_ = true;
-      Serial.print("HIMS endpoint: fallback ");
+      Serial.print("Inventatory endpoint: fallback ");
       Serial.print(endpointIp_);
       Serial.print(':');
       Serial.println(endpointPort_);
       return true;
     }
-    Serial.print("HIMS endpoint: could not resolve fallback host ");
+    Serial.print("Inventatory endpoint: could not resolve fallback host ");
     Serial.println(config_.fallbackHost.c_str());
   }
 
   endpointValid_ = false;
-  Serial.print("HIMS endpoint: no _");
+  Serial.print("Inventatory endpoint: no _");
   Serial.print(MDNS_SERVICE);
   Serial.print("._");
   Serial.print(MDNS_PROTOCOL);
@@ -110,7 +110,7 @@ bool HimsClient::resolveEndpoint(bool force) {
   return false;
 }
 
-bool HimsClient::postDebug(const String& message, const String& level) {
+bool InventatoryClient::postDebug(const String& message, const String& level) {
   int httpStatus = 0;
   String responseBody;
   const auto payload = buildDebugRequestJson(config_.deviceId, makeRequestId(config_.deviceId, millis()),
@@ -127,7 +127,7 @@ bool HimsClient::postDebug(const String& message, const String& level) {
   return sent && httpStatus == 200;
 }
 
-bool HimsClient::connectToResolved() {
+bool InventatoryClient::connectToResolved() {
   if (!resolveEndpoint()) {
     return false;
   }
@@ -138,7 +138,7 @@ bool HimsClient::connectToResolved() {
     client_.setNoDelay(true);
     return true;
   }
-  Serial.print("HIMS endpoint: TCP connection failed to ");
+  Serial.print("Inventatory endpoint: TCP connection failed to ");
   Serial.print(endpointIp_);
   Serial.print(':');
   Serial.println(endpointPort_);
@@ -146,7 +146,7 @@ bool HimsClient::connectToResolved() {
   return false;
 }
 
-bool HimsClient::sendJson(const char* path, const String& body, int& httpStatus, String& responseBody) {
+bool InventatoryClient::sendJson(const char* path, const String& body, int& httpStatus, String& responseBody) {
   httpStatus = 0;
   responseBody.clear();
 
@@ -157,8 +157,8 @@ bool HimsClient::sendJson(const char* path, const String& body, int& httpStatus,
   const String hostHeader = endpointName_.length() > 0 ? endpointName_ : endpointIp_.toString();
   client_.printf("POST %s HTTP/1.1\r\n", path);
   client_.printf("Host: %s:%u\r\n", hostHeader.c_str(), endpointPort_);
-  client_.printf("User-Agent: HIMS-Scan-R1/%s\r\n", kFirmwareVersion);
-  client_.printf("X-HIMS-Token: %s\r\n", config_.token.c_str());
+  client_.printf("User-Agent: Inventatory-Scan-R1/%s\r\n", kFirmwareVersion);
+  client_.printf("X-Inventatory-Token: %s\r\n", config_.token.c_str());
   client_.printf("Content-Type: application/json\r\n");
   client_.printf("Content-Length: %u\r\n", static_cast<unsigned>(body.length()));
   client_.print("Connection: close\r\n\r\n");
@@ -167,7 +167,7 @@ bool HimsClient::sendJson(const char* path, const String& body, int& httpStatus,
   return readResponse(httpStatus, responseBody);
 }
 
-bool HimsClient::readResponse(int& httpStatus, String& responseBody) {
+bool InventatoryClient::readResponse(int& httpStatus, String& responseBody) {
   String response;
   const auto started = millis();
   while (millis() - started < kHttpResponseTimeoutMs) {
@@ -205,17 +205,17 @@ bool HimsClient::readResponse(int& httpStatus, String& responseBody) {
   return httpStatus >= 100;
 }
 
-bool HimsClient::postQuantity(const QuantityRequest& request, int& httpStatus, String& responseBody) {
+bool InventatoryClient::postQuantity(const QuantityRequest& request, int& httpStatus, String& responseBody) {
   const auto payload = buildQuantityRequestJson(request.deviceId, request.requestId, request.code, request.delta);
   return sendJson("/api/device/quantity", payload, httpStatus, responseBody);
 }
 
-bool HimsClient::postScan(const ScanRequest& request, int& httpStatus, String& responseBody) {
+bool InventatoryClient::postScan(const ScanRequest& request, int& httpStatus, String& responseBody) {
   const auto payload = buildScanRequestJson(request.deviceId, request.requestId, request.code, request.quantity);
   return sendJson("/api/device/scan", payload, httpStatus, responseBody);
 }
 
-bool HimsClient::postStatus(const String& firmwareVersion, int rssi, const String& debug) {
+bool InventatoryClient::postStatus(const String& firmwareVersion, int rssi, const String& debug) {
   int httpStatus = 0;
   String responseBody;
   const auto payload = buildStatusRequestJson(config_.deviceId, firmwareVersion, rssi, debug);
@@ -231,15 +231,15 @@ bool HimsClient::postStatus(const String& firmwareVersion, int rssi, const Strin
   return sent && httpStatus == 200;
 }
 
-bool HimsClient::postSync(const String& payload, int& httpStatus, String& responseBody) {
+bool InventatoryClient::postSync(const String& payload, int& httpStatus, String& responseBody) {
   return sendJson("/api/v1/device/sync", payload, httpStatus, responseBody);
 }
 
-String HimsClient::endpointSummary() const {
+String InventatoryClient::endpointSummary() const {
   if (!endpointValid_) {
     return String("offline");
   }
   return endpointIp_.toString() + ":" + String(endpointPort_);
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

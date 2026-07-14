@@ -1,12 +1,12 @@
-// HIMS Scan R1 application controller.
+// Inventatory Scan R1 application controller.
 
-#include "app/hims_scan_app.h"
+#include "app/inventatory_scan_app.h"
 
 #include <ArduinoOTA.h>
 
-#include "HimsScanUiPolicy.h"
+#include "InventatoryScanUiPolicy.h"
 
-#include "HimsScanCore.h"
+#include "InventatoryScanCore.h"
 #include "config/config.h"
 #include "config/version.h"
 
@@ -14,7 +14,7 @@
 #include <cstring>
 #include <WiFi.h>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 namespace {
 
@@ -167,8 +167,8 @@ bool isQrScan(const String& value) {
 
 }  // namespace
 
-bool HimsScanApp::begin() {
-  Serial.println("HIMS Scan R1 booting");
+bool InventatoryScanApp::begin() {
+  Serial.println("Inventatory Scan R1 booting");
   display_.begin();
   display_.showSplash();
   display_.tick();
@@ -188,7 +188,7 @@ bool HimsScanApp::begin() {
   clientConfig_.fallbackHost = FALLBACK_HOST;
   clientConfig_.fallbackPort = FALLBACK_PORT;
 
-  outbox_.begin("hims_scan", DEVICE_ID);
+  outbox_.begin("inventatory_scan", DEVICE_ID);
   outbox_.load();
   if (!deviceSettings_.begin()) {
     Serial.println("Device settings storage unavailable; using default contrast.");
@@ -209,9 +209,9 @@ bool HimsScanApp::begin() {
   return beginNormalRuntime(provisionedSettings_);
 }
 
-void HimsScanApp::loop() {
+void InventatoryScanApp::loop() {
   if (setupMode_) {
-    HimsKeyEvent event;
+    InventatoryKeyEvent event;
     while (keypadPoll(event)) handleKey(event);
     serviceProvisioning();
     display_.tick();
@@ -220,7 +220,7 @@ void HimsScanApp::loop() {
   }
   updateConnectivityDisplay();
   display_.tick();
-  HimsKeyEvent event;
+  InventatoryKeyEvent event;
   while (keypadPoll(event)) {
     handleKey(event);
     if (otaRequested_) {
@@ -257,7 +257,7 @@ void HimsScanApp::loop() {
   delay(2);
 }
 
-bool HimsScanApp::beginNormalRuntime(const ProvisionedSettings& settings) {
+bool InventatoryScanApp::beginNormalRuntime(const ProvisionedSettings& settings) {
   provisionedSettings_ = settings;
   clientConfig_.token = settings.deviceToken;
   if (!startNetworkWorker()) return false;
@@ -269,7 +269,7 @@ bool HimsScanApp::beginNormalRuntime(const ProvisionedSettings& settings) {
   return true;
 }
 
-void HimsScanApp::serviceProvisioning() {
+void InventatoryScanApp::serviceProvisioning() {
   ProvisionedSettings request;
   if (provisioning_.takeRequest(request)) {
     provisionedSettings_ = request;
@@ -306,14 +306,14 @@ void HimsScanApp::serviceProvisioning() {
   }
 }
 
-void HimsScanApp::pollScanner() {
+void InventatoryScanApp::pollScanner() {
   String code;
   if (scanner_.poll(code)) {
     handleScan(code);
   }
 }
 
-void HimsScanApp::handleScan(const String& code) {
+void InventatoryScanApp::handleScan(const String& code) {
   if (!scanMayInterruptUi(setupMode_, powerMode_ == PowerMode::Standby,
                           otaRequested_ || otaActive_, state_ == State::ConfirmReprovision,
                           state_ == State::PrintingLabel || state_ == State::WaitingForResult)) {
@@ -323,7 +323,7 @@ void HimsScanApp::handleScan(const String& code) {
   if (state_ != State::Idle) resetPending();
   // Some GM65 profiles prepend an AIM symbology identifier (for example ]C1
   // for Code 128, ]Q3 for QR, or ]d2 for Data Matrix). We use that marker to
-  // route Data Matrix scans to DigiKey and QR scans to the HIMS path.
+  // route Data Matrix scans to DigiKey and QR scans to the Inventatory path.
   const auto raw = trimCopy(code);
   const auto trimmed = trimCopy(stripAimSymbologyPrefix(raw));
   if (trimmed.length() == 0) {
@@ -367,7 +367,7 @@ void HimsScanApp::handleScan(const String& code) {
     resetPending();
     scannedCode_ = trimmed;
     quantity_.setDefaultValue(1);
-    pendingScanType_ = PendingScanType::HimsQuantity;
+    pendingScanType_ = PendingScanType::InventatoryQuantity;
     activeLookupCode_ = trimmed;
     activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
     lookupMissCount_ = 0;
@@ -390,13 +390,13 @@ void HimsScanApp::handleScan(const String& code) {
   String eventId;
   if (queueEvent(DeviceEventKind::InventoryReceive, trimmed, 1, &eventId)) {
     waitForInventoryResult(eventId);
-    Serial.println("Queued supplier scan for HIMS software.");
+    Serial.println("Queued supplier scan for Inventatory software.");
     sendDebugMessage(String("scan queued ") + trimmed, "scan");
   }
 }
 
-void HimsScanApp::handleKey(const HimsKeyEvent& event) {
-  if (event.type == HimsKeyEventType::ProvisioningReset) {
+void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
+  if (event.type == InventatoryKeyEventType::ProvisioningReset) {
     if (setupStore_.clear()) {
       Serial.println("Provisioning reset requested; restarting into BLE setup.");
       ESP.restart();
@@ -404,12 +404,12 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
     Serial.println("Provisioning reset could not clear NVS.");
     return;
   }
-  if (event.type == HimsKeyEventType::OtaUpdate) {
+  if (event.type == InventatoryKeyEventType::OtaUpdate) {
     requestOtaUpdate();
     return;
   }
 
-  if (event.type == HimsKeyEventType::PowerToggle) {
+  if (event.type == InventatoryKeyEventType::PowerToggle) {
     if (state_ != State::Idle) return;
     if (powerMode_ == PowerMode::Standby) {
       exitStandby();
@@ -420,13 +420,13 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
   }
 
   if (state_ == State::WaitingForResult) {
-    if (event.type == HimsKeyEventType::Cancel) {
+    if (event.type == InventatoryKeyEventType::Cancel) {
       Serial.println("Waiting for Inventatory to confirm the submitted change.");
     }
     return;
   }
 
-  if (event.type == HimsKeyEventType::Digit) {
+  if (event.type == InventatoryKeyEventType::Digit) {
     if (state_ == State::Menu) {
       if (event.value == '1') openQuickLabels();
       else if (event.value == '2') openQuickSettings();
@@ -464,7 +464,7 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
     return;
   }
 
-  if (event.type == HimsKeyEventType::CycleCursor) {
+  if (event.type == InventatoryKeyEventType::CycleCursor) {
     if (state_ == State::QuickLabels && quickLabelPresetCount_ > 4U) {
       const uint8_t pages = static_cast<uint8_t>((quickLabelPresetCount_ + 3U) / 4U);
       quickLabelPage_ = static_cast<uint8_t>((quickLabelPage_ + 1U) % pages);
@@ -479,7 +479,7 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
     return;
   }
 
-  if (event.type == HimsKeyEventType::DeleteDigit) {
+  if (event.type == InventatoryKeyEventType::DeleteDigit) {
     if (state_ == State::AwaitQuantity) {
       quantity_.deleteDigit();
       display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
@@ -489,7 +489,7 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
     return;
   }
 
-  if (event.type == HimsKeyEventType::Cancel) {
+  if (event.type == InventatoryKeyEventType::Cancel) {
     if (state_ == State::Idle) {
       if (display_.errorVisible()) display_.dismissError();
       else {
@@ -521,16 +521,16 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
     return;
   }
 
-  if (event.type == HimsKeyEventType::Add || event.type == HimsKeyEventType::Subtract) {
+  if (event.type == InventatoryKeyEventType::Add || event.type == InventatoryKeyEventType::Subtract) {
     if (state_ == State::AdjustContrast) {
-      if (event.type == HimsKeyEventType::Add && lcdContrast_ > 0) --lcdContrast_;
-      if (event.type == HimsKeyEventType::Subtract && lcdContrast_ < 63) ++lcdContrast_;
+      if (event.type == InventatoryKeyEventType::Add && lcdContrast_ > 0) --lcdContrast_;
+      if (event.type == InventatoryKeyEventType::Subtract && lcdContrast_ < 63) ++lcdContrast_;
       display_.setContrast(lcdContrast_);
       persistContrast();
       display_.showContrast(lcdContrast_);
       return;
     }
-    if (state_ == State::ConfirmReprovision && event.type == HimsKeyEventType::Add) {
+    if (state_ == State::ConfirmReprovision && event.type == InventatoryKeyEventType::Add) {
       if (setupStore_.clear()) {
         Serial.println("Re-pair requested from quick settings; restarting BLE setup.");
         ESP.restart();
@@ -543,15 +543,15 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
       Serial.println("No scanned code to submit.");
       return;
     }
-    if (pendingScanType_ == PendingScanType::DigiKeyDataMatrix && event.type == HimsKeyEventType::Subtract) {
+    if (pendingScanType_ == PendingScanType::DigiKeyDataMatrix && event.type == InventatoryKeyEventType::Subtract) {
       Serial.println("DigiKey scans use A to confirm the quantity.");
       return;
     }
-    submitCurrent(event.type == HimsKeyEventType::Add ? 'A' : 'B');
+    submitCurrent(event.type == InventatoryKeyEventType::Add ? 'A' : 'B');
   }
 }
 
-void HimsScanApp::requestOtaUpdate() {
+void InventatoryScanApp::requestOtaUpdate() {
   if (otaRequested_) {
     Serial.println("OTA update already requested.");
     return;
@@ -571,7 +571,7 @@ void HimsScanApp::requestOtaUpdate() {
   sendDebugMessage("ota requested", "warn");
 }
 
-bool HimsScanApp::serviceOta() {
+bool InventatoryScanApp::serviceOta() {
   if (!otaRequested_) {
     return false;
   }
@@ -604,7 +604,7 @@ bool HimsScanApp::serviceOta() {
   return true;
 }
 
-bool HimsScanApp::ensureWiFiForOta() {
+bool InventatoryScanApp::ensureWiFiForOta() {
   if (WiFi.isConnected()) {
     return true;
   }
@@ -631,7 +631,7 @@ bool HimsScanApp::ensureWiFiForOta() {
   return false;
 }
 
-bool HimsScanApp::startOtaService() {
+bool InventatoryScanApp::startOtaService() {
   WiFi.setSleep(false);
   ArduinoOTA.setHostname(clientConfig_.deviceId.c_str());
   ArduinoOTA.setPassword(OTA_PASSWORD);
@@ -699,7 +699,7 @@ bool HimsScanApp::startOtaService() {
   return true;
 }
 
-void HimsScanApp::sendDebugMessage(const String& message, const String& level) {
+void InventatoryScanApp::sendDebugMessage(const String& message, const String& level) {
   if (networkPaused_ || !WiFi.isConnected() || trimCopy(message).length() == 0) {
     return;
   }
@@ -712,7 +712,7 @@ void HimsScanApp::sendDebugMessage(const String& message, const String& level) {
   xSemaphoreGive(networkMutex_);
 }
 
-bool HimsScanApp::startNetworkWorker() {
+bool InventatoryScanApp::startNetworkWorker() {
   if (networkTask_ != nullptr) return true;
   networkMutex_ = xSemaphoreCreateMutex();
   if (networkMutex_ == nullptr) {
@@ -731,11 +731,11 @@ bool HimsScanApp::startNetworkWorker() {
   return true;
 }
 
-void HimsScanApp::networkTaskEntry(void* context) {
-  static_cast<HimsScanApp*>(context)->networkTaskLoop();
+void InventatoryScanApp::networkTaskEntry(void* context) {
+  static_cast<InventatoryScanApp*>(context)->networkTaskLoop();
 }
 
-void HimsScanApp::networkTaskLoop() {
+void InventatoryScanApp::networkTaskLoop() {
   client_.begin(clientConfig_);
   wifiStarted_ = true;
   networkStarted_ = true;
@@ -814,7 +814,7 @@ void HimsScanApp::networkTaskLoop() {
   }
 }
 
-bool HimsScanApp::queueSyncJob(const String& requestId, const String& payload) {
+bool InventatoryScanApp::queueSyncJob(const String& requestId, const String& payload) {
   if (!networkStarted_ || networkMutex_ == nullptr || xSemaphoreTake(networkMutex_, pdMS_TO_TICKS(5)) != pdTRUE) {
     return false;
   }
@@ -828,7 +828,7 @@ bool HimsScanApp::queueSyncJob(const String& requestId, const String& payload) {
   return available;
 }
 
-void HimsScanApp::enterStandby() {
+void InventatoryScanApp::enterStandby() {
   if (powerMode_ == PowerMode::Standby) {
     return;
   }
@@ -840,7 +840,7 @@ void HimsScanApp::enterStandby() {
   lastReconnectAttempt_ = 0;
   lastSyncAttempt_ = 0;
   wifiConnectedReported_ = false;
-  himsSoftwarePrimed_ = false;
+  inventatorySoftwarePrimed_ = false;
 
   networkPowerOffRequested_ = true;
   networkPaused_ = true;
@@ -852,7 +852,7 @@ void HimsScanApp::enterStandby() {
   sendDebugMessage("standby entered", "warn");
 }
 
-void HimsScanApp::exitStandby() {
+void InventatoryScanApp::exitStandby() {
   if (powerMode_ != PowerMode::Standby) {
     return;
   }
@@ -862,7 +862,7 @@ void HimsScanApp::exitStandby() {
   networkPowerOffRequested_ = false;
   networkPaused_ = false;
   wifiConnectedReported_ = false;
-  himsSoftwarePrimed_ = false;
+  inventatorySoftwarePrimed_ = false;
   lastReconnectAttempt_ = 0;
   lastSyncAttempt_ = 0;
   powerMode_ = PowerMode::Normal;
@@ -874,7 +874,7 @@ void HimsScanApp::exitStandby() {
   sendDebugMessage("standby exited", "warn");
 }
 
-void HimsScanApp::submitCurrent(char action) {
+void InventatoryScanApp::submitCurrent(char action) {
   if (pendingScanType_ == PendingScanType::DigiKeyDataMatrix) {
     if (action != 'A') {
       Serial.println("DigiKey scans require A to confirm.");
@@ -906,7 +906,7 @@ void HimsScanApp::submitCurrent(char action) {
   waitForInventoryResult(eventId);
 }
 
-bool HimsScanApp::queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId) {
+bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId) {
   DeviceEventRecord event;
   if (!outbox_.enqueue(kind, code, value, &event)) {
     SyncResult result;
@@ -926,13 +926,13 @@ bool HimsScanApp::queueEvent(DeviceEventKind kind, const String& code, int value
   return true;
 }
 
-void HimsScanApp::waitForInventoryResult(const String& eventId) {
+void InventatoryScanApp::waitForInventoryResult(const String& eventId) {
   awaitingResultEventId_ = eventId;
   state_ = State::WaitingForResult;
   display_.showSending();
 }
 
-void HimsScanApp::reconnectWiFiWorker() {
+void InventatoryScanApp::reconnectWiFiWorker() {
   if (!wifiStarted_) {
     return;
   }
@@ -944,7 +944,7 @@ void HimsScanApp::reconnectWiFiWorker() {
   if (WiFi.status() == WL_CONNECTED) {
     if (!wifiConnectedReported_) {
       wifiConnectedReported_ = true;
-      himsSoftwarePrimed_ = false;
+      inventatorySoftwarePrimed_ = false;
       lastSyncAttempt_ = 0;
       // Do not disclose provisioning metadata through the serial console.
       Serial.println("Local Wi-Fi connected");
@@ -953,7 +953,7 @@ void HimsScanApp::reconnectWiFiWorker() {
   }
 
   wifiConnectedReported_ = false;
-  himsSoftwarePrimed_ = false;
+  inventatorySoftwarePrimed_ = false;
   pcOnline_ = false;
   if (lastReconnectAttempt_ != 0 && millis() - lastReconnectAttempt_ < WIFI_RECONNECT_INTERVAL_MS) {
     return;
@@ -969,7 +969,7 @@ void HimsScanApp::reconnectWiFiWorker() {
   WiFi.begin(provisionedSettings_.wifiSsid.c_str(), provisionedSettings_.wifiPassword.c_str());
 }
 
-String HimsScanApp::syncMode() const {
+String InventatoryScanApp::syncMode() const {
   if (otaRequested_ || otaActive_) return "ota";
   if (powerMode_ == PowerMode::Standby) return "standby";
   if (state_ == State::AwaitQuantity) return "await_quantity";
@@ -978,7 +978,7 @@ String HimsScanApp::syncMode() const {
   return "ready";
 }
 
-void HimsScanApp::maybeSync() {
+void InventatoryScanApp::maybeSync() {
   if (!WiFi.isConnected()) {
     pcOnline_ = false;
     return;
@@ -1014,7 +1014,7 @@ void HimsScanApp::maybeSync() {
   }
 }
 
-void HimsScanApp::processNetworkResult() {
+void InventatoryScanApp::processNetworkResult() {
   if (networkMutex_ == nullptr || xSemaphoreTake(networkMutex_, 0) != pdTRUE) return;
   if (!syncResultPending_) {
     xSemaphoreGive(networkMutex_);
@@ -1062,7 +1062,7 @@ void HimsScanApp::processNetworkResult() {
   handleSyncResponse(response);
 }
 
-void HimsScanApp::handleSyncResponse(const SyncResponse& response) {
+void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
   if (response.hasQuickLabels) {
     quickLabelSnapshotReceived_ = true;
     pcSupportsQuickLabels_ = true;
@@ -1144,18 +1144,18 @@ void HimsScanApp::handleSyncResponse(const SyncResponse& response) {
   }
 }
 
-void HimsScanApp::logState(const char* reason) const {
+void InventatoryScanApp::logState(const char* reason) const {
   Serial.print("State update [");
   Serial.print(reason);
   Serial.print("]: ");
   Serial.println(state_ == State::Idle ? "idle" : state_ == State::AwaitQuantity ? "awaiting quantity" : "menu");
 }
 
-void HimsScanApp::setAwaitingQuantity() {
+void InventatoryScanApp::setAwaitingQuantity() {
   state_ = State::AwaitQuantity;
 }
 
-void HimsScanApp::resetPending() {
+void InventatoryScanApp::resetPending() {
   scannedCode_.clear();
   quantity_.clear();
   activeLookupId_.clear();
@@ -1168,7 +1168,7 @@ void HimsScanApp::resetPending() {
   pendingQuickLabelRevision_ = 0;
 }
 
-void HimsScanApp::openQuickLabels() {
+void InventatoryScanApp::openQuickLabels() {
   state_ = State::QuickLabels;
   if (quickLabelPage_ * 4U >= quickLabelPresetCount_) quickLabelPage_ = 0;
   quickLabelSnapshotReceived_ = false;
@@ -1178,16 +1178,16 @@ void HimsScanApp::openQuickLabels() {
   refreshQuickLabels();
 }
 
-void HimsScanApp::openQuickSettings() {
+void InventatoryScanApp::openQuickSettings() {
   state_ = State::QuickSettings;
   display_.showQuickSettings(lcdContrast_);
 }
 
-void HimsScanApp::refreshQuickLabels() {
+void InventatoryScanApp::refreshQuickLabels() {
   lastSyncAttempt_ = 0;
 }
 
-void HimsScanApp::requestQuickLabelPrint(uint8_t presetIndex) {
+void InventatoryScanApp::requestQuickLabelPrint(uint8_t presetIndex) {
   if (!quickLabelSnapshotReceived_ || !pcSupportsQuickLabels_ || presetIndex < 1 ||
       presetIndex > quickLabelPresetCount_ || quickLabelRevision_ == 0) {
     display_.showQuickLabelPrintResult(false, "REFRESH PRESETS FIRST");
@@ -1207,11 +1207,11 @@ void HimsScanApp::requestQuickLabelPrint(uint8_t presetIndex) {
   lastSyncAttempt_ = 0;
 }
 
-void HimsScanApp::persistContrast() {
+void InventatoryScanApp::persistContrast() {
   if (!deviceSettings_.saveContrast(lcdContrast_)) Serial.println("Could not save LCD contrast.");
 }
 
-DisplayConnectivityState HimsScanApp::connectivityState() const {
+DisplayConnectivityState InventatoryScanApp::connectivityState() const {
   if (!WiFi.isConnected()) {
     if (provisionedSettings_.wifiSsid.length() > 0 && powerMode_ == PowerMode::Normal) {
       return DisplayConnectivityState::WifiConnecting;
@@ -1226,7 +1226,7 @@ DisplayConnectivityState HimsScanApp::connectivityState() const {
   return DisplayConnectivityState::Online;
 }
 
-void HimsScanApp::updateConnectivityDisplay() {
+void InventatoryScanApp::updateConnectivityDisplay() {
   const bool wifiOnline = WiFi.isConnected();
   display_.setConnectivity(connectivityState(), wifiOnline, pcOnline_, outbox_.size());
   if (state_ == State::AwaitQuantity && activeLookupId_.length() > 0) {
@@ -1236,4 +1236,4 @@ void HimsScanApp::updateConnectivityDisplay() {
   }
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

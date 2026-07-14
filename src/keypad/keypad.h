@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-enum class HimsKeyEventType {
+enum class InventatoryKeyEventType {
   None,
   Digit,
   Add,
@@ -16,10 +16,10 @@ enum class HimsKeyEventType {
   Other,
 };
 
-struct HimsKeyEvent {
-  HimsKeyEventType type = HimsKeyEventType::None;
+struct InventatoryKeyEvent {
+  InventatoryKeyEventType type = InventatoryKeyEventType::None;
   char value = 0;
 };
 
 void keypadInit();
-bool keypadPoll(HimsKeyEvent& event);
+bool keypadPoll(InventatoryKeyEvent& event);

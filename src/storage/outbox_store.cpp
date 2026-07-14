@@ -1,11 +1,11 @@
 #include "storage/outbox_store.h"
 
-#include "HimsScanCore.h"
+#include "InventatoryScanCore.h"
 
 #include <algorithm>
 #include <cstring>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 namespace {
 
@@ -164,4 +164,4 @@ void OutboxStore::clear() {
   nextSequence_ = 1;
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

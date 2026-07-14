@@ -9,7 +9,7 @@
 class BLECharacteristic;
 class BLEServer;
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 class BleProvisioning {
  public:
@@ -34,4 +34,4 @@ class BleProvisioning {
   ProvisionedSettings pending_;
 };
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

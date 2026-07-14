@@ -4,11 +4,11 @@
 #include <algorithm>
 #include <cctype>
 
-#include "HimsScanUiPolicy.h"
+#include "InventatoryScanUiPolicy.h"
 #include "config/hardware.h"
 #include "display/display_style.h"
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 DisplayRenderer::DisplayRenderer()
     : lcd_(U8G2_R0, hardware::kLcdClockPin, hardware::kLcdDataPin,
@@ -113,31 +113,15 @@ void DisplayRenderer::drawHeader(const DisplayModel& model, const RenderActivity
 }
 
 void DisplayRenderer::drawRail(DisplayRailStyle railStyle, const RenderActivity& activity) {
-  const int height = style::kRailBottom - style::kRailTop + 1;
   switch (railStyle) {
-    case DisplayRailStyle::Thin:
-      lcd_.drawVLine(style::kRailX + 1, style::kRailTop, height);
-      break;
-    case DisplayRailStyle::Solid:
-      lcd_.drawBox(style::kRailX, style::kRailTop, 4, height);
-      break;
-    case DisplayRailStyle::Warning:
-      for (int y = style::kRailTop; y <= style::kRailBottom; y += 4) {
-        lcd_.drawBox(style::kRailX, y, 3, 2);
-      }
-      break;
-    case DisplayRailStyle::Error:
-      lcd_.setFont(style::kFontValue);
-      lcd_.drawStr(style::kRailX - 1, 38, "!");
+    case DisplayRailStyle::Static:
+      lcd_.drawBox(style::kRailX, style::kRailTop, style::kRailWidth, style::kRailHeight);
       break;
     case DisplayRailStyle::Activity:
-      if (activity.alternate) {
-        lcd_.drawBox(style::kRailX, style::kRailTop, 2, 14);
-        lcd_.drawBox(style::kRailX, style::kRailBottom - 8, 2, 9);
-      } else {
-        lcd_.drawBox(style::kRailX, style::kRailTop, 2, 9);
-        lcd_.drawBox(style::kRailX, style::kRailBottom - 13, 2, 14);
-      }
+      lcd_.drawBox(style::kRailX,
+                   style::kRailTop + constrain(activity.railActivityOffset, 0,
+                                                style::kRailActivityTravel),
+                   style::kRailWidth, style::kRailActivitySegmentH);
       break;
     default:
       break;
@@ -349,4 +333,4 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
   normalizeStartLine();
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

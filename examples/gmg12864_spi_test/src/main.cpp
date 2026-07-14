@@ -22,7 +22,7 @@ U8G2_ST7565_ERC12864_ALT_F_4W_SW_SPI lcd(
 void drawScreen(uint32_t seconds) {
   lcd.clearBuffer();
   lcd.setFont(u8g2_font_6x12_tf);
-  lcd.drawStr(8, 16, "HIMS");
+  lcd.drawStr(8, 16, "Inventatory");
   lcd.drawStr(8, 32, "Scan R1");
   lcd.drawHLine(0, 40, lcd.getDisplayWidth());
   lcd.drawStr(8, 58, "GMG12864");
