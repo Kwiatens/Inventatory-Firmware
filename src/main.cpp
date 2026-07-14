@@ -1,10 +1,10 @@
 #include <Arduino.h>
 
-#include "app/hims_scan_app.h"
+#include "app/inventatory_scan_app.h"
 
-using namespace hims_scan;
+using namespace inventatory_scan;
 
-static HimsScanApp app;
+static InventatoryScanApp app;
 
 void setup() {
   Serial.begin(115200);
@@ -16,7 +16,7 @@ void setup() {
 #else
   delay(1000); // Wait for Serial to initialize
 #endif
-  Serial.println("HIMS Scan R1 booting");
+  Serial.println("Inventatory Scan R1 booting");
   app.begin();
 }
 

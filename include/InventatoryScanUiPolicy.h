@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 constexpr unsigned long kUiActivityPeriodMs = 600UL;
 constexpr unsigned long kUiSuccessDwellMs = 3500UL;
@@ -42,8 +42,27 @@ constexpr bool uiActivityEnabled(bool standby, bool activityOwnedByState) {
   return !standby && activityOwnedByState;
 }
 
+constexpr unsigned long uiRailSweepLegStep(unsigned long now, unsigned long stepPeriodMs,
+                                           int stepsPerLeg) {
+  return ((now / stepPeriodMs) % (static_cast<unsigned long>(stepsPerLeg) * 2UL)) <=
+                 static_cast<unsigned long>(stepsPerLeg)
+             ? (now / stepPeriodMs) % (static_cast<unsigned long>(stepsPerLeg) * 2UL)
+             : static_cast<unsigned long>(stepsPerLeg) * 2UL -
+                   ((now / stepPeriodMs) % (static_cast<unsigned long>(stepsPerLeg) * 2UL));
+}
+
+constexpr int uiRailSweepOffset(unsigned long now, unsigned long stepPeriodMs, int travel,
+                                int stepsPerLeg) {
+  return stepPeriodMs == 0 || travel <= 0 || stepsPerLeg <= 0
+             ? 0
+             : static_cast<int>((uiRailSweepLegStep(now, stepPeriodMs, stepsPerLeg) *
+                                 static_cast<unsigned long>(travel) +
+                                 static_cast<unsigned long>(stepsPerLeg / 2)) /
+                                static_cast<unsigned long>(stepsPerLeg));
+}
+
 constexpr bool uiDeadlineReached(unsigned long now, unsigned long deadline) {
   return deadline != 0 && static_cast<long>(now - deadline) >= 0;
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

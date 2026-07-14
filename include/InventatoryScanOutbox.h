@@ -1,10 +1,10 @@
-// HIMS Scan R1 firmware outbox helpers.
+// Inventatory Scan R1 firmware outbox helpers.
 
 #pragma once
 
 #include <cstddef>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 template <typename T, std::size_t Capacity>
 class FixedRingBuffer {
@@ -64,4 +64,4 @@ class FixedRingBuffer {
   std::size_t size_ = 0;
 };
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

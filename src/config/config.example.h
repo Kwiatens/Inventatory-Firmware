@@ -3,7 +3,7 @@
 // Copy this file to config.h and fill in your real values.
 // config.h is private and ignored by git.
 
-const char DEVICE_ID[] = "HIMS-SCAN-R1";
+const char DEVICE_ID[] = "Inventatory-SCAN-R1";
 const char OTA_PASSWORD[] = "paste-your-ota-password-here";
 
 // Optional fallback if mDNS discovery fails.
@@ -25,7 +25,7 @@ const int KEYPAD_ROW_4_PIN = 2;
 const int GM65_TX_PIN = 43;
 const int GM65_RX_PIN = 44;
 
-const char MDNS_SERVICE[] = "hims";
+const char MDNS_SERVICE[] = "inventatory";
 const char MDNS_PROTOCOL[] = "tcp";
 
 const unsigned long WIFI_RECONNECT_INTERVAL_MS = 15000;

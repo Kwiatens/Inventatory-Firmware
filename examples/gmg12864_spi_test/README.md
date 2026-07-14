@@ -1,6 +1,6 @@
 # GMG12864-06D SPI smoke test
 
-This is a standalone PlatformIO project. It does not alter the production HIMS Scan R1 firmware.
+This is a standalone PlatformIO project. It does not alter the production Inventatory Scan R1 firmware.
 
 ## Wiring
 

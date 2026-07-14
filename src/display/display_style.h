@@ -6,7 +6,7 @@
 
 #include <cstddef>
 
-namespace hims_scan::style {
+namespace inventatory_scan::style {
 
 constexpr int kScreenW = 128;
 constexpr int kScreenH = 64;
@@ -20,6 +20,12 @@ constexpr int kHeaderStatusGap = 5;
 constexpr int kRailX = 4;
 constexpr int kRailTop = 17;
 constexpr int kRailBottom = 48;
+constexpr int kRailWidth = 2;
+constexpr int kRailHeight = kRailBottom - kRailTop + 1;
+constexpr int kRailActivitySegmentH = 10;
+constexpr int kRailActivityTravel = kRailHeight - kRailActivitySegmentH;
+constexpr unsigned long kRailActivityStepMs = 250UL;
+constexpr int kRailActivityStepsPerLeg = 6;
 constexpr int kContentX = 13;
 constexpr int kContentRight = 125;
 constexpr int kContentW = kContentRight - kContentX;
@@ -62,4 +68,4 @@ static const uint8_t* const kFontRegular = u8g2_font_helvR08_tf;
 static const uint8_t* const kFontHeading = u8g2_font_helvB08_tf;
 static const uint8_t* const kFontValue = u8g2_font_profont15_tf;
 
-}  // namespace hims_scan::style
+}  // namespace inventatory_scan::style

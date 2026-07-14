@@ -2,12 +2,12 @@
 
 #include <Arduino.h>
 
-#include "HimsScanCore.h"
+#include "InventatoryScanCore.h"
 #include "storage/outbox_store.h"
 
-namespace hims_scan {
+namespace inventatory_scan {
 
-constexpr int kHimsScanProtocolVersion = 1;
+constexpr int kInventatoryScanProtocolVersion = 1;
 constexpr std::size_t kSyncBatchSize = 4;
 constexpr std::size_t kQuickLabelPresetLimit = 12;
 constexpr std::size_t kQuickLabelPresetTextLimit = 24;
@@ -242,7 +242,7 @@ inline std::size_t jsonStringArrayValues(const String& body, const char* key, St
 
 inline SyncResponse parseSyncResponseJson(const String& body) {
   SyncResponse response;
-  if (jsonIntValue(body, "protocolVersion") != kHimsScanProtocolVersion) return response;
+  if (jsonIntValue(body, "protocolVersion") != kInventatoryScanProtocolVersion) return response;
   response.requestId = jsonStringValue(body, "requestId");
   if (response.requestId.length() == 0) return response;
 
@@ -307,4 +307,4 @@ inline bool isCurrentLookupResult(const SyncResponse& response, const String& ac
   return response.hasLookupResult && activeLookupId.length() > 0 && response.lookupId == activeLookupId;
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

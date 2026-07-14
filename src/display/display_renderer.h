@@ -4,7 +4,7 @@
 
 #include "display/display_model.h"
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 class DisplayRenderer {
  public:
@@ -38,4 +38,4 @@ class DisplayRenderer {
   U8G2_ST7565_ERC12864_ALT_F_4W_SW_SPI lcd_;
 };
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

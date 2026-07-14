@@ -1,4 +1,4 @@
-// HIMS Scan R1 GM65 scanner driver.
+// Inventatory Scan R1 GM65 scanner driver.
 
 #include "gm65/gm65_scanner.h"
 
@@ -7,7 +7,7 @@
 #include <cctype>
 #include <cstddef>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 namespace {
 
@@ -253,4 +253,4 @@ bool Gm65Scanner::poll(String& code) {
   return false;
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

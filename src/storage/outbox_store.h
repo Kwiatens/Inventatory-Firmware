@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 // Retained for the unversioned client helper used by older integration code.
 struct QuantityRequest {
@@ -35,7 +35,7 @@ class OutboxStore {
  public:
   static constexpr std::size_t kCapacity = 16;
 
-  bool begin(const char* namespaceName = "hims_scan", const char* deviceId = nullptr);
+  bool begin(const char* namespaceName = "inventatory_scan", const char* deviceId = nullptr);
   void end();
   bool load();
   bool save();
@@ -92,4 +92,4 @@ class OutboxStore {
   uint32_t nextSequence_ = 1;
 };
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

@@ -1,11 +1,12 @@
 #include <unity.h>
 
-#include "HimsScanCore.h"
-#include "HimsScanOutbox.h"
-#include "HimsScanSync.h"
-#include "HimsScanUiPolicy.h"
+#include "InventatoryScanCore.h"
+#include "InventatoryScanOutbox.h"
+#include "InventatoryScanSync.h"
+#include "InventatoryScanUiPolicy.h"
+#include "display/display_style.h"
 
-using namespace hims_scan;
+using namespace inventatory_scan;
 
 void test_standardized_scanner_codes() {
   TEST_ASSERT_TRUE(isStandardMachineCode("0002"));
@@ -79,9 +80,9 @@ void test_quantity_composer_subtract_and_invalid_digits() {
 }
 
 void test_request_json_serialization() {
-  const auto json = buildQuantityRequestJson("  R1  ", "id-123", "HIMS-001", -4);
+  const auto json = buildQuantityRequestJson("  R1  ", "id-123", "Inventatory-001", -4);
   TEST_ASSERT_EQUAL_STRING(
-      "{\"deviceId\":\"R1\",\"requestId\":\"id-123\",\"code\":\"HIMS-001\",\"delta\":-4}",
+      "{\"deviceId\":\"R1\",\"requestId\":\"id-123\",\"code\":\"Inventatory-001\",\"delta\":-4}",
       json.c_str());
 }
 
@@ -96,8 +97,8 @@ void test_scan_json_escapes_datamatrix_separators() {
 }
 
 void test_request_id_format() {
-  const auto requestId = makeRequestId("  HIMS-SCAN-R1  ", 42);
-  TEST_ASSERT_EQUAL_STRING("HIMS-SCAN-R1-42", requestId.c_str());
+  const auto requestId = makeRequestId("  Inventatory-SCAN-R1  ", 42);
+  TEST_ASSERT_EQUAL_STRING("Inventatory-SCAN-R1-42", requestId.c_str());
 }
 
 void test_fixed_ring_buffer_fifo_and_overwrite() {
@@ -212,6 +213,20 @@ void test_ui_timing_and_activity_policy() {
   TEST_ASSERT_TRUE(uiActivityEnabled(false, true));
   TEST_ASSERT_FALSE(uiActivityEnabled(true, true));
   TEST_ASSERT_FALSE(uiActivityEnabled(false, false));
+  TEST_ASSERT_EQUAL_UINT32(250, style::kRailActivityStepMs);
+  TEST_ASSERT_EQUAL_INT(0, uiRailSweepOffset(0, style::kRailActivityStepMs,
+                                              style::kRailActivityTravel,
+                                              style::kRailActivityStepsPerLeg));
+  TEST_ASSERT_EQUAL_INT(4, uiRailSweepOffset(250, style::kRailActivityStepMs,
+                                              style::kRailActivityTravel,
+                                              style::kRailActivityStepsPerLeg));
+  TEST_ASSERT_EQUAL_INT(style::kRailActivityTravel,
+                        uiRailSweepOffset(1500, style::kRailActivityStepMs,
+                                          style::kRailActivityTravel,
+                                          style::kRailActivityStepsPerLeg));
+  TEST_ASSERT_EQUAL_INT(0, uiRailSweepOffset(3000, style::kRailActivityStepMs,
+                                              style::kRailActivityTravel,
+                                              style::kRailActivityStepsPerLeg));
   TEST_ASSERT_FALSE(uiDeadlineReached(1000, 0));
   TEST_ASSERT_FALSE(uiDeadlineReached(1499, 1500));
   TEST_ASSERT_TRUE(uiDeadlineReached(1500, 1500));

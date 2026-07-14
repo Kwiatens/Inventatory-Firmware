@@ -1,23 +1,23 @@
 #pragma once
 
-#include "HimsScanCore.h"
+#include "InventatoryScanCore.h"
 #include "storage/outbox_store.h"
 
 #include <Arduino.h>
 #include <WiFi.h>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
-struct HimsClientConfig {
+struct InventatoryClientConfig {
   String deviceId;
   String token;
   String fallbackHost;
   uint16_t fallbackPort = 0;
 };
 
-class HimsClient {
+class InventatoryClient {
  public:
-  bool begin(const HimsClientConfig& config);
+  bool begin(const InventatoryClientConfig& config);
   void end();
 
   bool connected();
@@ -36,7 +36,7 @@ class HimsClient {
   bool sendJson(const char* path, const String& body, int& httpStatus, String& responseBody);
   bool readResponse(int& httpStatus, String& responseBody);
 
-  HimsClientConfig config_;
+  InventatoryClientConfig config_;
   WiFiClient client_;
   IPAddress endpointIp_{0, 0, 0, 0};
   uint16_t endpointPort_ = 0;
@@ -46,4 +46,4 @@ class HimsClient {
   unsigned long lastResolveAttempt_ = 0;
 };
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

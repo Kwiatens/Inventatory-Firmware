@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <cstddef>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 class Gm65Scanner {
  public:
@@ -31,4 +31,4 @@ class Gm65Scanner {
   unsigned long acceptAfterMs_ = 0;
 };
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

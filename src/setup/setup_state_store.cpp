@@ -2,7 +2,7 @@
 
 #include "setup/setup_state_store.h"
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 namespace {
 
@@ -54,4 +54,4 @@ bool SetupStateStore::clear() {
   return prefs_.clear();
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

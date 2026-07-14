@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 enum class DisplayUiMode {
   Splash,
@@ -46,10 +46,7 @@ enum class DisplayBodyKind {
 
 enum class DisplayRailStyle {
   None,
-  Thin,
-  Solid,
-  Warning,
-  Error,
+  Static,
   Activity,
 };
 
@@ -63,6 +60,7 @@ enum class QuantityLookupState {
 struct RenderActivity {
   bool alternate = false;
   bool quantityCursorVisible = true;
+  int railActivityOffset = 0;
 };
 
 struct DisplayModel {
@@ -89,4 +87,4 @@ struct DisplayModel {
   std::size_t listRowCount = 0;
 };
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

@@ -9,7 +9,7 @@
 
 #include <esp_system.h>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 namespace {
 
@@ -149,4 +149,4 @@ void BleProvisioning::publishStatus(const String& publicMessage) {
   status_->notify();
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

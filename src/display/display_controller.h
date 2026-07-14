@@ -1,10 +1,10 @@
 #pragma once
 
-#include "HimsScanSync.h"
+#include "InventatoryScanSync.h"
 #include "display/display_model.h"
 #include "display/display_renderer.h"
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 class DisplayController {
  public:
@@ -59,4 +59,4 @@ class DisplayController {
   bool standby_ = false;
 };
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

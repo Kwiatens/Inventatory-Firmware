@@ -1,4 +1,4 @@
-// HIMS Scan R1 firmware core helpers.
+// Inventatory Scan R1 firmware core helpers.
 
 #pragma once
 
@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace hims_scan {
+namespace inventatory_scan {
 
 inline String trimCopy(const String& value) {
   size_t begin = 0;
@@ -278,4 +278,4 @@ inline String buildStatusRequestJson(const String& deviceId, const String& firmw
   return out;
 }
 
-}  // namespace hims_scan
+}  // namespace inventatory_scan

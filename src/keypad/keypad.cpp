@@ -82,7 +82,7 @@ void keypadInit() {
   Serial.println();
 }
 
-bool keypadPoll(HimsKeyEvent& event) {
+bool keypadPoll(InventatoryKeyEvent& event) {
   event = {};
   if (!keypad.getKeys()) {
     return false;
@@ -133,19 +133,19 @@ bool keypadPoll(HimsKeyEvent& event) {
       continue;
     }
     if (key >= '0' && key <= '9') {
-      event.type = HimsKeyEventType::Digit;
+      event.type = InventatoryKeyEventType::Digit;
       return true;
     }
     if (key == 'A') {
-      event.type = HimsKeyEventType::Add;
+      event.type = InventatoryKeyEventType::Add;
       return true;
     }
     if (key == 'B') {
-      event.type = HimsKeyEventType::Subtract;
+      event.type = InventatoryKeyEventType::Subtract;
       return true;
     }
     if (key == 'C') {
-      event.type = HimsKeyEventType::Cancel;
+      event.type = InventatoryKeyEventType::Cancel;
       return true;
     }
   }
@@ -153,7 +153,7 @@ bool keypadPoll(HimsKeyEvent& event) {
   if (starActive && dActive && (starHeld || dHeld)) {
     dShortPressPending_ = false;
     holdGesture_ = HoldGesture::Ota;
-    event.type = HimsKeyEventType::OtaUpdate;
+    event.type = InventatoryKeyEventType::OtaUpdate;
     event.value = 'D';
     return true;
   }
@@ -161,7 +161,7 @@ bool keypadPoll(HimsKeyEvent& event) {
   if (hashHeld && !starActive && !dActive) {
     hashShortPressPending_ = false;
     holdGesture_ = HoldGesture::ProvisioningReset;
-    event.type = HimsKeyEventType::ProvisioningReset;
+    event.type = InventatoryKeyEventType::ProvisioningReset;
     event.value = '#';
     return true;
   }
@@ -169,7 +169,7 @@ bool keypadPoll(HimsKeyEvent& event) {
   if (dHeld && !starActive) {
     dShortPressPending_ = false;
     holdGesture_ = HoldGesture::Power;
-    event.type = HimsKeyEventType::PowerToggle;
+    event.type = InventatoryKeyEventType::PowerToggle;
     event.value = 'D';
     return true;
   }
@@ -177,7 +177,7 @@ bool keypadPoll(HimsKeyEvent& event) {
   if (dIndex >= 0 && keypad.key[dIndex].stateChanged && keypad.key[dIndex].kstate == RELEASED &&
       dShortPressPending_) {
     dShortPressPending_ = false;
-    event.type = HimsKeyEventType::CycleCursor;
+    event.type = InventatoryKeyEventType::CycleCursor;
     event.value = 'D';
     return true;
   }
@@ -185,7 +185,7 @@ bool keypadPoll(HimsKeyEvent& event) {
   if (hashIndex >= 0 && keypad.key[hashIndex].stateChanged &&
       keypad.key[hashIndex].kstate == RELEASED && hashShortPressPending_) {
     hashShortPressPending_ = false;
-    event.type = HimsKeyEventType::DeleteDigit;
+    event.type = InventatoryKeyEventType::DeleteDigit;
     event.value = '#';
     return true;
   }
