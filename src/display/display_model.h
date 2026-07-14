@@ -19,6 +19,7 @@ enum class DisplayUiMode {
   Menu,
   QuickLabels,
   QuickSettings,
+  Sending,
   Contrast,
   ConfirmReset,
   Printing,
@@ -70,6 +71,7 @@ struct DisplayModel {
   DisplayRailStyle rail = DisplayRailStyle::Activity;
   DisplayConnectivityState connectivity = DisplayConnectivityState::Offline;
   bool showPcStatus = true;
+  bool animateEllipsis = false;
   bool supplierQuantity = false;
   std::size_t queueDepth = 0;
   String header;

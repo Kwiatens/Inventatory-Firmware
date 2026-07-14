@@ -316,7 +316,7 @@ void HimsScanApp::pollScanner() {
 void HimsScanApp::handleScan(const String& code) {
   if (!scanMayInterruptUi(setupMode_, powerMode_ == PowerMode::Standby,
                           otaRequested_ || otaActive_, state_ == State::ConfirmReprovision,
-                          state_ == State::PrintingLabel)) {
+                          state_ == State::PrintingLabel || state_ == State::WaitingForResult)) {
     Serial.println("Scan ignored while the current operation blocks scanning.");
     return;
   }
@@ -387,8 +387,9 @@ void HimsScanApp::handleScan(const String& code) {
   }
 
   resetPending();
-  if (queueEvent(DeviceEventKind::InventoryReceive, trimmed, 1)) {
-    display_.showQueued();
+  String eventId;
+  if (queueEvent(DeviceEventKind::InventoryReceive, trimmed, 1, &eventId)) {
+    waitForInventoryResult(eventId);
     Serial.println("Queued supplier scan for HIMS software.");
     sendDebugMessage(String("scan queued ") + trimmed, "scan");
   }
@@ -414,6 +415,13 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
       exitStandby();
     } else {
       enterStandby();
+    }
+    return;
+  }
+
+  if (state_ == State::WaitingForResult) {
+    if (event.type == HimsKeyEventType::Cancel) {
+      Serial.println("Waiting for Inventatory to confirm the submitted change.");
     }
     return;
   }
@@ -874,7 +882,8 @@ void HimsScanApp::submitCurrent(char action) {
     }
 
     const auto quantity = quantity_.consume(true);
-    const auto queued = queueEvent(DeviceEventKind::InventoryReceive, scannedCode_, quantity);
+    String eventId;
+    const auto queued = queueEvent(DeviceEventKind::InventoryReceive, scannedCode_, quantity, &eventId);
     Serial.print("Queued DigiKey scan quantity ");
     Serial.println(String(quantity).c_str());
     resetPending();
@@ -882,23 +891,22 @@ void HimsScanApp::submitCurrent(char action) {
       display_.finishInteraction();
       return;
     }
-    const bool resultShown = display_.finishInteraction();
-    if (queued && !resultShown) display_.showQueued();
+    waitForInventoryResult(eventId);
     return;
   }
 
   const auto delta = quantity_.consume(action == 'A');
-  const auto queued = queueEvent(DeviceEventKind::InventoryAdjust, scannedCode_, delta);
+  String eventId;
+  const auto queued = queueEvent(DeviceEventKind::InventoryAdjust, scannedCode_, delta, &eventId);
   resetPending();
   if (!queued) {
     display_.finishInteraction();
     return;
   }
-  const bool resultShown = display_.finishInteraction();
-  if (queued && !resultShown) display_.showQueued();
+  waitForInventoryResult(eventId);
 }
 
-bool HimsScanApp::queueEvent(DeviceEventKind kind, const String& code, int value) {
+bool HimsScanApp::queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId) {
   DeviceEventRecord event;
   if (!outbox_.enqueue(kind, code, value, &event)) {
     SyncResult result;
@@ -911,10 +919,17 @@ bool HimsScanApp::queueEvent(DeviceEventKind kind, const String& code, int value
     Serial.println(result.message.c_str());
     return false;
   }
+  if (eventId != nullptr) *eventId = event.eventId;
   Serial.print("Queued protocol v1 event: ");
   Serial.println(event.eventId.c_str());
   lastSyncAttempt_ = 0;
   return true;
+}
+
+void HimsScanApp::waitForInventoryResult(const String& eventId) {
+  awaitingResultEventId_ = eventId;
+  state_ = State::WaitingForResult;
+  display_.showSending();
 }
 
 void HimsScanApp::reconnectWiFiWorker() {
@@ -958,6 +973,7 @@ String HimsScanApp::syncMode() const {
   if (otaRequested_ || otaActive_) return "ota";
   if (powerMode_ == PowerMode::Standby) return "standby";
   if (state_ == State::AwaitQuantity) return "await_quantity";
+  if (state_ == State::WaitingForResult) return "waiting_for_result";
   if (state_ == State::PrintingLabel) return "label_print";
   return "ready";
 }
@@ -1117,9 +1133,14 @@ void HimsScanApp::handleSyncResponse(const SyncResponse& response) {
     lookupMissCount_ = 0;
   }
   updateConnectivityDisplay();
-  if (response.hasResult && display_.showResult(response.result)) {
+  if (response.hasResult) {
     pendingResultAck_ = response.result.resultId;
     lastSyncAttempt_ = 0;
+    if (awaitingResultEventId_.length() == 0 || response.result.eventId == awaitingResultEventId_) {
+      awaitingResultEventId_.clear();
+      state_ = State::Idle;
+      display_.showResult(response.result);
+    }
   }
 }
 

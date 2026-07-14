@@ -16,6 +16,7 @@ void DisplayController::begin() {
 void DisplayController::markDirty() { dirty_ = true; }
 
 void DisplayController::clearContent() {
+  model_.animateEllipsis = false;
   model_.header.clear();
   model_.primary.clear();
   model_.secondary.clear();
@@ -147,7 +148,7 @@ void DisplayController::updateQuantityLookup(const String& itemText,
 void DisplayController::showQueued() {
   clearContent();
   model_.mode = DisplayUiMode::Queued;
-  model_.bodyKind = DisplayBodyKind::Result;
+  model_.bodyKind = DisplayBodyKind::Task;
   model_.rail = DisplayRailStyle::Thin;
   model_.showPcStatus = true;
   model_.header = model_.connectivity == DisplayConnectivityState::Online ? "Sent to PC" : "Saved on device";
@@ -155,7 +156,25 @@ void DisplayController::showQueued() {
   model_.secondary = model_.connectivity == DisplayConnectivityState::Online
                          ? "Processing inventory"
                          : "Will send when linked";
+  // While this transient page is shown the app is idle, so C retains the
+  // same Menu behavior advertised by the ready screen.
+  model_.actions = "C Menu";
   resultUntilMs_ = millis() + kUiQueuedDwellMs;
+  markDirty();
+}
+
+void DisplayController::showSending() {
+  clearContent();
+  model_.mode = DisplayUiMode::Sending;
+  model_.bodyKind = DisplayBodyKind::Task;
+  model_.rail = DisplayRailStyle::Activity;
+  model_.showPcStatus = true;
+  model_.animateEllipsis = true;
+  model_.header = "Sending";
+  model_.primary = "Sending to Inventatory";
+  model_.secondary = "Waiting for response";
+  model_.actions = "Waiting for PC";
+  resultUntilMs_ = 0;
   markDirty();
 }
 
@@ -164,7 +183,7 @@ void DisplayController::applyResult(const SyncResult& result) {
   const bool failed = result.status == "failed";
   const bool warning = result.status == "completed_with_warning";
   model_.mode = failed ? DisplayUiMode::Error : (warning ? DisplayUiMode::Warning : DisplayUiMode::Success);
-  model_.bodyKind = DisplayBodyKind::Result;
+  model_.bodyKind = DisplayBodyKind::Task;
   model_.showPcStatus = true;
   if (failed) {
     model_.rail = DisplayRailStyle::Error;
@@ -187,7 +206,7 @@ void DisplayController::applyResult(const SyncResult& result) {
     model_.primary = result.itemName.length() > 0 ? result.itemName : String("Inventory updated");
     model_.secondary = String(result.appliedDelta >= 0 ? "Added " : "Removed ") +
                        abs(result.appliedDelta) + " / total " + result.quantity;
-    if (result.location.length() > 0) model_.tertiary = String("Rack ") + result.location;
+    model_.actions = "C Menu";
     resultUntilMs_ = millis() + kUiSuccessDwellMs;
   }
   markDirty();

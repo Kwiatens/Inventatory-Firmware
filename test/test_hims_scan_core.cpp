@@ -202,7 +202,7 @@ void test_ui_clipping_and_queue_boundaries() {
 }
 
 void test_ui_timing_and_activity_policy() {
-  TEST_ASSERT_EQUAL_UINT32(1500, kUiSuccessDwellMs);
+  TEST_ASSERT_EQUAL_UINT32(3500, kUiSuccessDwellMs);
   TEST_ASSERT_EQUAL_UINT32(3000, kUiWarningDwellMs);
   TEST_ASSERT_FALSE(uiActivityAlternate(0));
   TEST_ASSERT_FALSE(uiActivityAlternate(599));
