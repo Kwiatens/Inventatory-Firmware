@@ -9,6 +9,7 @@ enum class HimsKeyEventType {
   Subtract,
   Cancel,
   CycleCursor,
+  DeleteDigit,
   PowerToggle,
   OtaUpdate,
   ProvisioningReset,

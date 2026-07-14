@@ -17,6 +17,7 @@ enum class HoldGesture {
 
 HoldGesture holdGesture_ = HoldGesture::None;
 bool dShortPressPending_ = false;
+bool hashShortPressPending_ = false;
 
 bool isActiveState(KeyState state) {
   return state == PRESSED || state == HOLD;
@@ -127,6 +128,10 @@ bool keypadPoll(HimsKeyEvent& event) {
       dShortPressPending_ = true;
       continue;
     }
+    if (key == '#') {
+      hashShortPressPending_ = true;
+      continue;
+    }
     if (key >= '0' && key <= '9') {
       event.type = HimsKeyEventType::Digit;
       return true;
@@ -154,6 +159,7 @@ bool keypadPoll(HimsKeyEvent& event) {
   }
 
   if (hashHeld && !starActive && !dActive) {
+    hashShortPressPending_ = false;
     holdGesture_ = HoldGesture::ProvisioningReset;
     event.type = HimsKeyEventType::ProvisioningReset;
     event.value = '#';
@@ -173,6 +179,14 @@ bool keypadPoll(HimsKeyEvent& event) {
     dShortPressPending_ = false;
     event.type = HimsKeyEventType::CycleCursor;
     event.value = 'D';
+    return true;
+  }
+
+  if (hashIndex >= 0 && keypad.key[hashIndex].stateChanged &&
+      keypad.key[hashIndex].kstate == RELEASED && hashShortPressPending_) {
+    hashShortPressPending_ = false;
+    event.type = HimsKeyEventType::DeleteDigit;
+    event.value = '#';
     return true;
   }
 

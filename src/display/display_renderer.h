@@ -19,7 +19,7 @@ class DisplayRenderer {
   void drawHeader(const DisplayModel& model);
   void drawRail(DisplayRailStyle rail, const RenderActivity& activity);
   void drawTask(const DisplayModel& model);
-  void drawQuantity(const DisplayModel& model);
+  void drawQuantity(const DisplayModel& model, const RenderActivity& activity);
   void drawResult(const DisplayModel& model);
   void drawList(const DisplayModel& model);
   void drawContrast(const DisplayModel& model);

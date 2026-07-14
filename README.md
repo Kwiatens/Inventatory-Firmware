@@ -8,6 +8,7 @@ The scanner stays ready to read labels while ordinary menus are open. A scan imm
 - `A` confirms, adds inventory, or lowers display contrast.
 - `B` removes inventory or raises display contrast.
 - `D` moves the quantity cursor or opens the next Quick Labels page.
+- A short `#` press deletes the selected quantity digit; holding `#` still starts the provisioning reset gesture.
 - Number keys enter quantities or select numbered menu and Quick Label entries.
 
 Quick Labels refresh automatically when opened and print immediately after a preset is selected. Offline inventory scans remain available and are identified on the LCD as safely queued work.

@@ -22,6 +22,7 @@ void DisplayController::clearContent() {
   model_.tertiary.clear();
   model_.actions.clear();
   model_.pageText.clear();
+  model_.quantityPrompt.clear();
   model_.listRowCount = 0;
   for (auto& row : model_.listRows) row.clear();
 }
@@ -89,19 +90,20 @@ void DisplayController::showReady() {
 }
 
 void DisplayController::showQuantity(const String& itemText, const String& itemCode,
-                                     const String& quantityText, std::size_t cursor, bool supplier) {
+                                     const String& quantityText, std::size_t cursor, bool supplier,
+                                     QuantityLookupState lookupState) {
   clearContent();
   model_.mode = DisplayUiMode::Quantity;
   model_.bodyKind = DisplayBodyKind::Quantity;
-  model_.rail = itemText == "Looking up item" ? DisplayRailStyle::Activity : DisplayRailStyle::Thin;
   model_.showPcStatus = true;
   model_.supplierQuantity = supplier;
-  model_.header = supplier ? "Confirm receipt" : "Quantity";
+  model_.quantityPrompt = supplier ? "Add quantity:" : "Change quantity by:";
   model_.primary = itemText;
   model_.secondary = itemCode;
   model_.quantityText = quantityText;
   model_.quantityCursor = cursor;
-  model_.actions = supplier ? "A Receive C Cancel" : "A Add B Remove C Cancel";
+  model_.actions = supplier ? "A + # Del C Cancel" : "A + B - # Del C Cancel";
+  updateQuantityLookup(itemText, lookupState);
   markDirty();
 }
 
@@ -111,11 +113,35 @@ void DisplayController::updateQuantity(const String& quantityText, std::size_t c
   markDirty();
 }
 
-void DisplayController::updateQuantityItem(const String& itemText) {
-  if (model_.mode != DisplayUiMode::Quantity || model_.primary == itemText) return;
+void DisplayController::updateQuantityLookup(const String& itemText,
+                                             QuantityLookupState lookupState) {
+  if (model_.mode != DisplayUiMode::Quantity) return;
+  const String previousPrimary = model_.primary;
+  const String previousHeader = model_.header;
+  const DisplayRailStyle previousRail = model_.rail;
   model_.primary = itemText;
-  model_.rail = DisplayRailStyle::Thin;
-  markDirty();
+  switch (lookupState) {
+    case QuantityLookupState::Pending:
+      model_.header = "Finding part";
+      model_.rail = DisplayRailStyle::Activity;
+      break;
+    case QuantityLookupState::Found:
+      model_.header = "Part found";
+      model_.rail = DisplayRailStyle::Thin;
+      break;
+    case QuantityLookupState::NotFound:
+      model_.header = model_.supplierQuantity ? "New part" : "Part not found";
+      model_.rail = model_.supplierQuantity ? DisplayRailStyle::Thin : DisplayRailStyle::Warning;
+      break;
+    case QuantityLookupState::Unavailable:
+      model_.header = "Part details";
+      model_.rail = DisplayRailStyle::Thin;
+      break;
+  }
+  if (model_.primary != previousPrimary || model_.header != previousHeader ||
+      model_.rail != previousRail) {
+    markDirty();
+  }
 }
 
 void DisplayController::showQueued() {
@@ -332,7 +358,7 @@ void DisplayController::showContrast(uint8_t contrast) {
   model_.showPcStatus = false;
   model_.header = "Display contrast";
   model_.primary = String(contrast);
-  model_.actions = "A Lower B Higher C Back";
+  model_.actions = "A - B + C Cancel";
   markDirty();
 }
 
@@ -381,11 +407,14 @@ RenderActivity DisplayController::computeActivity(unsigned long now) const {
   if (uiActivityEnabled(standby_, model_.rail == DisplayRailStyle::Activity)) {
     activity.alternate = uiActivityAlternate(now);
   }
+  if (!standby_ && model_.mode == DisplayUiMode::Quantity) {
+    activity.quantityCursorVisible = !uiActivityAlternate(now);
+  }
   return activity;
 }
 
 bool DisplayController::activityEquals(const RenderActivity& a, const RenderActivity& b) {
-  return a.alternate == b.alternate;
+  return a.alternate == b.alternate && a.quantityCursorVisible == b.quantityCursorVisible;
 }
 
 void DisplayController::tick() {

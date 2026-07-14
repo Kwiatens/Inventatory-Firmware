@@ -108,6 +108,7 @@ class QuantityComposer {
     digits_.clear();
     defaultValue_ = 1;
     cursor_ = 0;
+    editingStarted_ = false;
   }
 
   bool empty() const {
@@ -116,6 +117,12 @@ class QuantityComposer {
 
   void appendDigit(char digit) {
     if (digit < '0' || digit > '9') {
+      return;
+    }
+    if (!editingStarted_) {
+      digits_ = String(digit);
+      cursor_ = 1;
+      editingStarted_ = true;
       return;
     }
     ensureDigits();
@@ -132,12 +139,24 @@ class QuantityComposer {
     digits_ = String(defaultValue_);
     if (digits_.length() > 4) digits_.remove(4);
     cursor_ = 0;
+    editingStarted_ = false;
   }
 
   void cycleCursor() {
     ensureDigits();
+    editingStarted_ = true;
     const auto slots = editableSlots();
     cursor_ = slots == 0 ? 0 : (cursor_ + 1U) % slots;
+  }
+
+  void deleteDigit() {
+    ensureDigits();
+    editingStarted_ = true;
+    std::size_t deleteAt = cursor_;
+    if (deleteAt >= digits_.length() && deleteAt > 0) --deleteAt;
+    if (deleteAt < digits_.length()) digits_.remove(deleteAt, 1);
+    if (digits_.length() == 0) digits_ = "1";
+    cursor_ = min(deleteAt, digits_.length());
   }
 
   std::size_t cursor() const { return cursor_; }
@@ -184,6 +203,7 @@ class QuantityComposer {
   String digits_;
   int defaultValue_ = 1;
   std::size_t cursor_ = 0;
+  bool editingStarted_ = false;
 };
 
 struct ScanRequest {
