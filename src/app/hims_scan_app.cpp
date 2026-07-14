@@ -344,8 +344,14 @@ void HimsScanApp::handleScan(const String& code) {
     scannedCode_ = forwardedCode;
     quantity_.setDefaultValue(defaultQuantity);
     pendingScanType_ = PendingScanType::DigiKeyDataMatrix;
+    activeLookupCode_ = forwardedCode;
+    activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
+    lookupMissCount_ = 0;
     setAwaitingQuantity();
-    display_.showQuantity(scannedCode_, "DigiKey", quantity_.displayText(), quantity_.cursor(), true);
+    display_.showQuantity("Checking inventory", String("DigiKey ") + scannedCode_,
+                          quantity_.displayText(), quantity_.cursor(), true,
+                          QuantityLookupState::Pending);
+    lastSyncAttempt_ = 0;
     Serial.print("DigiKey default quantity: ");
     Serial.println(quantity_.displayText().c_str());
     Serial.println("Enter quantity, then press A to add. C cancels.");
@@ -366,8 +372,9 @@ void HimsScanApp::handleScan(const String& code) {
     activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
     lookupMissCount_ = 0;
     setAwaitingQuantity();
-    display_.showQuantity(WiFi.isConnected() ? String("Looking up item") : String("Inventory item"),
-                          String("Code ") + trimmed, quantity_.displayText(), quantity_.cursor(), false);
+    display_.showQuantity("Checking inventory", String("Code ") + trimmed,
+                          quantity_.displayText(), quantity_.cursor(), false,
+                          QuantityLookupState::Pending);
     lastSyncAttempt_ = 0;
     Serial.println("Enter quantity, then press A to add or B to subtract. C cancels.");
     sendDebugMessage(String("qr quantity scan ") + trimmed, "scan");
@@ -460,6 +467,16 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
     if (state_ == State::AwaitQuantity) {
       quantity_.cycleCursor();
       display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
+    }
+    return;
+  }
+
+  if (event.type == HimsKeyEventType::DeleteDigit) {
+    if (state_ == State::AwaitQuantity) {
+      quantity_.deleteDigit();
+      display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
+      Serial.print("Quantity: ");
+      Serial.println(quantity_.displayText().c_str());
     }
     return;
   }
@@ -1078,20 +1095,23 @@ void HimsScanApp::handleSyncResponse(const SyncResponse& response) {
   if (isCurrentLookupResult(response, activeLookupId_)) {
     lookupMissCount_ = 0;
     if (response.lookupStatus == "found" && response.lookupItemName.length() > 0) {
-      display_.updateQuantityItem(response.lookupItemName);
+      display_.updateQuantityLookup(response.lookupItemName, QuantityLookupState::Found);
       activeLookupId_.clear();
       activeLookupCode_.clear();
     } else if (response.lookupStatus == "not_found") {
-      display_.updateQuantityItem("Unknown item");
+      display_.updateQuantityLookup(pendingScanType_ == PendingScanType::DigiKeyDataMatrix
+                                        ? String("Not in inventory")
+                                        : String("Unknown inventory ID"),
+                                    QuantityLookupState::NotFound);
       activeLookupId_.clear();
       activeLookupCode_.clear();
     } else if (response.lookupStatus == "unavailable") {
-      display_.updateQuantityItem("Name unavailable");
+      display_.updateQuantityLookup("Lookup unavailable", QuantityLookupState::Unavailable);
       activeLookupId_.clear();
       activeLookupCode_.clear();
     }
   } else if (activeLookupId_.length() > 0 && ++lookupMissCount_ >= 3U) {
-    display_.updateQuantityItem("Name unavailable");
+    display_.updateQuantityLookup("Lookup unavailable", QuantityLookupState::Unavailable);
     activeLookupId_.clear();
     activeLookupCode_.clear();
     lookupMissCount_ = 0;
@@ -1188,9 +1208,10 @@ DisplayConnectivityState HimsScanApp::connectivityState() const {
 void HimsScanApp::updateConnectivityDisplay() {
   const bool wifiOnline = WiFi.isConnected();
   display_.setConnectivity(connectivityState(), wifiOnline, pcOnline_, outbox_.size());
-  if (state_ == State::AwaitQuantity && pendingScanType_ == PendingScanType::HimsQuantity &&
-      activeLookupId_.length() > 0) {
-    display_.updateQuantityItem(wifiOnline ? String("Looking up item") : String("Inventory item"));
+  if (state_ == State::AwaitQuantity && activeLookupId_.length() > 0) {
+    display_.updateQuantityLookup(wifiOnline ? String("Checking inventory") : String("Waiting for PC"),
+                                  wifiOnline ? QuantityLookupState::Pending
+                                             : QuantityLookupState::Unavailable);
   }
 }
 

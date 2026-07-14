@@ -50,6 +50,24 @@ void test_quantity_composer_cursor_replaces_and_appends() {
   TEST_ASSERT_EQUAL_UINT32(0, composer.cursor());
 }
 
+void test_quantity_composer_replaces_default_and_deletes_digits() {
+  QuantityComposer composer;
+  composer.setDefaultValue(10);
+  composer.appendDigit('1');
+  TEST_ASSERT_EQUAL_STRING("1", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_UINT32(1, composer.cursor());
+
+  composer.appendDigit('2');
+  TEST_ASSERT_EQUAL_STRING("12", composer.displayText().c_str());
+  composer.deleteDigit();
+  TEST_ASSERT_EQUAL_STRING("1", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_UINT32(1, composer.cursor());
+
+  composer.deleteDigit();
+  TEST_ASSERT_EQUAL_STRING("1", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_UINT32(0, composer.cursor());
+}
+
 void test_quantity_composer_subtract_and_invalid_digits() {
   QuantityComposer composer;
   composer.appendDigit('A');
@@ -214,6 +232,7 @@ void setup() {
   RUN_TEST(test_standardized_scanner_codes);
   RUN_TEST(test_quantity_composer_defaults_and_limit);
   RUN_TEST(test_quantity_composer_cursor_replaces_and_appends);
+  RUN_TEST(test_quantity_composer_replaces_default_and_deletes_digits);
   RUN_TEST(test_quantity_composer_subtract_and_invalid_digits);
   RUN_TEST(test_request_json_serialization);
   RUN_TEST(test_scan_json_escapes_datamatrix_separators);

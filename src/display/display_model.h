@@ -52,8 +52,16 @@ enum class DisplayRailStyle {
   Activity,
 };
 
+enum class QuantityLookupState {
+  Pending,
+  Found,
+  NotFound,
+  Unavailable,
+};
+
 struct RenderActivity {
   bool alternate = false;
+  bool quantityCursorVisible = true;
 };
 
 struct DisplayModel {
@@ -70,6 +78,7 @@ struct DisplayModel {
   String tertiary;
   String actions;
   String pageText;
+  String quantityPrompt;
   String quantityText = "1";
   std::size_t quantityCursor = 0;
   int otaPercent = 0;

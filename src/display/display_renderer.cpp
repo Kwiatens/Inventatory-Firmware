@@ -1,3 +1,4 @@
+// Scan R1 LCD rendering routines.
 #include "display/display_renderer.h"
 
 #include <algorithm>
@@ -154,7 +155,7 @@ void DisplayRenderer::drawTask(const DisplayModel& model) {
               model.secondary, 1, 9);
 }
 
-void DisplayRenderer::drawQuantity(const DisplayModel& model) {
+void DisplayRenderer::drawQuantity(const DisplayModel& model, const RenderActivity& activity) {
   lcd_.setFont(style::kFontHeading);
   const bool itemFits = lcd_.getStrWidth(model.primary.c_str()) <= style::kContentW;
   if (itemFits) {
@@ -163,21 +164,26 @@ void DisplayRenderer::drawQuantity(const DisplayModel& model) {
     drawClipped(style::kContentX, style::kQuantityCodeY, style::kContentW, model.secondary);
   } else {
     lcd_.setFont(style::kFontRegular);
-    drawWrapped(style::kContentX, 21, style::kContentW, model.primary, 2, 9);
+    drawWrapped(style::kContentX, 23, style::kContentW, model.primary, 2, 9);
   }
 
+  lcd_.setFont(style::kFontRegular);
+  drawClipped(style::kContentX, style::kQuantityPromptY, style::kContentW,
+              model.quantityPrompt);
+  const int promptWidth = lcd_.getStrWidth(model.quantityPrompt.c_str());
   lcd_.setFont(style::kFontValue);
-  const int valueWidth = lcd_.getStrWidth(model.quantityText.c_str());
-  const int valueX = style::kContentRight - valueWidth;
+  const int valueX = style::kContentX + promptWidth + 3;
   lcd_.drawStr(valueX, style::kQuantityValueY, model.quantityText.c_str());
-  const auto prefix = model.quantityText.substring(0, min(model.quantityCursor, model.quantityText.length()));
-  const int caretX = valueX + lcd_.getStrWidth(prefix.c_str());
-  int caretWidth = 7;
-  if (model.quantityCursor < model.quantityText.length()) {
-    const auto digit = model.quantityText.substring(model.quantityCursor, model.quantityCursor + 1);
-    caretWidth = max(5, static_cast<int>(lcd_.getStrWidth(digit.c_str())));
+  if (activity.quantityCursorVisible) {
+    const auto prefix = model.quantityText.substring(0, min(model.quantityCursor, model.quantityText.length()));
+    const int caretX = valueX + lcd_.getStrWidth(prefix.c_str());
+    int caretWidth = 7;
+    if (model.quantityCursor < model.quantityText.length()) {
+      const auto digit = model.quantityText.substring(model.quantityCursor, model.quantityCursor + 1);
+      caretWidth = max(5, static_cast<int>(lcd_.getStrWidth(digit.c_str())));
+    }
+    lcd_.drawHLine(caretX, style::kQuantityCaretY, caretWidth);
   }
-  lcd_.drawHLine(caretX, style::kQuantityCaretY, caretWidth);
 }
 
 void DisplayRenderer::drawResult(const DisplayModel& model) {
@@ -260,7 +266,7 @@ void DisplayRenderer::drawProgress(const DisplayModel& model) {
 
 bool DisplayRenderer::isKeyToken(const String& word) {
   if (word.length() != 1) return false;
-  return word[0] >= 'A' && word[0] <= 'D';
+  return (word[0] >= 'A' && word[0] <= 'D') || word[0] == '#';
 }
 
 void DisplayRenderer::drawKeyChip(int& x, int baselineY, char key) {
@@ -324,7 +330,7 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
     drawRail(model.rail, activity);
     switch (model.bodyKind) {
       case DisplayBodyKind::Task: drawTask(model); break;
-      case DisplayBodyKind::Quantity: drawQuantity(model); break;
+      case DisplayBodyKind::Quantity: drawQuantity(model, activity); break;
       case DisplayBodyKind::Result: drawResult(model); break;
       case DisplayBodyKind::List: drawList(model); break;
       case DisplayBodyKind::Contrast: drawContrast(model); break;

@@ -27,8 +27,9 @@ constexpr int kContentW = kContentRight - kContentX;
 constexpr int kTaskPrimaryY = 29;
 constexpr int kTaskSecondaryY = 43;
 
-constexpr int kQuantityItemY = 23;
-constexpr int kQuantityCodeY = 33;
+constexpr int kQuantityItemY = 25;
+constexpr int kQuantityCodeY = 34;
+constexpr int kQuantityPromptY = 48;
 constexpr int kQuantityValueY = 49;
 constexpr int kQuantityCaretY = 50;
 

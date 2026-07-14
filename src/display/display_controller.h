@@ -16,9 +16,9 @@ class DisplayController {
   void showBoot(const String& stage);
   void showReady();
   void showQuantity(const String& itemText, const String& itemCode, const String& quantityText,
-                    std::size_t cursor, bool supplier);
+                    std::size_t cursor, bool supplier, QuantityLookupState lookupState);
   void updateQuantity(const String& quantityText, std::size_t cursor);
-  void updateQuantityItem(const String& itemText);
+  void updateQuantityLookup(const String& itemText, QuantityLookupState lookupState);
   void showQueued();
   bool showResult(const SyncResult& result);
   bool finishInteraction();
