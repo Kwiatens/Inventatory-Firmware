@@ -1,27 +1,23 @@
 #include "display/display_renderer.h"
 
+#include <algorithm>
+#include <cctype>
+
+#include "HimsScanUiPolicy.h"
 #include "config/hardware.h"
 #include "display/display_style.h"
 
 namespace hims_scan {
 
-namespace {
-
-bool isResultMode(DisplayUiMode mode) {
-  return mode == DisplayUiMode::Success || mode == DisplayUiMode::Warning ||
-         mode == DisplayUiMode::Error;
-}
-
-}  // namespace
-
 DisplayRenderer::DisplayRenderer()
-    : lcd_(U8G2_R0, hardware::kLcdClockPin, hardware::kLcdDataPin, hardware::kLcdCsPin,
-           hardware::kLcdDcPin, hardware::kLcdResetPin) {}
+    : lcd_(U8G2_R0, hardware::kLcdClockPin, hardware::kLcdDataPin,
+           hardware::kLcdCsPin, hardware::kLcdDcPin, hardware::kLcdResetPin) {}
 
 void DisplayRenderer::begin() {
   lcd_.begin();
   lcd_.setContrast(hardware::kLcdContrast);
-  lcd_.setPowerSave(0);
+  lcd_.setFontMode(1);
+  lcd_.setDrawColor(1);
 }
 
 void DisplayRenderer::setPowerSave(bool enabled) { lcd_.setPowerSave(enabled ? 1 : 0); }
@@ -30,370 +26,314 @@ void DisplayRenderer::setContrast(uint8_t contrast) { lcd_.setContrast(constrain
 
 void DisplayRenderer::normalizeStartLine() {
   for (uint8_t attempt = 0; attempt < hardware::kLcdStartLineRecoveryAttempts; ++attempt) {
-    // Separate transactions make one corrupted command unlikely to leave the panel shifted.
-    lcd_.sendF("c", 0x40);  // ST7565: display start line = 0.
+    lcd_.sendF("c", 0x40);
   }
 }
 
-void DisplayRenderer::drawClipped(int x, int y, int maxWidth, const String& text) {
-  String clipped = text;
-  while (clipped.length() > 0 && lcd_.getStrWidth(clipped.c_str()) > maxWidth) clipped.remove(clipped.length() - 1);
-  if (clipped.length() < text.length() && clipped.length() > 3) {
-    clipped.remove(clipped.length() - 3);
-    clipped += "...";
+void DisplayRenderer::drawClipped(int x, int y, int maxWidth, const String& value) {
+  if (maxWidth <= 0 || value.length() == 0) return;
+  const int ellipsisWidth = lcd_.getStrWidth("...");
+  const std::size_t prefixLength = displayClippedPrefixLength(
+      value.length(), maxWidth, ellipsisWidth, [this, &value](std::size_t length) {
+        return lcd_.getStrWidth(value.substring(0, length).c_str());
+      });
+  if (prefixLength == value.length()) {
+    lcd_.drawStr(x, y, value.c_str());
+    return;
   }
-  lcd_.drawStr(x, y, clipped.c_str());
+  const String clipped = value.substring(0, prefixLength) + "...";
+  if (lcd_.getStrWidth(clipped.c_str()) <= maxWidth) lcd_.drawStr(x, y, clipped.c_str());
 }
 
-// ---------------------------------------------------------------------------
-// Small hand-drawn glyphs (1-bit, no icon-font tables).
-// ---------------------------------------------------------------------------
-
-void DisplayRenderer::drawWifi(int x, int top, bool online, bool connecting, const RenderAnim& anim) {
-  const int base = top + 8;
-  const int litBars = connecting ? (anim.spinnerFrame % 4) : 3;
-  for (int i = 0; i < 4; ++i) {
-    const int bx = x + i * 2;
-    const int h = 2 + i * 2;
-    const bool lit = online ? true : (connecting ? (i <= litBars) : false);
-    if (lit) {
-      lcd_.drawVLine(bx, base - h, h);
-    } else {
-      lcd_.drawPixel(bx, base - 1);
+void DisplayRenderer::drawWrapped(int x, int firstBaselineY, int maxWidth, const String& value,
+                                  std::size_t maxLines, int lineStep) {
+  int cursor = 0;
+  const int length = static_cast<int>(value.length());
+  for (std::size_t lineIndex = 0; lineIndex < maxLines && cursor < length; ++lineIndex) {
+    while (cursor < length && value[cursor] == ' ') ++cursor;
+    String line;
+    int next = cursor;
+    while (next < length) {
+      int wordEnd = value.indexOf(' ', next);
+      if (wordEnd < 0) wordEnd = length;
+      const String word = value.substring(next, wordEnd);
+      const String candidate = line.length() > 0 ? line + " " + word : word;
+      if (line.length() > 0 && lcd_.getStrWidth(candidate.c_str()) > maxWidth) break;
+      line = candidate;
+      next = wordEnd;
+      while (next < length && value[next] == ' ') ++next;
+      if (lcd_.getStrWidth(line.c_str()) > maxWidth) break;
     }
-  }
-  if (!online && !connecting) lcd_.drawLine(x - 1, top, x + 7, base);  // offline slash
-}
-
-void DisplayRenderer::drawMonitor(int x, int top, bool filled) {
-  lcd_.drawFrame(x, top, 7, 5);
-  if (filled) lcd_.drawBox(x + 1, top + 1, 5, 3);
-  lcd_.drawHLine(x + 1, top + 6, 5);  // stand base
-  lcd_.drawVLine(x + 3, top + 5, 1);
-}
-
-void DisplayRenderer::drawSpinner(int cx, int cy, uint8_t frame) {
-  static const int8_t dx[8] = {3, 2, 0, -2, -3, -2, 0, 2};
-  static const int8_t dy[8] = {0, 2, 3, 2, 0, -2, -3, -2};
-  for (int i = 0; i < 8; ++i) {
-    const int px = cx + dx[i];
-    const int py = cy + dy[i];
-    if (i == frame % 8) {
-      lcd_.drawDisc(px, py, 1);
-    } else {
-      lcd_.drawPixel(px, py);
-    }
+    cursor = next;
+    if (lineIndex + 1U == maxLines && cursor < length) line += " " + value.substring(cursor);
+    drawClipped(x, firstBaselineY + static_cast<int>(lineIndex) * lineStep, maxWidth, line);
   }
 }
 
-void DisplayRenderer::drawCheck(int cx, int cy, int r, uint8_t progress) {
-  lcd_.drawCircle(cx, cy, r);
-  const int ax = cx - 6, ay = cy;
-  const int bx = cx - 2, by = cy + 4;
-  const int gx = cx + 6, gy = cy - 6;
-  const int p = constrain(progress, 0, 100);
-  const int f1 = min(100, p * 100 / 40);  // first stroke over 0..40%
-  const int p1x = ax + (bx - ax) * f1 / 100;
-  const int p1y = ay + (by - ay) * f1 / 100;
-  lcd_.drawLine(ax, ay, p1x, p1y);
-  if (p > 40) {
-    const int f2 = (p - 40) * 100 / 60;  // second stroke over 40..100%
-    const int p2x = bx + (gx - bx) * f2 / 100;
-    const int p2y = by + (gy - by) * f2 / 100;
-    lcd_.drawLine(bx, by, p2x, p2y);
+String DisplayRenderer::pcStatusText(const DisplayModel& model) const {
+  switch (model.connectivity) {
+    case DisplayConnectivityState::Online: return "PC linked";
+    case DisplayConnectivityState::Syncing: return "PC syncing";
+    default: return "PC offline";
   }
 }
 
-void DisplayRenderer::drawCross(int cx, int cy, int r) {
-  lcd_.drawCircle(cx, cy, r);
-  lcd_.drawLine(cx - 5, cy - 5, cx + 5, cy + 5);
-  lcd_.drawLine(cx - 5, cy + 5, cx + 5, cy - 5);
-}
-
-void DisplayRenderer::drawWarningBang(int cx, int cy, int r) {
-  lcd_.drawLine(cx, cy - r, cx - r, cy + r);
-  lcd_.drawLine(cx, cy - r, cx + r, cy + r);
-  lcd_.drawLine(cx - r, cy + r, cx + r, cy + r);
-  lcd_.drawVLine(cx, cy - 3, 5);
-  lcd_.drawPixel(cx, cy + r - 3);
-}
-
-// ---------------------------------------------------------------------------
-// Header
-// ---------------------------------------------------------------------------
-
-void DisplayRenderer::drawStatusIcons(const DisplayModel& model, const RenderAnim& anim) {
-  if (model.mode == DisplayUiMode::Ota || model.mode == DisplayUiMode::Setup) return;
-  lcd_.setDrawColor(0);
-  int right = style::kScreenW - style::kHeaderRightPad;
-
-  // Queue badge (rightmost): count of pending events.
-  if (model.queueDepth > 0) {
-    lcd_.setFont(style::kFontSmall);
-    const String q(static_cast<unsigned>(model.queueDepth));
-    const int w = lcd_.getStrWidth(q.c_str());
-    lcd_.drawStr(right - w, style::kHeaderBaselineY, q.c_str());
-    lcd_.drawFrame(right - w - 2, 1, w + 3, style::kHeaderH - 2);
-    right -= (w + 5);
+void DisplayRenderer::drawHeader(const DisplayModel& model) {
+  lcd_.setFont(style::kFontHeading);
+  const String rightText = model.pageText.length() > 0
+                               ? model.pageText
+                               : (model.showPcStatus ? pcStatusText(model) : String());
+  const int titleWidth = lcd_.getStrWidth(model.header.c_str());
+  bool showRight = rightText.length() > 0;
+  int rightWidth = 0;
+  if (showRight) {
+    lcd_.setFont(model.pageText.length() > 0 ? style::kFontValue : style::kFontRegular);
+    rightWidth = lcd_.getStrWidth(rightText.c_str());
+    showRight = displayHeaderCanShowStatus(
+        titleWidth, rightWidth, style::kHeaderRightX - style::kHeaderLeftX,
+        style::kHeaderStatusGap);
   }
 
-  // PC link (monitor): solid when linked, outline while searching.
-  const bool pcLinked = model.pcOnline || model.connectivity == DisplayConnectivityState::Syncing;
-  if (pcLinked) {
-    right -= style::kMonitorW;
-    drawMonitor(right, style::kIconTop, true);
-    right -= 2;
-  } else if (model.wifiOnline) {
-    right -= style::kMonitorW;
-    drawMonitor(right, style::kIconTop, false);
-    right -= 2;
+  lcd_.setFont(style::kFontHeading);
+  drawClipped(style::kHeaderLeftX, style::kHeaderBaselineY,
+              showRight ? style::kHeaderRightX - style::kHeaderLeftX - rightWidth -
+                              style::kHeaderStatusGap
+                        : style::kHeaderRightX - style::kHeaderLeftX,
+              model.header);
+  if (showRight) {
+    lcd_.setFont(model.pageText.length() > 0 ? style::kFontValue : style::kFontRegular);
+    lcd_.drawStr(style::kHeaderRightX - rightWidth, style::kHeaderBaselineY, rightText.c_str());
   }
-
-  // Wi-Fi signal bars.
-  const bool connecting = model.connectivity == DisplayConnectivityState::WifiConnecting;
-  right -= style::kWifiW;
-  drawWifi(right, style::kIconTop, model.wifiOnline, connecting, anim);
-  right -= 3;
-
-  // In-progress spinner for genuinely transient connectivity work only. A
-  // persistent "searching" state stays static (the outline monitor conveys it),
-  // matching DisplayController::spinnerActive() so the spinner never freezes.
-  const bool busy = connecting || model.connectivity == DisplayConnectivityState::Syncing;
-  if (busy) {
-    right -= (2 * style::kSpinnerR + 1);
-    drawSpinner(right + style::kSpinnerR, style::kHeaderH / 2, anim.spinnerFrame);
-  }
-
-  lcd_.setDrawColor(1);
+  lcd_.drawHLine(style::kHeaderLeftX, style::kHeaderDividerY,
+                 style::kHeaderRightX - style::kHeaderLeftX);
 }
 
-void DisplayRenderer::drawHeader(const DisplayModel& model, const RenderAnim& anim) {
-  lcd_.setDrawColor(1);
-  lcd_.drawBox(0, 0, style::kScreenW, style::kHeaderH);
-  lcd_.setDrawColor(0);
-  lcd_.setFont(style::kFontSmall);
-  String status;
-  if (model.mode == DisplayUiMode::Ota) {
-    status = "OTA UPDATE";
-  } else if (model.mode == DisplayUiMode::Setup) {
-    status = "BLE SETUP";
+void DisplayRenderer::drawRail(DisplayRailStyle railStyle, const RenderActivity& activity) {
+  const int height = style::kRailBottom - style::kRailTop + 1;
+  switch (railStyle) {
+    case DisplayRailStyle::Thin:
+      lcd_.drawVLine(style::kRailX + 1, style::kRailTop, height);
+      break;
+    case DisplayRailStyle::Solid:
+      lcd_.drawBox(style::kRailX, style::kRailTop, 4, height);
+      break;
+    case DisplayRailStyle::Warning:
+      for (int y = style::kRailTop; y <= style::kRailBottom; y += 4) {
+        lcd_.drawBox(style::kRailX, y, 3, 2);
+      }
+      break;
+    case DisplayRailStyle::Error:
+      lcd_.setFont(style::kFontValue);
+      lcd_.drawStr(style::kRailX - 1, 38, "!");
+      break;
+    case DisplayRailStyle::Activity:
+      if (activity.alternate) {
+        lcd_.drawBox(style::kRailX, style::kRailTop, 2, 14);
+        lcd_.drawBox(style::kRailX, style::kRailBottom - 8, 2, 9);
+      } else {
+        lcd_.drawBox(style::kRailX, style::kRailTop, 2, 9);
+        lcd_.drawBox(style::kRailX, style::kRailBottom - 13, 2, 14);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+void DisplayRenderer::drawTask(const DisplayModel& model) {
+  lcd_.setFont(style::kFontHeading);
+  const bool primaryFits = lcd_.getStrWidth(model.primary.c_str()) <= style::kContentW;
+  if (primaryFits) {
+    drawClipped(style::kContentX, style::kTaskPrimaryY, style::kContentW, model.primary);
   } else {
-    switch (model.connectivity) {
-      case DisplayConnectivityState::WifiConnecting: status = "WIFI"; break;
-      case DisplayConnectivityState::PcSearching: status = "LINK PC"; break;
-      case DisplayConnectivityState::Syncing: status = "SYNC"; break;
-      case DisplayConnectivityState::Online: status = "ONLINE"; break;
-      case DisplayConnectivityState::Offline: status = "OFFLINE"; break;
-    }
+    lcd_.setFont(style::kFontRegular);
+    drawWrapped(style::kContentX, 25, style::kContentW, model.primary, 2, 9);
   }
-  // Leave room on the right for the status-icon cluster (~44px).
-  drawClipped(style::kHeaderTextX, style::kHeaderBaselineY, style::kScreenW - 46, status);
-  lcd_.setDrawColor(1);
-  drawStatusIcons(model, anim);
+  lcd_.setFont(style::kFontRegular);
+  drawWrapped(style::kContentX, primaryFits ? style::kTaskSecondaryY : 48, style::kContentW,
+              model.secondary, 1, 9);
 }
 
-// ---------------------------------------------------------------------------
-// Splash (procedural brand logo from the favicon motif) + boot
-// ---------------------------------------------------------------------------
-
-void DisplayRenderer::drawSplash(const DisplayModel& model) {
-  lcd_.setDrawColor(1);
-  // Logo: rounded-square frame holding "list rows" with a highlighted scan bar.
-  constexpr int lw = 40, lh = 26;
-  const int lx = (style::kScreenW - lw) / 2;
-  constexpr int ly = 2;
-  lcd_.drawRFrame(lx, ly, lw, lh, 4);
-  lcd_.drawHLine(lx + 8, ly + 6, lw - 16);   // top list row
-  lcd_.drawBox(lx + 4, ly + 11, lw - 8, 4);  // highlighted scan bar (middle)
-  lcd_.drawHLine(lx + 8, ly + 20, lw - 22);  // bottom list row (shorter)
-
-  lcd_.setFont(style::kFontWordmark);
-  const int titleX = (style::kScreenW - lcd_.getStrWidth(model.title.c_str())) / 2;
-  lcd_.drawStr(max(0, titleX), 46, model.title.c_str());
-  lcd_.setFont(style::kFontBody);
-  const int subtitleX = (style::kScreenW - lcd_.getStrWidth(model.line1.c_str())) / 2;
-  lcd_.drawStr(max(0, subtitleX), 60, model.line1.c_str());
-}
-
-// ---------------------------------------------------------------------------
-// Result screens (glyph + text)
-// ---------------------------------------------------------------------------
-
-void DisplayRenderer::drawResult(const DisplayModel& model, const RenderAnim& anim) {
-  lcd_.setDrawColor(1);
-  const int cx = style::kResultGlyphCx, cy = style::kResultGlyphCy, r = style::kResultGlyphR;
-  switch (model.mode) {
-    case DisplayUiMode::Success: drawCheck(cx, cy, r, anim.successProgress); break;
-    case DisplayUiMode::Warning: drawWarningBang(cx, cy, r); break;
-    default: drawCross(cx, cy, r); break;  // Error
-  }
-  const int w = style::kScreenW - style::kResultTextX - 2;
-  lcd_.setFont(style::kFontBody);
-  drawClipped(style::kResultTextX, style::kResultTitleY, w, model.title);
-  lcd_.setFont(style::kFontSmall);
-  drawClipped(style::kResultTextX, style::kResultLine1Y, w, model.line1);
-  drawClipped(style::kResultTextX, style::kResultLine2Y, w, model.line2);
-}
-
-// ---------------------------------------------------------------------------
-// Body
-// ---------------------------------------------------------------------------
-
-void DisplayRenderer::drawArrow(const RenderAnim& anim) {
-  if (anim.pulseActive) {
-    lcd_.drawTriangle(style::kArrowTipX, style::kArrowMidY, style::kArrowBackX, style::kArrowTopY,
-                      style::kArrowBackX, style::kArrowBotY);
-    // Dark scan line sweeping down the filled chevron.
-    const int span = style::kArrowBotY - style::kArrowTopY;
-    const int y = style::kArrowTopY + (anim.pulsePhase * span) / (style::kPulsePhases - 1);
-    lcd_.setDrawColor(0);
-    lcd_.drawHLine(0, y, style::kArrowBackX + 1);
-    lcd_.drawHLine(0, y + 1, style::kArrowBackX + 1);
-    lcd_.setDrawColor(1);
+void DisplayRenderer::drawQuantity(const DisplayModel& model) {
+  lcd_.setFont(style::kFontHeading);
+  const bool itemFits = lcd_.getStrWidth(model.primary.c_str()) <= style::kContentW;
+  if (itemFits) {
+    drawClipped(style::kContentX, style::kQuantityItemY, style::kContentW, model.primary);
+    lcd_.setFont(style::kFontRegular);
+    drawClipped(style::kContentX, style::kQuantityCodeY, style::kContentW, model.secondary);
   } else {
-    lcd_.drawLine(style::kArrowTipX, style::kArrowMidY, style::kArrowBackX - 1, style::kArrowTopY);
-    lcd_.drawLine(style::kArrowTipX, style::kArrowMidY, style::kArrowBackX - 1, style::kArrowBotY);
-    lcd_.drawVLine(style::kArrowBackX - 1, style::kArrowTopY, style::kArrowBotY - style::kArrowTopY);
+    lcd_.setFont(style::kFontRegular);
+    drawWrapped(style::kContentX, 21, style::kContentW, model.primary, 2, 9);
+  }
+
+  lcd_.setFont(style::kFontValue);
+  const int valueWidth = lcd_.getStrWidth(model.quantityText.c_str());
+  const int valueX = style::kContentRight - valueWidth;
+  lcd_.drawStr(valueX, style::kQuantityValueY, model.quantityText.c_str());
+  const auto prefix = model.quantityText.substring(0, min(model.quantityCursor, model.quantityText.length()));
+  const int caretX = valueX + lcd_.getStrWidth(prefix.c_str());
+  int caretWidth = 7;
+  if (model.quantityCursor < model.quantityText.length()) {
+    const auto digit = model.quantityText.substring(model.quantityCursor, model.quantityCursor + 1);
+    caretWidth = max(5, static_cast<int>(lcd_.getStrWidth(digit.c_str())));
+  }
+  lcd_.drawHLine(caretX, style::kQuantityCaretY, caretWidth);
+}
+
+void DisplayRenderer::drawResult(const DisplayModel& model) {
+  lcd_.setFont(style::kFontHeading);
+  const bool primaryFits = lcd_.getStrWidth(model.primary.c_str()) <= style::kContentW;
+  if (primaryFits) {
+    drawClipped(style::kContentX, style::kResultPrimaryY, style::kContentW, model.primary);
+  } else {
+    lcd_.setFont(style::kFontRegular);
+    drawWrapped(style::kContentX, 22, style::kContentW, model.primary, 2, 9);
+  }
+  lcd_.setFont(style::kFontRegular);
+  drawClipped(style::kContentX, primaryFits ? style::kResultSecondaryY : 43,
+              style::kContentW, model.secondary);
+  if (primaryFits) {
+    lcd_.setFont(style::kFontValue);
+    drawClipped(style::kContentX, style::kResultTertiaryY, style::kContentW, model.tertiary);
   }
 }
 
-void DisplayRenderer::drawBody(const DisplayModel& model, const RenderAnim& anim) {
-  constexpr int x = style::kBodyX;
-  constexpr int width = style::kBodyW;
-  if (model.mode == DisplayUiMode::Menu || model.mode == DisplayUiMode::QuickLabels ||
-      model.mode == DisplayUiMode::QuickSettings) {
-    // Menus intentionally use the entire panel: no connectivity bar, scan arrow, or footer competes with controls.
-    lcd_.setFont(style::kFontBody);
-    drawClipped(style::kMenuTitleX, style::kMenuTitleY, style::kScreenW - 2 * style::kMenuTitleX, model.title);
-    lcd_.drawHLine(0, style::kMenuDividerY, style::kScreenW);
-    for (std::size_t index = 0; index < model.menuLineCount && index < style::kMenuMaxRows; ++index) {
-      drawClipped(style::kMenuRowX, style::kMenuRowY0 + static_cast<int>(index) * style::kMenuRowStep,
-                  style::kScreenW - 2 * style::kMenuRowX, model.menuLines[index]);
-    }
-    return;
-  }
-  if (isResultMode(model.mode)) {
-    drawResult(model, anim);
-    return;
-  }
-  if (model.mode == DisplayUiMode::Quantity) {
-    lcd_.setFont(style::kFontSmall);
-    drawClipped(x, style::kQtyTitleY, width, model.title);
-    drawClipped(x, style::kQtyItemY, width, model.line1);
-    lcd_.setFont(style::kFontNumeral);
-    lcd_.setCursor(x, style::kQtyNumeralY);
-    lcd_.print(model.quantityText);
-    const auto prefix = model.quantityText.substring(0, min(model.quantityCursor, model.quantityText.length()));
-    const int cursorX = x + lcd_.getStrWidth(prefix.c_str());
-    int cursorWidth = style::kQtyCaretMinW;
-    if (model.quantityCursor < model.quantityText.length()) {
-      const auto digit = model.quantityText.substring(model.quantityCursor, model.quantityCursor + 1);
-      cursorWidth = max(6, static_cast<int>(lcd_.getStrWidth(digit.c_str())));
-    }
-    lcd_.drawHLine(cursorX, style::kQtyUnderlineY, cursorWidth);
-    return;
-  }
-  if (model.mode == DisplayUiMode::Ota) {
-    lcd_.setFont(style::kFontBody);
-    drawClipped(x, style::kOtaTitleY, width, model.title);
-    lcd_.drawFrame(x, style::kOtaBarY, style::kOtaBarW, style::kOtaBarH);
-    lcd_.drawBox(x + 2, style::kOtaBarY + 2,
-                 ((style::kOtaBarW - 4) * constrain(model.otaPercent, 0, 100)) / 100, style::kOtaBarH - 4);
-    return;
-  }
-  lcd_.setFont(style::kFontBody);
-  drawClipped(x, style::kBodyTitleY, width, model.title);
-  lcd_.setFont(style::kFontSmall);
-  drawClipped(x, style::kBodyLine1Y, width, model.line1);
-  drawClipped(x, style::kBodyLine2Y, width, model.line2);
-  // Live spinner for indeterminate waits (printing, BLE connecting).
-  if (model.mode == DisplayUiMode::Printing || model.mode == DisplayUiMode::Setup) {
-    drawSpinner(style::kScreenW - 12, style::kBodyLine1Y - 3, anim.spinnerFrame);
+void DisplayRenderer::drawList(const DisplayModel& model) {
+  lcd_.setFont(style::kFontRegular);
+  for (std::size_t index = 0; index < model.listRowCount && index < style::kListMaxRows; ++index) {
+    drawClipped(style::kListX,
+                style::kListFirstY + static_cast<int>(index) * style::kListRowStep,
+                style::kScreenW - 2 * style::kListX, model.listRows[index]);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Footer (key-hint chips)
-// ---------------------------------------------------------------------------
+void DisplayRenderer::drawContrast(const DisplayModel& model) {
+  lcd_.setFont(style::kFontValue);
+  const int width = lcd_.getStrWidth(model.primary.c_str());
+  lcd_.drawStr((style::kScreenW - width) / 2, 38, model.primary.c_str());
+  lcd_.drawFrame(29, 43, 70, 5);
+  const int level = constrain(model.primary.toInt(), 0, 63);
+  lcd_.drawBox(31, 45, (66 * level) / 63, 1);
+}
+
+void DisplayRenderer::drawConfirm(const DisplayModel& model) {
+  lcd_.setFont(style::kFontHeading);
+  drawClipped(style::kListX, 28, style::kScreenW - 2 * style::kListX, model.primary);
+  lcd_.setFont(style::kFontRegular);
+  drawWrapped(style::kListX, 41, style::kScreenW - 2 * style::kListX,
+              model.secondary, 1, 9);
+}
+
+void DisplayRenderer::drawSetup(const DisplayModel& model) {
+  lcd_.setFont(style::kFontValue);
+  char codeBuffer[7];
+  snprintf(codeBuffer, sizeof(codeBuffer), "%06lu", static_cast<unsigned long>(model.setupCode));
+  const String code(codeBuffer);
+  const int width = lcd_.getStrWidth(code.c_str());
+  lcd_.drawStr((style::kScreenW - width) / 2, 31, code.c_str());
+  lcd_.setFont(style::kFontHeading);
+  const int primaryWidth = lcd_.getStrWidth(model.primary.c_str());
+  if (primaryWidth <= style::kScreenW - 8) {
+    lcd_.drawStr((style::kScreenW - primaryWidth) / 2, 43, model.primary.c_str());
+  } else {
+    drawClipped(4, 43, style::kScreenW - 8, model.primary);
+  }
+  lcd_.setFont(style::kFontRegular);
+  const int secondaryWidth = lcd_.getStrWidth(model.secondary.c_str());
+  if (secondaryWidth <= style::kScreenW - 8) {
+    lcd_.drawStr((style::kScreenW - secondaryWidth) / 2, 52, model.secondary.c_str());
+  } else {
+    drawClipped(4, 52, style::kScreenW - 8, model.secondary);
+  }
+}
+
+void DisplayRenderer::drawProgress(const DisplayModel& model) {
+  lcd_.setFont(style::kFontHeading);
+  drawClipped(style::kProgressX, 27, style::kProgressW, model.primary);
+  lcd_.drawFrame(style::kProgressX, style::kProgressY, style::kProgressW, style::kProgressH);
+  lcd_.drawBox(style::kProgressX + 2, style::kProgressY + 2,
+               ((style::kProgressW - 4) * constrain(model.otaPercent, 0, 100)) / 100,
+               style::kProgressH - 4);
+  lcd_.setFont(style::kFontRegular);
+  drawClipped(style::kProgressX, 53, style::kProgressW, model.secondary);
+}
 
 bool DisplayRenderer::isKeyToken(const String& word) {
-  if (word.length() == 0) return false;
-  const char key = word[0];
-  if (key < 'A' || key > 'D') return false;
-  if (word.length() == 1) return true;
-  // "A+", "B-", "D:" -> key letter followed by a non-alphanumeric operator/marker.
-  return !isalnum(static_cast<unsigned char>(word[1]));
+  if (word.length() != 1) return false;
+  return word[0] >= 'A' && word[0] <= 'D';
 }
 
 void DisplayRenderer::drawKeyChip(int& x, int baselineY, char key) {
   const String glyph(key);
-  const int glyphW = lcd_.getStrWidth(glyph.c_str());
-  // Size the box from the live font ascent so padding above/below the glyph ink
-  // is symmetric (ink occupies rows [baselineY - ascent, baselineY - 1]).
+  const int glyphWidth = lcd_.getStrWidth(glyph.c_str());
   const int ascent = lcd_.getAscent();
-  const int boxW = glyphW + 2 * style::kChipPadX;
+  const int boxWidth = glyphWidth + 2 * style::kChipPadX;
   const int boxTop = baselineY - ascent - style::kChipPadY;
-  const int boxH = ascent + 2 * style::kChipPadY;
-  lcd_.setDrawColor(1);
-  lcd_.drawRBox(x, boxTop, boxW, boxH, style::kChipRadius);
+  const int boxHeight = ascent + 2 * style::kChipPadY;
+  lcd_.drawRBox(x, boxTop, boxWidth, boxHeight, style::kChipRadius);
   lcd_.setDrawColor(0);
   lcd_.drawStr(x + style::kChipPadX, baselineY, glyph.c_str());
   lcd_.setDrawColor(1);
-  x += boxW;
+  x += boxWidth;
 }
 
-void DisplayRenderer::drawFooter(const String& footer) {
-  lcd_.drawHLine(0, style::kFooterDividerY, style::kScreenW);
-  lcd_.setFont(style::kFontSmall);
-  const int y = style::kFooterBaselineY;
-  const int spaceW = lcd_.getStrWidth(" ");
+void DisplayRenderer::drawActions(const String& actionsText) {
+  if (actionsText.length() == 0) return;
+  lcd_.drawHLine(style::kFooterTextX, style::kFooterDividerY,
+                 style::kScreenW - 2 * style::kFooterTextX);
+  lcd_.setFont(style::kFontRegular);
+  const int spaceWidth = lcd_.getStrWidth(" ");
   int x = style::kFooterTextX;
   int start = 0;
-  const int len = static_cast<int>(footer.length());
-  while (start <= len && x < style::kScreenW) {
-    int end = footer.indexOf(' ', start);
-    if (end < 0) end = len;
-    const String word = footer.substring(start, end);
+  const int length = static_cast<int>(actionsText.length());
+  while (start <= length && x < style::kScreenW) {
+    int end = actionsText.indexOf(' ', start);
+    if (end < 0) end = length;
+    const String word = actionsText.substring(start, end);
     start = end + 1;
-    if (word.length() == 0) continue;  // collapse runs of spaces
+    if (word.length() == 0) continue;
     if (isKeyToken(word)) {
-      drawKeyChip(x, y, word[0]);
-      if (word.length() > 1) {
-        const String rest = word.substring(1);
-        x += style::kChipLabelGap;
-        lcd_.drawStr(x, y, rest.c_str());
-        x += lcd_.getStrWidth(rest.c_str());
-      }
-      x += style::kChipGroupGap;
+      if (x > style::kFooterTextX) x += style::kChipGroupGap;
+      drawKeyChip(x, style::kFooterBaselineY, word[0]);
+      x += style::kChipLabelGap;
     } else {
-      lcd_.drawStr(x, y, word.c_str());
-      x += lcd_.getStrWidth(word.c_str()) + spaceW;
+      const int remaining = style::kScreenW - x;
+      if (lcd_.getStrWidth(word.c_str()) > remaining) break;
+      lcd_.drawStr(x, style::kFooterBaselineY, word.c_str());
+      x += lcd_.getStrWidth(word.c_str()) + spaceWidth;
     }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Frame assembly
-// ---------------------------------------------------------------------------
+void DisplayRenderer::drawSplash(const DisplayModel& model) {
+  lcd_.setFont(style::kFontValue);
+  const int titleWidth = lcd_.getStrWidth(model.primary.c_str());
+  lcd_.drawStr(max(0, (style::kScreenW - titleWidth) / 2), 34, model.primary.c_str());
+  lcd_.setFont(style::kFontRegular);
+  const int subtitleWidth = lcd_.getStrWidth(model.secondary.c_str());
+  lcd_.drawStr(max(0, (style::kScreenW - subtitleWidth) / 2), 49, model.secondary.c_str());
+}
 
-void DisplayRenderer::render(const DisplayModel& model, const RenderAnim& anim) {
+void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& activity) {
   lcd_.clearBuffer();
+  lcd_.setDrawColor(1);
   if (model.mode == DisplayUiMode::Splash) {
     drawSplash(model);
-    lcd_.sendBuffer();
-    normalizeStartLine();
-    return;
+  } else {
+    drawHeader(model);
+    drawRail(model.rail, activity);
+    switch (model.bodyKind) {
+      case DisplayBodyKind::Task: drawTask(model); break;
+      case DisplayBodyKind::Quantity: drawQuantity(model); break;
+      case DisplayBodyKind::Result: drawResult(model); break;
+      case DisplayBodyKind::List: drawList(model); break;
+      case DisplayBodyKind::Contrast: drawContrast(model); break;
+      case DisplayBodyKind::Confirm: drawConfirm(model); break;
+      case DisplayBodyKind::Setup: drawSetup(model); break;
+      case DisplayBodyKind::Progress: drawProgress(model); break;
+    }
+    drawActions(model.actions);
   }
-  const bool fullScreenMenu = model.mode == DisplayUiMode::Menu || model.mode == DisplayUiMode::QuickLabels ||
-                              model.mode == DisplayUiMode::QuickSettings;
-  if (!fullScreenMenu) drawHeader(model, anim);
-  // The scan arrow marks "ready to scan"; suppress it where a body glyph owns
-  // the gutter (result screens) or the panel is asleep.
-  if (!fullScreenMenu && model.mode != DisplayUiMode::Standby && !isResultMode(model.mode)) {
-    drawArrow(anim);
-  }
-  drawBody(model, anim);
-  if (!fullScreenMenu) drawFooter(model.footer);
   lcd_.sendBuffer();
   normalizeStartLine();
 }

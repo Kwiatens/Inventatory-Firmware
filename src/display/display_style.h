@@ -1,105 +1,64 @@
 #pragma once
 
-// Single source of truth for the Scan R1 display look: layout geometry, the
-// monospace "terminal" font scale, and key-hint chip metrics. The renderer
-// references these names instead of inlining magic numbers so the whole panel
-// can be retuned from one place. Panel is 128x64, 1-bit (colour is N/A).
+// Workbench design system for the 128x64 monochrome Scan R1 LCD.
 
 #include <U8g2lib.h>
 
 #include <cstddef>
 
-namespace hims_scan {
-namespace style {
+namespace hims_scan::style {
 
-// --- Panel ------------------------------------------------------------------
 constexpr int kScreenW = 128;
 constexpr int kScreenH = 64;
 
-// --- Header (inverted status bar) -------------------------------------------
-constexpr int kHeaderH = 11;          // filled box height, rows 0..10
-constexpr int kHeaderTextX = 3;
-constexpr int kHeaderBaselineY = 8;
-constexpr int kHeaderRightPad = 2;    // gap from the right edge for icons
+constexpr int kHeaderLeftX = 3;
+constexpr int kHeaderRightX = 125;
+constexpr int kHeaderBaselineY = 9;
+constexpr int kHeaderDividerY = 12;
+constexpr int kHeaderStatusGap = 5;
 
-// --- Body -------------------------------------------------------------------
-constexpr int kBodyX = 15;            // left gutter holds the scan arrow
-constexpr int kBodyW = 111;
-constexpr int kBodyTitleY = 23;
-constexpr int kBodyLine1Y = 35;
-constexpr int kBodyLine2Y = 46;
+constexpr int kRailX = 4;
+constexpr int kRailTop = 17;
+constexpr int kRailBottom = 48;
+constexpr int kContentX = 13;
+constexpr int kContentRight = 125;
+constexpr int kContentW = kContentRight - kContentX;
 
-// Quantity screen (large numeral + edit caret).
-constexpr int kQtyTitleY = 18;
-constexpr int kQtyItemY = 27;
-constexpr int kQtyNumeralY = 49;      // numeral baseline
-constexpr int kQtyUnderlineY = 51;
-constexpr int kQtyCaretMinW = 8;
+constexpr int kTaskPrimaryY = 29;
+constexpr int kTaskSecondaryY = 43;
 
-// OTA / progress bar.
-constexpr int kOtaTitleY = 25;
-constexpr int kOtaBarY = 32;
-constexpr int kOtaBarW = 106;
-constexpr int kOtaBarH = 10;
+constexpr int kQuantityItemY = 23;
+constexpr int kQuantityCodeY = 33;
+constexpr int kQuantityValueY = 49;
+constexpr int kQuantityCaretY = 50;
 
-// Result-screen glyph (Success/Warning/Error): drawn in the left body area.
-constexpr int kResultGlyphCx = 15;    // glyph centre X (uses the scan gutter)
-constexpr int kResultGlyphCy = 32;    // glyph centre Y
-constexpr int kResultGlyphR = 12;     // glyph radius
-constexpr int kResultTextX = 34;      // text block starts right of the glyph
-constexpr int kResultTitleY = 21;
-constexpr int kResultLine1Y = 34;
-constexpr int kResultLine2Y = 45;
+constexpr int kResultPrimaryY = 24;
+constexpr int kResultSecondaryY = 36;
+constexpr int kResultTertiaryY = 47;
 
-// --- Footer (key-hint strip) ------------------------------------------------
+constexpr int kListX = 7;
+constexpr int kListFirstY = 22;
+constexpr int kListRowStep = 9;
+constexpr std::size_t kListMaxRows = 4;
+
 constexpr int kFooterDividerY = 52;
-constexpr int kFooterBaselineY = 61;
+constexpr int kFooterBaselineY = 62;
 constexpr int kFooterTextX = 3;
-constexpr int kFooterW = kScreenW - 2 * kFooterTextX;
-
-// --- Menu (full-screen list) ------------------------------------------------
-constexpr int kMenuTitleX = 4;
-constexpr int kMenuTitleY = 9;
-constexpr int kMenuDividerY = 12;
-constexpr int kMenuRowX = 7;
-constexpr int kMenuRowY0 = 24;
-constexpr int kMenuRowStep = 10;
-constexpr std::size_t kMenuMaxRows = 5;
-
-// --- Key-hint chips ("[A] OK") ----------------------------------------------
-// Chip = inverted rounded box around the key glyph, then a plain label. The box
-// is sized from the live font ascent so vertical padding is symmetric.
-constexpr int kChipPadX = 2;          // horizontal padding inside a chip
-constexpr int kChipPadY = 1;          // vertical padding above/below the glyph ink
+constexpr int kChipPadX = 2;
+constexpr int kChipPadY = 1;
 constexpr int kChipRadius = 1;
-constexpr int kChipLabelGap = 2;      // chip box -> its label
-constexpr int kChipGroupGap = 6;      // one [key]+label group -> the next
+constexpr int kChipLabelGap = 2;
+constexpr int kChipGroupGap = 5;
 
-// --- Scan arrow / left gutter ----------------------------------------------
-constexpr int kArrowTipX = 1;
-constexpr int kArrowMidY = 32;
-constexpr int kArrowBackX = 11;
-constexpr int kArrowTopY = 23;
-constexpr int kArrowBotY = 41;
+constexpr int kProgressX = 7;
+constexpr int kProgressY = 34;
+constexpr int kProgressW = 114;
+constexpr int kProgressH = 9;
 
-// --- Motion --------------------------------------------------------------
-constexpr uint8_t kPulsePhases = 6;     // scan-sweep steps down the gutter
-constexpr int kPulseWindowMs = 350;     // matches DisplayController::pulseScan()
-constexpr int kSpinnerPeriodMs = 220;   // per rotating-tick frame (calm cadence)
-constexpr int kSuccessDrawMs = 300;     // checkmark draw-in duration
-constexpr int kSpinnerR = 3;            // spinner ring radius
+// Exactly three bitmap fonts: warm sans body, strong sans headings, and
+// monospace values/codes. All are designed for small monochrome displays.
+static const uint8_t* const kFontRegular = u8g2_font_helvR08_tf;
+static const uint8_t* const kFontHeading = u8g2_font_helvB08_tf;
+static const uint8_t* const kFontValue = u8g2_font_profont15_tf;
 
-// --- Header status icons (drawn in the inverted bar, colour 0) ---------------
-constexpr int kIconTop = 2;
-constexpr int kWifiW = 8;
-constexpr int kMonitorW = 9;
-
-// --- Fonts (monospace terminal family, mirrors the desktop app identity) ----
-// profont is a fixed-width bitmap terminal face; _tf = full glyphs, _tn = digits.
-static const uint8_t* const kFontSmall = u8g2_font_profont10_tf;     // header/footer/secondary
-static const uint8_t* const kFontBody = u8g2_font_profont11_tf;      // titles, menu rows, body
-static const uint8_t* const kFontWordmark = u8g2_font_profont17_tf;  // splash wordmark
-static const uint8_t* const kFontNumeral = u8g2_font_profont22_tn;   // large quantity digits
-
-}  // namespace style
-}  // namespace hims_scan
+}  // namespace hims_scan::style
