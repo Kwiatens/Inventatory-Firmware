@@ -27,6 +27,7 @@ class HimsScanApp {
   enum class State {
     Idle,
     AwaitQuantity,
+    WaitingForResult,
     Menu,
     QuickLabels,
     QuickSettings,
@@ -48,7 +49,8 @@ class HimsScanApp {
 
   void handleScan(const String& code);
   void pollScanner();
-  bool queueEvent(DeviceEventKind kind, const String& code, int value);
+  bool queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId = nullptr);
+  void waitForInventoryResult(const String& eventId);
   void handleKey(const HimsKeyEvent& event);
   void requestOtaUpdate();
   void sendDebugMessage(const String& message, const String& level = "info");
@@ -123,6 +125,7 @@ class HimsScanApp {
   String debugJobMessage_;
   String debugJobLevel_;
   String pendingResultAck_;
+  String awaitingResultEventId_;
   String activeLookupId_;
   String activeLookupCode_;
   unsigned long lastReconnectAttempt_ = 0;

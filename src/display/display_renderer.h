@@ -16,9 +16,9 @@ class DisplayRenderer {
   void render(const DisplayModel& model, const RenderActivity& activity);
 
  private:
-  void drawHeader(const DisplayModel& model);
+  void drawHeader(const DisplayModel& model, const RenderActivity& activity);
   void drawRail(DisplayRailStyle rail, const RenderActivity& activity);
-  void drawTask(const DisplayModel& model);
+  void drawTask(const DisplayModel& model, const RenderActivity& activity);
   void drawQuantity(const DisplayModel& model, const RenderActivity& activity);
   void drawResult(const DisplayModel& model);
   void drawList(const DisplayModel& model);

@@ -20,6 +20,7 @@ class DisplayController {
   void updateQuantity(const String& quantityText, std::size_t cursor);
   void updateQuantityLookup(const String& itemText, QuantityLookupState lookupState);
   void showQueued();
+  void showSending();
   bool showResult(const SyncResult& result);
   bool finishInteraction();
   void dismissError();

@@ -79,12 +79,15 @@ String DisplayRenderer::pcStatusText(const DisplayModel& model) const {
   }
 }
 
-void DisplayRenderer::drawHeader(const DisplayModel& model) {
+void DisplayRenderer::drawHeader(const DisplayModel& model, const RenderActivity& activity) {
+  const String header = model.animateEllipsis
+                            ? model.header + (activity.alternate ? "..." : ".")
+                            : model.header;
   lcd_.setFont(style::kFontHeading);
   const String rightText = model.pageText.length() > 0
                                ? model.pageText
                                : (model.showPcStatus ? pcStatusText(model) : String());
-  const int titleWidth = lcd_.getStrWidth(model.header.c_str());
+  const int titleWidth = lcd_.getStrWidth(header.c_str());
   bool showRight = rightText.length() > 0;
   int rightWidth = 0;
   if (showRight) {
@@ -100,7 +103,7 @@ void DisplayRenderer::drawHeader(const DisplayModel& model) {
               showRight ? style::kHeaderRightX - style::kHeaderLeftX - rightWidth -
                               style::kHeaderStatusGap
                         : style::kHeaderRightX - style::kHeaderLeftX,
-              model.header);
+              header);
   if (showRight) {
     lcd_.setFont(model.pageText.length() > 0 ? style::kFontValue : style::kFontRegular);
     lcd_.drawStr(style::kHeaderRightX - rightWidth, style::kHeaderBaselineY, rightText.c_str());
@@ -141,14 +144,16 @@ void DisplayRenderer::drawRail(DisplayRailStyle railStyle, const RenderActivity&
   }
 }
 
-void DisplayRenderer::drawTask(const DisplayModel& model) {
+void DisplayRenderer::drawTask(const DisplayModel& model, const RenderActivity& activity) {
+  (void)activity;
+  const String& primary = model.primary;
   lcd_.setFont(style::kFontHeading);
-  const bool primaryFits = lcd_.getStrWidth(model.primary.c_str()) <= style::kContentW;
+  const bool primaryFits = lcd_.getStrWidth(primary.c_str()) <= style::kContentW;
   if (primaryFits) {
-    drawClipped(style::kContentX, style::kTaskPrimaryY, style::kContentW, model.primary);
+    drawClipped(style::kContentX, style::kTaskPrimaryY, style::kContentW, primary);
   } else {
     lcd_.setFont(style::kFontRegular);
-    drawWrapped(style::kContentX, 25, style::kContentW, model.primary, 2, 9);
+    drawWrapped(style::kContentX, 25, style::kContentW, primary, 2, 9);
   }
   lcd_.setFont(style::kFontRegular);
   drawWrapped(style::kContentX, primaryFits ? style::kTaskSecondaryY : 48, style::kContentW,
@@ -326,10 +331,10 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
   if (model.mode == DisplayUiMode::Splash) {
     drawSplash(model);
   } else {
-    drawHeader(model);
+    drawHeader(model, activity);
     drawRail(model.rail, activity);
     switch (model.bodyKind) {
-      case DisplayBodyKind::Task: drawTask(model); break;
+      case DisplayBodyKind::Task: drawTask(model, activity); break;
       case DisplayBodyKind::Quantity: drawQuantity(model, activity); break;
       case DisplayBodyKind::Result: drawResult(model); break;
       case DisplayBodyKind::List: drawList(model); break;
