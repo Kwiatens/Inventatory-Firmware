@@ -32,6 +32,16 @@ enum class DisplayConnectivityState {
   Online,
 };
 
+// Per-frame animation state computed by the controller and consumed by the
+// renderer. Kept separate from DisplayModel because it changes every tick while
+// an animation is live, whereas DisplayModel only changes on real state changes.
+struct RenderAnim {
+  bool pulseActive = false;    // scan-registered sweep window is live
+  uint8_t pulsePhase = 0;      // 0..kPulsePhases-1, sweep position down the gutter
+  uint8_t spinnerFrame = 0;    // 0..7, rotating waiting spinner
+  uint8_t successProgress = 0; // 0..100, checkmark draw-in
+};
+
 struct DisplayModel {
   DisplayUiMode mode = DisplayUiMode::Boot;
   bool wifiOnline = false;
@@ -39,7 +49,6 @@ struct DisplayModel {
   bool supplierQuantity = false;
   std::size_t queueDepth = 0;
   DisplayConnectivityState connectivity = DisplayConnectivityState::Offline;
-  bool headerAlternate = false;
   String quantityText = "1";
   std::size_t quantityCursor = 0;
   int otaPercent = 0;

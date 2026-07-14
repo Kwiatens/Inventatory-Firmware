@@ -42,6 +42,9 @@ class DisplayController {
   void markDirty();
   void applyResult(const SyncResult& result);
   void clearMenuLines();
+  RenderAnim computeAnim(unsigned long now) const;
+  static bool animEquals(const RenderAnim& a, const RenderAnim& b);
+  bool spinnerActive() const;
 
   DisplayRenderer renderer_;
   DisplayModel model_;
@@ -50,8 +53,8 @@ class DisplayController {
   SyncResult pendingResult_;
   unsigned long pulseUntilMs_ = 0;
   unsigned long resultUntilMs_ = 0;
-  bool lastPulseFrame_ = false;
-  unsigned long lastHeaderAlternateMs_ = 0;
+  unsigned long successStartMs_ = 0;
+  RenderAnim lastAnim_;
   unsigned long lastStartLineRecoveryMs_ = 0;
   bool standby_ = false;
 };

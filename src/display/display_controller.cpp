@@ -1,6 +1,9 @@
 #include "display/display_controller.h"
 
+#include <algorithm>
+
 #include "config/hardware.h"
+#include "display/display_style.h"
 
 namespace hims_scan {
 
@@ -25,7 +28,6 @@ void DisplayController::setConnectivity(DisplayConnectivityState state, bool wif
   model_.wifiOnline = wifiOnline;
   model_.pcOnline = pcOnline;
   model_.queueDepth = queueDepth;
-  if (state != DisplayConnectivityState::Online) model_.headerAlternate = false;
   if (model_.mode == DisplayUiMode::Ready) {
     model_.line1 = "READY";
     model_.line2 = queueDepth > 0 ? String("PENDING ") + queueDepth : String();
@@ -112,6 +114,7 @@ void DisplayController::applyResult(const SyncResult& result) {
                                       " QTY " + result.quantity + " " + result.location;
   model_.footer = failed ? "C DISMISS" : (warning ? "WARNING" : "DONE");
   resultUntilMs_ = failed ? 0 : millis() + 4000U;
+  if (model_.mode == DisplayUiMode::Success) successStartMs_ = millis();
   markDirty();
 }
 
@@ -265,23 +268,49 @@ void DisplayController::showQuickLabelPrintResult(bool success, const String& me
   markDirty();
 }
 
+bool DisplayController::spinnerActive() const {
+  if (standby_) return false;
+  if (model_.mode == DisplayUiMode::Printing || model_.mode == DisplayUiMode::Setup) return true;
+  // Only genuinely transient work spins; a steady "searching" state stays static
+  // so we don't redraw the panel forever over software SPI.
+  return model_.connectivity == DisplayConnectivityState::WifiConnecting ||
+         model_.connectivity == DisplayConnectivityState::Syncing;
+}
+
+RenderAnim DisplayController::computeAnim(unsigned long now) const {
+  RenderAnim anim;
+  if (standby_) return anim;  // panel asleep: no motion
+  if (pulseUntilMs_ > now) {
+    anim.pulseActive = true;
+    const unsigned long elapsed = static_cast<unsigned long>(style::kPulseWindowMs) - (pulseUntilMs_ - now);
+    anim.pulsePhase = static_cast<uint8_t>(
+        std::min<unsigned long>(style::kPulsePhases - 1, elapsed * style::kPulsePhases / style::kPulseWindowMs));
+  }
+  if (spinnerActive()) {
+    anim.spinnerFrame = static_cast<uint8_t>((now / style::kSpinnerPeriodMs) % 8U);
+  }
+  if (model_.mode == DisplayUiMode::Success) {
+    const unsigned long e = now - successStartMs_;
+    anim.successProgress = e >= static_cast<unsigned long>(style::kSuccessDrawMs)
+                               ? 100
+                               : static_cast<uint8_t>(e * 100U / style::kSuccessDrawMs);
+  }
+  return anim;
+}
+
+bool DisplayController::animEquals(const RenderAnim& a, const RenderAnim& b) {
+  return a.pulseActive == b.pulseActive && a.pulsePhase == b.pulsePhase &&
+         a.spinnerFrame == b.spinnerFrame && a.successProgress == b.successProgress;
+}
+
 void DisplayController::tick() {
   const auto now = millis();
-  if (model_.connectivity == DisplayConnectivityState::Online &&
-      now - lastHeaderAlternateMs_ >= 2500U) {
-    lastHeaderAlternateMs_ = now;
-    model_.headerAlternate = !model_.headerAlternate;
-    dirty_ = true;
-  }
-  const bool pulseFrame = pulseUntilMs_ > now && ((now / 100U) % 2U == 0U);
-  if (pulseFrame != lastPulseFrame_) {
-    lastPulseFrame_ = pulseFrame;
-    dirty_ = true;
-  }
   if (resultUntilMs_ != 0 && static_cast<long>(now - resultUntilMs_) >= 0) {
     resultUntilMs_ = 0;
     showReady();
   }
+  const RenderAnim anim = computeAnim(now);
+  if (!animEquals(anim, lastAnim_)) dirty_ = true;
   if (!dirty_) {
     if (!standby_ && now - lastStartLineRecoveryMs_ >= hardware::kLcdStartLineRecoveryIntervalMs) {
       renderer_.normalizeStartLine();
@@ -289,7 +318,8 @@ void DisplayController::tick() {
     }
     return;
   }
-  renderer_.render(model_, pulseFrame);
+  lastAnim_ = anim;
+  renderer_.render(model_, anim);
   dirty_ = false;
   lastStartLineRecoveryMs_ = now;
 }

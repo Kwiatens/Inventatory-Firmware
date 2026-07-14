@@ -188,6 +188,10 @@ bool Gm65Scanner::poll(String& code) {
       lastByteAt_ = 0;
       continue;
     }
+    // TEMP DIAGNOSTIC: dump every raw scanner byte (hex + printable char) so we
+    // can see the full QR frame the GM65 emits. Remove once resolved.
+    Serial.printf("GM65 rx 0x%02X %c\r\n", static_cast<unsigned>(static_cast<unsigned char>(ch)),
+                  (std::isprint(static_cast<unsigned char>(ch)) ? ch : '.'));
     if (ch == '\r' || ch == '\n') {
       if (discardingOversized_ || frameCorrupt_) {
         discardingOversized_ = false;
