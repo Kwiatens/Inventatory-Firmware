@@ -15,11 +15,10 @@ class DisplayController {
   void showSplash();
   void showBoot(const String& stage);
   void showReady();
-  void showQuantity(const String& itemText, const String& quantityText,
+  void showQuantity(const String& itemText, const String& itemCode, const String& quantityText,
                     std::size_t cursor, bool supplier);
   void updateQuantity(const String& quantityText, std::size_t cursor);
   void updateQuantityItem(const String& itemText);
-  void pulseScan();
   void showQueued();
   bool showResult(const SyncResult& result);
   bool finishInteraction();
@@ -36,25 +35,25 @@ class DisplayController {
   void showResetConfirm();
   void showPrinting(const String& label);
   void showQuickLabelPrintResult(bool success, const String& message);
-  bool errorVisible() const { return model_.mode == DisplayUiMode::Error; }
+  bool errorVisible() const {
+    return model_.mode == DisplayUiMode::Error || model_.mode == DisplayUiMode::Warning;
+  }
 
  private:
   void markDirty();
   void applyResult(const SyncResult& result);
-  void clearMenuLines();
-  RenderAnim computeAnim(unsigned long now) const;
-  static bool animEquals(const RenderAnim& a, const RenderAnim& b);
-  bool spinnerActive() const;
+  void clearContent();
+  void refreshReadyContent();
+  RenderActivity computeActivity(unsigned long now) const;
+  static bool activityEquals(const RenderActivity& a, const RenderActivity& b);
 
   DisplayRenderer renderer_;
   DisplayModel model_;
   bool dirty_ = true;
   bool deferredResult_ = false;
   SyncResult pendingResult_;
-  unsigned long pulseUntilMs_ = 0;
   unsigned long resultUntilMs_ = 0;
-  unsigned long successStartMs_ = 0;
-  RenderAnim lastAnim_;
+  RenderActivity lastActivity_;
   unsigned long lastStartLineRecoveryMs_ = 0;
   bool standby_ = false;
 };

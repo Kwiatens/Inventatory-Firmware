@@ -3,6 +3,7 @@
 #include "HimsScanCore.h"
 #include "HimsScanOutbox.h"
 #include "HimsScanSync.h"
+#include "HimsScanUiPolicy.h"
 
 using namespace hims_scan;
 
@@ -167,6 +168,47 @@ void test_quick_label_protocol_extensions() {
   TEST_ASSERT_EQUAL_STRING("completed", response.quickLabelPrintStatus.c_str());
 }
 
+void test_ui_header_prefers_full_title_over_pc_status() {
+  TEST_ASSERT_TRUE(displayHeaderCanShowStatus(52, 39, 122, 5));
+  TEST_ASSERT_FALSE(displayHeaderCanShowStatus(83, 39, 122, 5));
+  TEST_ASSERT_FALSE(displayHeaderCanShowStatus(-1, 20, 122, 5));
+}
+
+void test_ui_clipping_and_queue_boundaries() {
+  const auto monospaceWidth = [](std::size_t length) { return static_cast<int>(length * 5U); };
+  TEST_ASSERT_EQUAL_UINT32(5, displayClippedPrefixLength(5, 25, 3, monospaceWidth));
+  TEST_ASSERT_EQUAL_UINT32(4, displayClippedPrefixLength(5, 24, 3, monospaceWidth));
+  TEST_ASSERT_EQUAL_UINT32(0, displayClippedPrefixLength(5, 2, 3, monospaceWidth));
+  TEST_ASSERT_FALSE(displayQueueDepth(0));
+  TEST_ASSERT_TRUE(displayQueueDepth(1));
+}
+
+void test_ui_timing_and_activity_policy() {
+  TEST_ASSERT_EQUAL_UINT32(1500, kUiSuccessDwellMs);
+  TEST_ASSERT_EQUAL_UINT32(3000, kUiWarningDwellMs);
+  TEST_ASSERT_FALSE(uiActivityAlternate(0));
+  TEST_ASSERT_FALSE(uiActivityAlternate(599));
+  TEST_ASSERT_TRUE(uiActivityAlternate(600));
+  TEST_ASSERT_TRUE(uiActivityAlternate(1199));
+  TEST_ASSERT_FALSE(uiActivityAlternate(1200));
+  TEST_ASSERT_TRUE(uiActivityEnabled(false, true));
+  TEST_ASSERT_FALSE(uiActivityEnabled(true, true));
+  TEST_ASSERT_FALSE(uiActivityEnabled(false, false));
+  TEST_ASSERT_FALSE(uiDeadlineReached(1000, 0));
+  TEST_ASSERT_FALSE(uiDeadlineReached(1499, 1500));
+  TEST_ASSERT_TRUE(uiDeadlineReached(1500, 1500));
+  TEST_ASSERT_TRUE(uiDeadlineReached(10, 0xFFFFFFF0UL));
+}
+
+void test_scan_preemption_policy() {
+  TEST_ASSERT_TRUE(scanMayInterruptUi(false, false, false, false, false));
+  TEST_ASSERT_FALSE(scanMayInterruptUi(true, false, false, false, false));
+  TEST_ASSERT_FALSE(scanMayInterruptUi(false, true, false, false, false));
+  TEST_ASSERT_FALSE(scanMayInterruptUi(false, false, true, false, false));
+  TEST_ASSERT_FALSE(scanMayInterruptUi(false, false, false, true, false));
+  TEST_ASSERT_FALSE(scanMayInterruptUi(false, false, false, false, true));
+}
+
 void setup() {
   UNITY_BEGIN();
   RUN_TEST(test_standardized_scanner_codes);
@@ -179,6 +221,10 @@ void setup() {
   RUN_TEST(test_fixed_ring_buffer_fifo_and_overwrite);
   RUN_TEST(test_protocol_v1_sync_round_trip);
   RUN_TEST(test_quick_label_protocol_extensions);
+  RUN_TEST(test_ui_header_prefers_full_title_over_pc_status);
+  RUN_TEST(test_ui_clipping_and_queue_boundaries);
+  RUN_TEST(test_ui_timing_and_activity_policy);
+  RUN_TEST(test_scan_preemption_policy);
   UNITY_END();
 }
 

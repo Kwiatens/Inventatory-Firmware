@@ -4,6 +4,8 @@
 
 #include <ArduinoOTA.h>
 
+#include "HimsScanUiPolicy.h"
+
 #include "HimsScanCore.h"
 #include "config/config.h"
 #include "config/version.h"
@@ -170,14 +172,11 @@ bool HimsScanApp::begin() {
   display_.begin();
   display_.showSplash();
   display_.tick();
-  delay(1000);
-  display_.showBoot("KEYPAD");
-  display_.tick();
   keypadInit();
-  display_.showBoot("SCANNER");
-  display_.tick();
   scanner_.begin(9600);
   scanner_.flushInput();
+  display_.showBoot({});
+  display_.tick();
   powerMode_ = PowerMode::Normal;
   otaRequested_ = false;
   otaActive_ = false;
@@ -315,10 +314,13 @@ void HimsScanApp::pollScanner() {
 }
 
 void HimsScanApp::handleScan(const String& code) {
-  if (state_ != State::Idle && state_ != State::AwaitQuantity) {
-    Serial.println("Scan ignored while device menu is open.");
+  if (!scanMayInterruptUi(setupMode_, powerMode_ == PowerMode::Standby,
+                          otaRequested_ || otaActive_, state_ == State::ConfirmReprovision,
+                          state_ == State::PrintingLabel)) {
+    Serial.println("Scan ignored while the current operation blocks scanning.");
     return;
   }
+  if (state_ != State::Idle) resetPending();
   // Some GM65 profiles prepend an AIM symbology identifier (for example ]C1
   // for Code 128, ]Q3 for QR, or ]d2 for Data Matrix). We use that marker to
   // route Data Matrix scans to DigiKey and QR scans to the HIMS path.
@@ -330,8 +332,6 @@ void HimsScanApp::handleScan(const String& code) {
 
   Serial.print("GM65 scan: ");
   Serial.println(trimmed.c_str());
-  display_.pulseScan();
-
   if (isDataMatrixScan(raw)) {
     const auto lookupCode = digikeyLookupCodeFromDataMatrix(trimmed);
     if (!hasIso15434Macro06Envelope(trimmed) || !isStandardSupplierPartCode(lookupCode)) {
@@ -345,7 +345,7 @@ void HimsScanApp::handleScan(const String& code) {
     quantity_.setDefaultValue(defaultQuantity);
     pendingScanType_ = PendingScanType::DigiKeyDataMatrix;
     setAwaitingQuantity();
-    display_.showQuantity(scannedCode_, quantity_.displayText(), quantity_.cursor(), true);
+    display_.showQuantity(scannedCode_, "DigiKey", quantity_.displayText(), quantity_.cursor(), true);
     Serial.print("DigiKey default quantity: ");
     Serial.println(quantity_.displayText().c_str());
     Serial.println("Enter quantity, then press A to add. C cancels.");
@@ -366,8 +366,8 @@ void HimsScanApp::handleScan(const String& code) {
     activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
     lookupMissCount_ = 0;
     setAwaitingQuantity();
-    display_.showQuantity(WiFi.isConnected() ? String("LOOKING UP...") : String("PC OFFLINE"),
-                          quantity_.displayText(), quantity_.cursor(), false);
+    display_.showQuantity(WiFi.isConnected() ? String("Looking up item") : String("Inventory item"),
+                          String("Code ") + trimmed, quantity_.displayText(), quantity_.cursor(), false);
     lastSyncAttempt_ = 0;
     Serial.println("Enter quantity, then press A to add or B to subtract. C cancels.");
     sendDebugMessage(String("qr quantity scan ") + trimmed, "scan");
@@ -501,6 +501,7 @@ void HimsScanApp::handleKey(const HimsKeyEvent& event) {
       if (event.type == HimsKeyEventType::Add && lcdContrast_ > 0) --lcdContrast_;
       if (event.type == HimsKeyEventType::Subtract && lcdContrast_ < 63) ++lcdContrast_;
       display_.setContrast(lcdContrast_);
+      persistContrast();
       display_.showContrast(lcdContrast_);
       return;
     }
@@ -1081,16 +1082,16 @@ void HimsScanApp::handleSyncResponse(const SyncResponse& response) {
       activeLookupId_.clear();
       activeLookupCode_.clear();
     } else if (response.lookupStatus == "not_found") {
-      display_.updateQuantityItem("UNKNOWN ITEM");
+      display_.updateQuantityItem("Unknown item");
       activeLookupId_.clear();
       activeLookupCode_.clear();
     } else if (response.lookupStatus == "unavailable") {
-      display_.updateQuantityItem("NAME UNAVAILABLE");
+      display_.updateQuantityItem("Name unavailable");
       activeLookupId_.clear();
       activeLookupCode_.clear();
     }
   } else if (activeLookupId_.length() > 0 && ++lookupMissCount_ >= 3U) {
-    display_.updateQuantityItem("NAME UNAVAILABLE");
+    display_.updateQuantityItem("Name unavailable");
     activeLookupId_.clear();
     activeLookupCode_.clear();
     lookupMissCount_ = 0;
@@ -1189,7 +1190,7 @@ void HimsScanApp::updateConnectivityDisplay() {
   display_.setConnectivity(connectivityState(), wifiOnline, pcOnline_, outbox_.size());
   if (state_ == State::AwaitQuantity && pendingScanType_ == PendingScanType::HimsQuantity &&
       activeLookupId_.length() > 0) {
-    display_.updateQuantityItem(wifiOnline ? String("LOOKING UP...") : String("PC OFFLINE"));
+    display_.updateQuantityItem(wifiOnline ? String("Looking up item") : String("Inventory item"));
   }
 }
 

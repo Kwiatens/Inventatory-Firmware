@@ -32,33 +32,50 @@ enum class DisplayConnectivityState {
   Online,
 };
 
-// Per-frame animation state computed by the controller and consumed by the
-// renderer. Kept separate from DisplayModel because it changes every tick while
-// an animation is live, whereas DisplayModel only changes on real state changes.
-struct RenderAnim {
-  bool pulseActive = false;    // scan-registered sweep window is live
-  uint8_t pulsePhase = 0;      // 0..kPulsePhases-1, sweep position down the gutter
-  uint8_t spinnerFrame = 0;    // 0..7, rotating waiting spinner
-  uint8_t successProgress = 0; // 0..100, checkmark draw-in
+enum class DisplayBodyKind {
+  Task,
+  Quantity,
+  Result,
+  List,
+  Contrast,
+  Confirm,
+  Setup,
+  Progress,
+};
+
+enum class DisplayRailStyle {
+  None,
+  Thin,
+  Solid,
+  Warning,
+  Error,
+  Activity,
+};
+
+struct RenderActivity {
+  bool alternate = false;
 };
 
 struct DisplayModel {
   DisplayUiMode mode = DisplayUiMode::Boot;
-  bool wifiOnline = false;
-  bool pcOnline = false;
+  DisplayBodyKind bodyKind = DisplayBodyKind::Task;
+  DisplayRailStyle rail = DisplayRailStyle::Activity;
+  DisplayConnectivityState connectivity = DisplayConnectivityState::Offline;
+  bool showPcStatus = true;
   bool supplierQuantity = false;
   std::size_t queueDepth = 0;
-  DisplayConnectivityState connectivity = DisplayConnectivityState::Offline;
+  String header;
+  String primary;
+  String secondary;
+  String tertiary;
+  String actions;
+  String pageText;
   String quantityText = "1";
   std::size_t quantityCursor = 0;
   int otaPercent = 0;
   uint32_t setupCode = 0;
-  String title;
-  String line1;
-  String line2;
-  String footer;
-  String menuLines[5];
-  std::size_t menuLineCount = 0;
+  String listRows[5];
+  std::size_t listRowCount = 0;
 };
 
 }  // namespace hims_scan
