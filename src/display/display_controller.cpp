@@ -123,7 +123,7 @@ void DisplayController::updateQuantityLookup(const String& itemText,
   model_.primary = itemText;
   switch (lookupState) {
     case QuantityLookupState::Pending:
-      model_.header = "Finding part";
+      model_.header = "Scan details";
       model_.rail = DisplayRailStyle::Activity;
       break;
     case QuantityLookupState::Found:

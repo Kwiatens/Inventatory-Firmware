@@ -48,11 +48,13 @@ constexpr int kListFirstY = 22;
 constexpr int kListRowStep = 9;
 constexpr std::size_t kListMaxRows = 4;
 
-constexpr int kFooterDividerY = 52;
 constexpr int kFooterBaselineY = 62;
 constexpr int kFooterTextX = 3;
-constexpr int kChipPadX = 2;
-constexpr int kChipPadY = 1;
+// Give the key highlight a visible top edge and an even one-pixel horizontal
+// margin around the glyph.
+constexpr int kChipPadX = 1;
+constexpr int kChipTopPadY = 1;
+constexpr int kChipBottomPadY = 1;
 constexpr int kChipRadius = 1;
 constexpr int kChipLabelGap = 2;
 constexpr int kChipGroupGap = 5;
