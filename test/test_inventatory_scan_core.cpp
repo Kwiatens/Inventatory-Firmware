@@ -214,6 +214,9 @@ void test_ui_timing_and_activity_policy() {
   TEST_ASSERT_FALSE(uiActivityEnabled(true, true));
   TEST_ASSERT_FALSE(uiActivityEnabled(false, false));
   TEST_ASSERT_EQUAL_UINT32(250, style::kRailActivityStepMs);
+  TEST_ASSERT_EQUAL_INT(1, style::kChipPadX);
+  TEST_ASSERT_EQUAL_INT(0, style::kChipTopPadY);
+  TEST_ASSERT_EQUAL_INT(1, style::kChipBottomPadY);
   TEST_ASSERT_EQUAL_INT(0, uiRailSweepOffset(0, style::kRailActivityStepMs,
                                               style::kRailActivityTravel,
                                               style::kRailActivityStepsPerLeg));

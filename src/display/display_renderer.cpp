@@ -263,8 +263,8 @@ void DisplayRenderer::drawKeyChip(int& x, int baselineY, char key) {
   const int glyphWidth = lcd_.getStrWidth(glyph.c_str());
   const int ascent = lcd_.getAscent();
   const int boxWidth = glyphWidth + 2 * style::kChipPadX;
-  const int boxTop = baselineY - ascent - style::kChipPadY;
-  const int boxHeight = ascent + 2 * style::kChipPadY;
+  const int boxTop = baselineY - ascent - style::kChipTopPadY;
+  const int boxHeight = ascent + style::kChipTopPadY + style::kChipBottomPadY;
   lcd_.drawRBox(x, boxTop, boxWidth, boxHeight, style::kChipRadius);
   lcd_.setDrawColor(0);
   lcd_.drawStr(x + style::kChipPadX, baselineY, glyph.c_str());
@@ -274,8 +274,6 @@ void DisplayRenderer::drawKeyChip(int& x, int baselineY, char key) {
 
 void DisplayRenderer::drawActions(const String& actionsText) {
   if (actionsText.length() == 0) return;
-  lcd_.drawHLine(style::kFooterTextX, style::kFooterDividerY,
-                 style::kScreenW - 2 * style::kFooterTextX);
   lcd_.setFont(style::kFontRegular);
   const int spaceWidth = lcd_.getStrWidth(" ");
   int x = style::kFooterTextX;
