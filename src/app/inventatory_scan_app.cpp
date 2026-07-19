@@ -11,7 +11,6 @@
 #include "config/version.h"
 
 #include <cctype>
-#include <cstring>
 #include <WiFi.h>
 
 namespace inventatory_scan {
@@ -45,116 +44,9 @@ bool hasIso15434Macro06Envelope(const String& value) {
     return true;
   }
 
-  // Some scanner profiles suppress RS/GS control characters. A DigiKey Macro
+  // Some scanner profiles suppress RS/GS control characters. A component Macro
   // 06 payload can then arrive as "[)>06P..." rather than "[)><RS>06<GS>P...".
   return value.length() >= 5U && value[3] == '0' && value[4] == '6';
-}
-
-bool isIso15434Separator(char ch) {
-  const auto byte = static_cast<unsigned char>(ch);
-  return byte == 0x1DU || byte == 0x1EU || byte == 0x04U;
-}
-
-size_t iso15434PayloadOffset(const String& value) {
-  if (value.length() >= 7U && static_cast<unsigned char>(value[3]) == 0x1EU && value[4] == '0' &&
-      value[5] == '6' && static_cast<unsigned char>(value[6]) == 0x1DU) {
-    return 7U;
-  }
-  if (value.length() >= 5U && value[3] == '0' && value[4] == '6') {
-    return 5U;
-  }
-  return 0U;
-}
-
-bool fieldStartsWithDataIdentifier(const String& field, const char* identifier) {
-  const auto idLength = strlen(identifier);
-  return field.length() > idLength && field.substring(0, idLength) == identifier;
-}
-
-String findSeparatedDataIdentifier(const String& value, const char* identifier) {
-  auto index = iso15434PayloadOffset(value);
-  while (index < value.length()) {
-    while (index < value.length() && isIso15434Separator(value[index])) {
-      ++index;
-    }
-    const auto fieldStart = index;
-    while (index < value.length() && !isIso15434Separator(value[index])) {
-      ++index;
-    }
-    const auto field = value.substring(fieldStart, index);
-    if (fieldStartsWithDataIdentifier(field, identifier)) {
-      return field.substring(strlen(identifier));
-    }
-  }
-  return {};
-}
-
-String findSuppressedSeparatorDigikeyPart(const String& value) {
-  const auto offset = iso15434PayloadOffset(value);
-  if (offset >= value.length() || value[offset] != 'P') {
-    return {};
-  }
-
-  const auto partStart = offset + 1U;
-  auto partEnd = value.indexOf("1P", partStart);
-  if (partEnd < 0) {
-    partEnd = value.indexOf("30P", partStart);
-  }
-  if (partEnd < 0) {
-    return {};
-  }
-  return value.substring(partStart, partEnd);
-}
-
-String findSuppressedQuantityField(const String& value) {
-  const auto offset = iso15434PayloadOffset(value);
-  for (size_t index = offset; index < value.length(); ++index) {
-    if (value[index] != 'Q') {
-      continue;
-    }
-    const auto next = index + 1U;
-    if (next >= value.length() || !std::isdigit(static_cast<unsigned char>(value[next]))) {
-      continue;
-    }
-    size_t end = next;
-    while (end < value.length() && std::isdigit(static_cast<unsigned char>(value[end]))) {
-      ++end;
-    }
-    return value.substring(next, end);
-  }
-  return {};
-}
-
-String digikeyLookupCodeFromDataMatrix(const String& value) {
-  auto lookup = findSeparatedDataIdentifier(value, "P");
-  if (lookup.length() == 0) {
-    lookup = findSeparatedDataIdentifier(value, "30P");
-  }
-  if (lookup.length() == 0) {
-    lookup = findSuppressedSeparatorDigikeyPart(value);
-  }
-  if (lookup.length() == 0) {
-    lookup = findSeparatedDataIdentifier(value, "1P");
-  }
-  return trimCopy(lookup);
-}
-
-int digikeyQuantityFromDataMatrix(const String& value) {
-  auto quantity = findSeparatedDataIdentifier(value, "Q");
-  if (quantity.length() == 0) {
-    quantity = findSuppressedQuantityField(value);
-  }
-  const auto trimmed = trimCopy(quantity);
-  if (trimmed.length() == 0) {
-    return 1;
-  }
-  for (size_t index = 0; index < trimmed.length(); ++index) {
-    if (!std::isdigit(static_cast<unsigned char>(trimmed[index]))) {
-      return 1;
-    }
-  }
-  const long parsed = trimmed.toInt();
-  return parsed <= 0 ? 1 : static_cast<int>(parsed);
 }
 
 bool isDataMatrixScan(const String& value) {
@@ -323,7 +215,8 @@ void InventatoryScanApp::handleScan(const String& code) {
   if (state_ != State::Idle) resetPending();
   // Some GM65 profiles prepend an AIM symbology identifier (for example ]C1
   // for Code 128, ]Q3 for QR, or ]d2 for Data Matrix). We use that marker to
-  // route Data Matrix scans to DigiKey and QR scans to the Inventatory path.
+  // decode standards-based Data Matrix fields and route QR scans to the
+  // Inventatory machine-code path.
   const auto raw = trimCopy(code);
   const auto trimmed = trimCopy(stripAimSymbologyPrefix(raw));
   if (trimmed.length() == 0) {
@@ -333,26 +226,32 @@ void InventatoryScanApp::handleScan(const String& code) {
   Serial.print("GM65 scan: ");
   Serial.println(trimmed.c_str());
   if (isDataMatrixScan(raw)) {
-    const auto lookupCode = digikeyLookupCodeFromDataMatrix(trimmed);
-    if (!hasIso15434Macro06Envelope(trimmed) || !isStandardSupplierPartCode(lookupCode)) {
+    DecodedComponentFields decoded;
+    if (!decodeComponentDataMatrix(raw, decoded)) {
       Serial.println("Rejected non-standard Data Matrix scan.");
       return;
     }
-    const auto forwardedCode = lookupCode;
-    const auto defaultQuantity = digikeyQuantityFromDataMatrix(trimmed);
+    const auto& lookupCode = decoded.manufacturerPartNumber;
+    const auto& manufacturer = decoded.manufacturer;
+    const auto& encodedPartName = decoded.encodedPartName;
+    const auto forwardedCode = lookupCode.length() > 0 ? lookupCode : encodedPartName;
+    const auto defaultQuantity = decoded.quantity;
     resetPending();
     scannedCode_ = forwardedCode;
+    scannedManufacturer_ = manufacturer;
+    scannedManufacturerPartNumber_ = lookupCode;
+    scannedPartName_ = encodedPartName;
     quantity_.setDefaultValue(defaultQuantity);
-    pendingScanType_ = PendingScanType::DigiKeyDataMatrix;
+    pendingScanType_ = PendingScanType::ComponentDataMatrix;
     activeLookupCode_ = forwardedCode;
     activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
     lookupMissCount_ = 0;
     setAwaitingQuantity();
-    display_.showQuantity("Checking inventory", String("DigiKey ") + scannedCode_,
+    display_.showQuantity("Checking inventory", String("Part ") + scannedCode_,
                           quantity_.displayText(), quantity_.cursor(), true,
                           QuantityLookupState::Pending);
     lastSyncAttempt_ = 0;
-    Serial.print("DigiKey default quantity: ");
+    Serial.print("Decoded default quantity: ");
     Serial.println(quantity_.displayText().c_str());
     Serial.println("Enter quantity, then press A to add. C cancels.");
     sendDebugMessage(String("data matrix pending ") + forwardedCode + " qty " + quantity_.displayText(), "scan");
@@ -381,18 +280,7 @@ void InventatoryScanApp::handleScan(const String& code) {
     return;
   }
 
-  if (!isStandardSupplierPartCode(trimmed)) {
-    Serial.println("Rejected unrecognized scanner data.");
-    return;
-  }
-
-  resetPending();
-  String eventId;
-  if (queueEvent(DeviceEventKind::InventoryReceive, trimmed, 1, &eventId)) {
-    waitForInventoryResult(eventId);
-    Serial.println("Queued supplier scan for Inventatory software.");
-    sendDebugMessage(String("scan queued ") + trimmed, "scan");
-  }
+  Serial.println("Rejected unrecognized scanner data.");
 }
 
 void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
@@ -543,8 +431,8 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       Serial.println("No scanned code to submit.");
       return;
     }
-    if (pendingScanType_ == PendingScanType::DigiKeyDataMatrix && event.type == InventatoryKeyEventType::Subtract) {
-      Serial.println("DigiKey scans use A to confirm the quantity.");
+    if (pendingScanType_ == PendingScanType::ComponentDataMatrix && event.type == InventatoryKeyEventType::Subtract) {
+      Serial.println("Component scans use A to confirm the quantity.");
       return;
     }
     submitCurrent(event.type == InventatoryKeyEventType::Add ? 'A' : 'B');
@@ -875,16 +763,18 @@ void InventatoryScanApp::exitStandby() {
 }
 
 void InventatoryScanApp::submitCurrent(char action) {
-  if (pendingScanType_ == PendingScanType::DigiKeyDataMatrix) {
+  if (pendingScanType_ == PendingScanType::ComponentDataMatrix) {
     if (action != 'A') {
-      Serial.println("DigiKey scans require A to confirm.");
+      Serial.println("Component scans require A to confirm.");
       return;
     }
 
     const auto quantity = quantity_.consume(true);
     String eventId;
-    const auto queued = queueEvent(DeviceEventKind::InventoryReceive, scannedCode_, quantity, &eventId);
-    Serial.print("Queued DigiKey scan quantity ");
+    const auto queued = queueEvent(DeviceEventKind::InventoryReceive, scannedCode_, quantity, &eventId,
+                                   scannedManufacturer_, scannedManufacturerPartNumber_,
+                                   scannedPartName_);
+    Serial.print("Queued decoded-component quantity ");
     Serial.println(String(quantity).c_str());
     resetPending();
     if (!queued) {
@@ -906,9 +796,11 @@ void InventatoryScanApp::submitCurrent(char action) {
   waitForInventoryResult(eventId);
 }
 
-bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId) {
+bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId,
+                                    const String& manufacturer, const String& manufacturerPartNumber,
+                                    const String& encodedPartName) {
   DeviceEventRecord event;
-  if (!outbox_.enqueue(kind, code, value, &event)) {
+  if (!outbox_.enqueue(kind, code, value, &event, manufacturer, manufacturerPartNumber, encodedPartName)) {
     SyncResult result;
     result.resultId = "local-queue";
     result.eventId = "local-queue";
@@ -920,7 +812,7 @@ bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, in
     return false;
   }
   if (eventId != nullptr) *eventId = event.eventId;
-  Serial.print("Queued protocol v1 event: ");
+  Serial.print("Queued protocol v2 event: ");
   Serial.println(event.eventId.c_str());
   lastSyncAttempt_ = 0;
   return true;
@@ -1045,7 +937,7 @@ void InventatoryScanApp::processNetworkResult() {
       result.eventId = "local-protocol";
       result.status = "failed";
       result.code = status == 426 ? "UPDATE PC" : "PAIRING ERROR";
-      result.message = status == 426 ? "Protocol v1 required" : "Check device token";
+      result.message = status == 426 ? "Protocol v2 required" : "Check device token";
       display_.showResult(result);
     }
     return;
@@ -1054,7 +946,7 @@ void InventatoryScanApp::processNetworkResult() {
   const auto response = parseSyncResponseJson(body);
   if (!response.valid || response.requestId != requestId) {
     pcOnline_ = false;
-    Serial.println("Invalid protocol v1 sync response.");
+    Serial.println("Invalid protocol v2 sync response.");
     return;
   }
   pcOnline_ = true;
@@ -1080,7 +972,7 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
                                quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
     }
   } else if (state_ == State::QuickLabels) {
-    // A normal protocol-v1 response without the optional extension means the paired desktop app is older.
+    // A normal protocol-v2 response without the optional extension means the paired desktop app is older.
     quickLabelSnapshotReceived_ = true;
     pcSupportsQuickLabels_ = false;
     display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
@@ -1111,11 +1003,14 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
   if (isCurrentLookupResult(response, activeLookupId_)) {
     lookupMissCount_ = 0;
     if (response.lookupStatus == "found" && response.lookupItemName.length() > 0) {
-      display_.updateQuantityLookup(response.lookupItemName, QuantityLookupState::Found);
+      const auto lookupText = response.lookupPurposeLabel.length() > 0
+                                  ? response.lookupItemName + " | " + response.lookupPurposeLabel
+                                  : response.lookupItemName;
+      display_.updateQuantityLookup(lookupText, QuantityLookupState::Found);
       activeLookupId_.clear();
       activeLookupCode_.clear();
     } else if (response.lookupStatus == "not_found") {
-      display_.updateQuantityLookup(pendingScanType_ == PendingScanType::DigiKeyDataMatrix
+      display_.updateQuantityLookup(pendingScanType_ == PendingScanType::ComponentDataMatrix
                                         ? String("Not in inventory")
                                         : String("Unknown inventory ID"),
                                     QuantityLookupState::NotFound);
@@ -1157,6 +1052,9 @@ void InventatoryScanApp::setAwaitingQuantity() {
 
 void InventatoryScanApp::resetPending() {
   scannedCode_.clear();
+  scannedManufacturer_.clear();
+  scannedManufacturerPartNumber_.clear();
+  scannedPartName_.clear();
   quantity_.clear();
   activeLookupId_.clear();
   activeLookupCode_.clear();

@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace inventatory_scan {
 
@@ -41,16 +42,118 @@ inline bool isStandardMachineCode(const String& value) {
   return true;
 }
 
-inline bool isStandardSupplierPartCode(const String& value) {
+inline bool isStandardManufacturerPartNumber(const String& value) {
   const auto code = trimCopy(value);
-  if (code.length() < 5U || code.length() > 64U || !code.endsWith("-ND")) return false;
-  bool hasDigit = false;
+  if (code.length() < 2U || code.length() > 64U) return false;
+  bool hasAlphanumeric = false;
   for (size_t index = 0; index < code.length(); ++index) {
     const auto ch = static_cast<unsigned char>(code[index]);
-    if (std::isdigit(ch)) hasDigit = true;
-    if (!std::isalnum(ch) && ch != '-' && ch != '.' && ch != '_') return false;
+    if (std::isalnum(ch)) hasAlphanumeric = true;
+    if (!std::isalnum(ch) && ch != '-' && ch != '.' && ch != '_' && ch != '/' && ch != '+' &&
+        ch != '#' && ch != '&' && ch != ',' && ch != '(' && ch != ')' && ch != ' ') return false;
   }
-  return hasDigit;
+  return hasAlphanumeric;
+}
+
+struct DecodedComponentFields {
+  String manufacturer;
+  String manufacturerPartNumber;
+  String encodedPartName;
+  String auxiliaryPartNumber;
+  int quantity = 1;
+};
+
+inline bool isIso15434Separator(char ch) {
+  const auto byte = static_cast<unsigned char>(ch);
+  return byte == 0x1DU || byte == 0x1EU || byte == 0x04U;
+}
+
+inline bool iso15434Field(const String& field, const char* identifier, String& value) {
+  const auto length = strlen(identifier);
+  if (field.length() <= length || field.substring(0, length) != identifier) return false;
+  value = trimCopy(field.substring(length));
+  return value.length() > 0;
+}
+
+inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields& decoded) {
+  decoded = {};
+  if (raw.length() == 0 || raw.length() > 512U) return false;
+  const auto value = trimCopy(stripAimSymbologyPrefix(raw));
+  if (!value.startsWith("[)>")) return false;
+  size_t offset = 0;
+  bool separated = false;
+  if (value.length() >= 7U && static_cast<unsigned char>(value[3]) == 0x1EU && value[4] == '0' &&
+      value[5] == '6' && static_cast<unsigned char>(value[6]) == 0x1DU) {
+    offset = 7U;
+    separated = true;
+  } else if (value.length() >= 5U && value[3] == '0' && value[4] == '6') {
+    offset = 5U;
+  } else {
+    return false;
+  }
+
+  String quantityText;
+  if (separated) {
+    size_t index = offset;
+    while (index < value.length()) {
+      while (index < value.length() && isIso15434Separator(value[index])) ++index;
+      const auto begin = index;
+      while (index < value.length() && !isIso15434Separator(value[index])) ++index;
+      const auto field = value.substring(begin, index);
+      String parsed;
+      if (decoded.manufacturerPartNumber.length() == 0 && iso15434Field(field, "1P", parsed)) {
+        decoded.manufacturerPartNumber = parsed;
+      } else if (iso15434Field(field, "P", parsed)) {
+        if (decoded.manufacturerPartNumber.length() == 0) decoded.manufacturerPartNumber = parsed;
+        else decoded.auxiliaryPartNumber = parsed;
+      } else if (decoded.manufacturer.length() == 0 && iso15434Field(field, "1V", parsed)) {
+        decoded.manufacturer = parsed;
+      } else if (decoded.manufacturer.length() == 0 && iso15434Field(field, "V", parsed)) {
+        decoded.manufacturer = parsed;
+      } else if (decoded.encodedPartName.length() == 0 && iso15434Field(field, "20P", parsed)) {
+        decoded.encodedPartName = parsed;
+      } else if (decoded.encodedPartName.length() == 0 && iso15434Field(field, "N", parsed)) {
+        decoded.encodedPartName = parsed;
+      } else if (quantityText.length() == 0 && iso15434Field(field, "Q", parsed)) {
+        quantityText = parsed;
+      }
+    }
+  } else {
+    // A few scanner profiles suppress separators. Recover only fields whose
+    // boundaries are unambiguous; uncertain values remain empty.
+    const auto manufacturerMarker = value.indexOf("1P", offset);
+    if (manufacturerMarker >= 0) {
+      const auto begin = static_cast<size_t>(manufacturerMarker) + 2U;
+      size_t end = value.length();
+      for (size_t index = begin; index + 1U < value.length(); ++index) {
+        if (value[index] == 'Q' && std::isdigit(static_cast<unsigned char>(value[index + 1U]))) {
+          end = index;
+          break;
+        }
+      }
+      if (end > begin) decoded.manufacturerPartNumber = trimCopy(value.substring(begin, end));
+      if (offset < static_cast<size_t>(manufacturerMarker) && value[offset] == 'P') {
+        decoded.auxiliaryPartNumber = trimCopy(value.substring(offset + 1U, manufacturerMarker));
+      }
+    }
+    for (size_t index = offset; index + 1U < value.length(); ++index) {
+      if (value[index] != 'Q' || !std::isdigit(static_cast<unsigned char>(value[index + 1U]))) continue;
+      size_t end = index + 1U;
+      while (end < value.length() && std::isdigit(static_cast<unsigned char>(value[end]))) ++end;
+      quantityText = value.substring(index + 1U, end);
+      break;
+    }
+  }
+  if (quantityText.length() > 0) {
+    bool numeric = true;
+    for (size_t index = 0; index < quantityText.length(); ++index) {
+      if (!std::isdigit(static_cast<unsigned char>(quantityText[index]))) numeric = false;
+    }
+    if (numeric && quantityText.toInt() > 0) decoded.quantity = static_cast<int>(quantityText.toInt());
+  }
+  if (decoded.manufacturerPartNumber.length() > 0 &&
+      !isStandardManufacturerPartNumber(decoded.manufacturerPartNumber)) decoded.manufacturerPartNumber.clear();
+  return decoded.manufacturerPartNumber.length() > 0 || decoded.encodedPartName.length() > 0;
 }
 
 inline String hexByte(unsigned char value) {

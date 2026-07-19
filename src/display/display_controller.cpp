@@ -91,19 +91,19 @@ void DisplayController::showReady() {
 }
 
 void DisplayController::showQuantity(const String& itemText, const String& itemCode,
-                                     const String& quantityText, std::size_t cursor, bool supplier,
+                                     const String& quantityText, std::size_t cursor, bool receiveMode,
                                      QuantityLookupState lookupState) {
   clearContent();
   model_.mode = DisplayUiMode::Quantity;
   model_.bodyKind = DisplayBodyKind::Quantity;
   model_.showPcStatus = true;
-  model_.supplierQuantity = supplier;
-  model_.quantityPrompt = supplier ? "Add quantity:" : "Change quantity by:";
+  model_.receiveQuantity = receiveMode;
+  model_.quantityPrompt = receiveMode ? "Add quantity:" : "Change quantity by:";
   model_.primary = itemText;
   model_.secondary = itemCode;
   model_.quantityText = quantityText;
   model_.quantityCursor = cursor;
-  model_.actions = supplier ? "A + # Del C Cancel" : "A + B - # Del C Cancel";
+  model_.actions = receiveMode ? "A + # Del C Cancel" : "A + B - # Del C Cancel";
   updateQuantityLookup(itemText, lookupState);
   markDirty();
 }
@@ -131,7 +131,7 @@ void DisplayController::updateQuantityLookup(const String& itemText,
       model_.rail = DisplayRailStyle::Static;
       break;
     case QuantityLookupState::NotFound:
-      model_.header = model_.supplierQuantity ? "New part" : "Part not found";
+      model_.header = model_.receiveQuantity ? "New part" : "Part not found";
       model_.rail = DisplayRailStyle::Static;
       break;
     case QuantityLookupState::Unavailable:
@@ -197,7 +197,7 @@ void DisplayController::applyResult(const SyncResult& result) {
     model_.header = "Check result";
     model_.primary = result.itemName.length() > 0 ? result.itemName : String("Inventory updated");
     model_.secondary = result.message.length() > 0 ? result.message : String("Updated with warning");
-    model_.tertiary = "Review on your PC";
+    model_.tertiary = result.purposeLabel.length() > 0 ? result.purposeLabel : String("Review on your PC");
     model_.actions = "C Dismiss";
     resultUntilMs_ = millis() + kUiWarningDwellMs;
   } else {
@@ -206,6 +206,7 @@ void DisplayController::applyResult(const SyncResult& result) {
     model_.primary = result.itemName.length() > 0 ? result.itemName : String("Inventory updated");
     model_.secondary = String(result.appliedDelta >= 0 ? "Added " : "Removed ") +
                        abs(result.appliedDelta) + " / total " + result.quantity;
+    model_.tertiary = result.purposeLabel;
     model_.actions = "C Menu";
     resultUntilMs_ = millis() + kUiSuccessDwellMs;
   }

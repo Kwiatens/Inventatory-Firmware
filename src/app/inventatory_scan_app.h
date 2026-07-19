@@ -44,12 +44,14 @@ class InventatoryScanApp {
   enum class PendingScanType {
     None,
     InventatoryQuantity,
-    DigiKeyDataMatrix,
+    ComponentDataMatrix,
   };
 
   void handleScan(const String& code);
   void pollScanner();
-  bool queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId = nullptr);
+  bool queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId = nullptr,
+                  const String& manufacturer = String(), const String& manufacturerPartNumber = String(),
+                  const String& encodedPartName = String());
   void waitForInventoryResult(const String& eventId);
   void handleKey(const InventatoryKeyEvent& event);
   void requestOtaUpdate();
@@ -93,6 +95,9 @@ class InventatoryScanApp {
   InventatoryClientConfig clientConfig_;
   QuantityComposer quantity_;
   String scannedCode_;
+  String scannedManufacturer_;
+  String scannedManufacturerPartNumber_;
+  String scannedPartName_;
   State state_ = State::Idle;
   PendingScanType pendingScanType_ = PendingScanType::None;
   PowerMode powerMode_ = PowerMode::Normal;
