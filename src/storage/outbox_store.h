@@ -28,6 +28,9 @@ struct DeviceEventRecord {
   uint32_t sequence = 0;
   DeviceEventKind kind = DeviceEventKind::InventoryAdjust;
   String code;
+  String manufacturer;
+  String manufacturerPartNumber;
+  String encodedPartName;
   int value = 0;
 };
 
@@ -40,7 +43,9 @@ class OutboxStore {
   bool load();
   bool save();
 
-  bool enqueue(DeviceEventKind kind, const String& code, int value, DeviceEventRecord* created = nullptr);
+  bool enqueue(DeviceEventKind kind, const String& code, int value, DeviceEventRecord* created = nullptr,
+               const String& manufacturer = String(), const String& manufacturerPartNumber = String(),
+               const String& encodedPartName = String());
   bool peek(std::size_t offset, DeviceEventRecord& event) const;
   bool pop(DeviceEventRecord* event = nullptr);
   void clear();
@@ -52,8 +57,10 @@ class OutboxStore {
 
  private:
   static constexpr uint32_t kMagic = 0x48534f51UL;
-  static constexpr uint16_t kVersion = 3;
-  static constexpr std::size_t kCodeLen = 64;
+  static constexpr uint16_t kVersion = 4;
+  static constexpr std::size_t kCodeLen = 65;  // 64-character MPN plus null terminator.
+  static constexpr std::size_t kManufacturerLen = 48;
+  static constexpr std::size_t kNameLen = 64;
 
   struct Record {
     uint32_t sequence = 0;
@@ -61,6 +68,9 @@ class OutboxStore {
     uint8_t kind = 0;
     uint8_t reserved[3]{};
     char code[kCodeLen]{};
+    char manufacturer[kManufacturerLen]{};
+    char manufacturerPartNumber[kCodeLen]{};
+    char encodedPartName[kNameLen]{};
   };
 
   struct PersistedState {

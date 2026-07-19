@@ -70,7 +70,7 @@ struct DisplayModel {
   DisplayConnectivityState connectivity = DisplayConnectivityState::Offline;
   bool showPcStatus = true;
   bool animateEllipsis = false;
-  bool supplierQuantity = false;
+  bool receiveQuantity = false;
   std::size_t queueDepth = 0;
   String header;
   String primary;

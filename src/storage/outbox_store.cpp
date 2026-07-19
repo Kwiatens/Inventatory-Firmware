@@ -52,6 +52,9 @@ DeviceEventRecord OutboxStore::fromRecord(const Record& record) const {
   event.eventId = makeRequestId(deviceId_, record.sequence);
   event.kind = static_cast<DeviceEventKind>(record.kind);
   event.code = readString(record.code);
+  event.manufacturer = readString(record.manufacturer);
+  event.manufacturerPartNumber = readString(record.manufacturerPartNumber);
+  event.encodedPartName = readString(record.encodedPartName);
   event.value = record.value;
   return event;
 }
@@ -119,7 +122,9 @@ bool OutboxStore::save() {
   return prefs_.putBytes("state", &state_, sizeof(state_)) == sizeof(state_);
 }
 
-bool OutboxStore::enqueue(DeviceEventKind kind, const String& code, int value, DeviceEventRecord* created) {
+bool OutboxStore::enqueue(DeviceEventKind kind, const String& code, int value, DeviceEventRecord* created,
+                          const String& manufacturer, const String& manufacturerPartNumber,
+                          const String& encodedPartName) {
   const auto trimmed = trimCopy(code);
   if (full() || trimmed.length() == 0 || trimmed.length() >= kCodeLen || value == 0) return false;
   Record record{};
@@ -127,6 +132,9 @@ bool OutboxStore::enqueue(DeviceEventKind kind, const String& code, int value, D
   record.value = value;
   record.kind = static_cast<uint8_t>(kind);
   copyString(record.code, sizeof(record.code), trimmed);
+  copyString(record.manufacturer, sizeof(record.manufacturer), manufacturer);
+  copyString(record.manufacturerPartNumber, sizeof(record.manufacturerPartNumber), manufacturerPartNumber);
+  copyString(record.encodedPartName, sizeof(record.encodedPartName), encodedPartName);
   state_.records[tail_] = record;
   tail_ = (tail_ + 1U) % kCapacity;
   ++count_;

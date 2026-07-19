@@ -7,7 +7,7 @@
 
 namespace inventatory_scan {
 
-constexpr int kInventatoryScanProtocolVersion = 1;
+constexpr int kInventatoryScanProtocolVersion = 2;
 constexpr std::size_t kSyncBatchSize = 4;
 constexpr std::size_t kQuickLabelPresetLimit = 12;
 constexpr std::size_t kQuickLabelPresetTextLimit = 24;
@@ -24,6 +24,7 @@ struct SyncResult {
   String status;
   bool existing = false;
   String itemName;
+  String purposeLabel;
   int requestedDelta = 0;
   int appliedDelta = 0;
   int quantity = 0;
@@ -43,6 +44,7 @@ struct SyncResponse {
   String lookupId;
   String lookupStatus;
   String lookupItemName;
+  String lookupPurposeLabel;
   bool hasQuickLabels = false;
   uint32_t quickLabelRevision = 0;
   String quickLabelPresets[kQuickLabelPresetLimit];
@@ -68,7 +70,7 @@ inline String buildSyncRequestJson(const String& requestId, const String& device
                                    const QuickLabelPrintRequest* quickLabelPrint = nullptr) {
   String out;
   out.reserve(512);
-  out += "{\"protocolVersion\":1,\"requestId\":\"";
+  out += "{\"protocolVersion\":2,\"requestId\":\"";
   out += escapeJson(requestId);
   out += "\",\"deviceId\":\"";
   out += escapeJson(deviceId);
@@ -80,7 +82,7 @@ inline String buildSyncRequestJson(const String& requestId, const String& device
   out += String(rssi);
   out += ",\"queueDepth\":";
   out += String(queueDepth);
-  out += ",\"capabilities\":[\"lcd.128x64\",\"keypad.4x4\",\"scanner.gm65\",\"lookup.machine_code_name\",\"quick_labels.v1\"],\"events\":[";
+  out += ",\"capabilities\":[\"lcd.128x64\",\"keypad.4x4\",\"scanner.gm65\",\"decoded_component.v2\",\"quick_labels.v1\"],\"events\":[";
   for (std::size_t index = 0; index < eventCount; ++index) {
     if (index != 0) out += ',';
     out += "{\"eventId\":\"";
@@ -91,6 +93,16 @@ inline String buildSyncRequestJson(const String& requestId, const String& device
     out += escapeJson(events[index].code);
     out += "\",\"value\":";
     out += String(events[index].value);
+    if (events[index].manufacturer.length() > 0 || events[index].manufacturerPartNumber.length() > 0 ||
+        events[index].encodedPartName.length() > 0) {
+      out += ",\"component\":{\"manufacturer\":\"";
+      out += escapeJson(events[index].manufacturer);
+      out += "\",\"manufacturerPartNumber\":\"";
+      out += escapeJson(events[index].manufacturerPartNumber);
+      out += "\",\"encodedPartName\":\"";
+      out += escapeJson(events[index].encodedPartName);
+      out += "\"}";
+    }
     out += '}';
   }
   out += "],\"resultAcks\":[";
@@ -267,6 +279,7 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
     response.result.status = jsonStringValue(object, "status");
     response.result.existing = jsonBoolValue(object, "existing");
     response.result.itemName = jsonStringValue(object, "itemName");
+    response.result.purposeLabel = jsonStringValue(object, "purposeLabel");
     response.result.requestedDelta = jsonIntValue(object, "requestedDelta");
     response.result.appliedDelta = jsonIntValue(object, "appliedDelta");
     response.result.quantity = jsonIntValue(object, "quantity");
@@ -280,6 +293,7 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
     response.lookupId = jsonStringValue(lookup, "lookupId");
     response.lookupStatus = jsonStringValue(lookup, "status");
     response.lookupItemName = jsonStringValue(lookup, "itemName");
+    response.lookupPurposeLabel = jsonStringValue(lookup, "purposeLabel");
     response.hasLookupResult = response.lookupId.length() > 0 && response.lookupStatus.length() > 0;
   }
   const auto quickLabels = jsonObjectValue(body, "quickLabels");
