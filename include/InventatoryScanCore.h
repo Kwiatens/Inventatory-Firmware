@@ -101,11 +101,12 @@ inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields&
       while (index < value.length() && !isIso15434Separator(value[index])) ++index;
       const auto field = value.substring(begin, index);
       String parsed;
-      if (decoded.manufacturerPartNumber.length() == 0 && iso15434Field(field, "1P", parsed)) {
-        decoded.manufacturerPartNumber = parsed;
-      } else if (iso15434Field(field, "P", parsed)) {
+      // Distributor labels put their own `P` identifier before the `1P`
+      // manufacturer part number, so `P` never wins even when it is seen first.
+      if (iso15434Field(field, "1P", parsed)) {
         if (decoded.manufacturerPartNumber.length() == 0) decoded.manufacturerPartNumber = parsed;
-        else decoded.auxiliaryPartNumber = parsed;
+      } else if (iso15434Field(field, "P", parsed)) {
+        if (decoded.auxiliaryPartNumber.length() == 0) decoded.auxiliaryPartNumber = parsed;
       } else if (decoded.manufacturer.length() == 0 && iso15434Field(field, "1V", parsed)) {
         decoded.manufacturer = parsed;
       } else if (decoded.manufacturer.length() == 0 && iso15434Field(field, "V", parsed)) {
