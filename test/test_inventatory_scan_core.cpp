@@ -32,6 +32,18 @@ void test_datamatrix_decoding_fixtures() {
   TEST_ASSERT_EQUAL_STRING("TPS7A20 LDO", decoded.encodedPartName.c_str());
   TEST_ASSERT_EQUAL_INT(25, decoded.quantity);
 
+  // A Digi-Key bag prints its own part number in `P` ahead of the manufacturer
+  // part number in `1P`.
+  const String distributorBag = String("]d2[)>") + static_cast<char>(0x1E) + "06" + static_cast<char>(0x1D) +
+      "P296-1234-1-ND" + static_cast<char>(0x1D) + "1PSN74LVC1G14DBVR" + static_cast<char>(0x1D) +
+      "30P296-1234-1-ND" + static_cast<char>(0x1D) + "1TLOT12345" + static_cast<char>(0x1D) + "4LMY" +
+      static_cast<char>(0x1D) + "Q100" + static_cast<char>(0x1E) + static_cast<char>(0x04);
+  TEST_ASSERT_TRUE(decodeComponentDataMatrix(distributorBag, decoded));
+  TEST_ASSERT_EQUAL_STRING("SN74LVC1G14DBVR", decoded.manufacturerPartNumber.c_str());
+  TEST_ASSERT_EQUAL_STRING("296-1234-1-ND", decoded.auxiliaryPartNumber.c_str());
+  TEST_ASSERT_EQUAL_STRING("", decoded.encodedPartName.c_str());
+  TEST_ASSERT_EQUAL_INT(100, decoded.quantity);
+
   TEST_ASSERT_TRUE(decodeComponentDataMatrix("[)>06PNE555P1PLOT123Q10", decoded));
   TEST_ASSERT_EQUAL_STRING("LOT123", decoded.manufacturerPartNumber.c_str());
   TEST_ASSERT_EQUAL_STRING("NE555P", decoded.auxiliaryPartNumber.c_str());

@@ -17,6 +17,10 @@ namespace inventatory_scan {
 
 namespace {
 
+// ESP32 NVS namespaces are limited to 15 characters plus the terminator.
+constexpr char kOutboxNamespace[] = "inv_outbox";
+static_assert(sizeof(kOutboxNamespace) <= 16, "NVS namespace exceeds ESP32's 15-character limit");
+
 bool isQuantityCode(const String& code) {
   const auto trimmed = trimCopy(code);
   if (trimmed.length() == 0) {
@@ -80,8 +84,15 @@ bool InventatoryScanApp::begin() {
   clientConfig_.fallbackHost = FALLBACK_HOST;
   clientConfig_.fallbackPort = FALLBACK_PORT;
 
-  outbox_.begin("inventatory_scan", DEVICE_ID);
-  outbox_.load();
+  if (!outbox_.begin(kOutboxNamespace, DEVICE_ID)) {
+    Serial.println("Outbox storage unavailable; scans cannot be queued until NVS recovers.");
+  } else {
+    if (!outbox_.load()) {
+      Serial.println("Outbox storage was reset; queued events could not be restored.");
+    }
+    Serial.printf("Outbox ready: %u queued, %u free NVS entries.\r\n", static_cast<unsigned>(outbox_.size()),
+                  static_cast<unsigned>(outbox_.freeStorageEntries()));
+  }
   if (!deviceSettings_.begin()) {
     Serial.println("Device settings storage unavailable; using default contrast.");
   } else {
@@ -800,13 +811,27 @@ bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, in
                                     const String& manufacturer, const String& manufacturerPartNumber,
                                     const String& encodedPartName) {
   DeviceEventRecord event;
-  if (!outbox_.enqueue(kind, code, value, &event, manufacturer, manufacturerPartNumber, encodedPartName)) {
+  const auto queueResult =
+      outbox_.enqueue(kind, code, value, &event, manufacturer, manufacturerPartNumber, encodedPartName);
+  if (queueResult != OutboxStore::EnqueueResult::Queued) {
     SyncResult result;
     result.resultId = "local-queue";
     result.eventId = "local-queue";
     result.status = "failed";
-    result.code = outbox_.full() ? "QUEUE FULL" : "QUEUE ERROR";
-    result.message = outbox_.full() ? "Sync PC before scanning" : "Could not save event";
+    switch (queueResult) {
+      case OutboxStore::EnqueueResult::QueueFull:
+        result.code = "QUEUE FULL";
+        result.message = "Sync PC before scanning";
+        break;
+      case OutboxStore::EnqueueResult::StorageFailed:
+        result.code = "STORAGE ERROR";
+        result.message = "Scan storage write failed";
+        break;
+      default:
+        result.code = "SCAN ERROR";
+        result.message = "Scan data cannot be saved";
+        break;
+    }
     display_.showResult(result);
     Serial.println(result.message.c_str());
     return false;
