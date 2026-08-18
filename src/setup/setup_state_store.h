@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <cstdint>
 
 namespace inventatory_scan {
 
@@ -19,12 +20,13 @@ class SetupStateStore {
   bool begin();
   bool load(ProvisionedSettings& settings) const;
   bool save(const ProvisionedSettings& settings);
+  bool reserveTransportCounter(std::uint64_t& counter);
   bool clear();
   bool complete() const;
 
  private:
   static constexpr uint32_t kMagic = 0x49534554UL;  // "ISET"
-  static constexpr uint16_t kVersion = 1;
+  static constexpr uint16_t kVersion = 2;
 
   mutable Preferences prefs_;
 };

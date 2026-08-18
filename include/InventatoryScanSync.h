@@ -3,11 +3,11 @@
 #include <Arduino.h>
 
 #include "InventatoryScanCore.h"
+#include "InventatoryScanSecurity.h"
 #include "storage/outbox_store.h"
 
 namespace inventatory_scan {
 
-constexpr int kInventatoryScanProtocolVersion = 2;
 constexpr std::size_t kSyncBatchSize = 4;
 constexpr std::size_t kQuickLabelPresetLimit = 12;
 constexpr std::size_t kQuickLabelPresetTextLimit = 24;
@@ -70,7 +70,9 @@ inline String buildSyncRequestJson(const String& requestId, const String& device
                                    const QuickLabelPrintRequest* quickLabelPrint = nullptr) {
   String out;
   out.reserve(512);
-  out += "{\"protocolVersion\":2,\"requestId\":\"";
+  out += "{\"protocolVersion\":";
+  out += String(kInventatoryScanProtocolVersion);
+  out += ",\"requestId\":\"";
   out += escapeJson(requestId);
   out += "\",\"deviceId\":\"";
   out += escapeJson(deviceId);

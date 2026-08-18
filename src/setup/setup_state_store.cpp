@@ -44,10 +44,19 @@ bool SetupStateStore::save(const ProvisionedSettings& settings) {
   if (prefs_.putString("ssid", settings.wifiSsid) != settings.wifiSsid.length() ||
       prefs_.putString("password", settings.wifiPassword) != settings.wifiPassword.length() ||
       prefs_.putString("token", settings.deviceToken) != settings.deviceToken.length() ||
+      prefs_.putULong64("request_counter", 0) != sizeof(uint64_t) ||
       !prefs_.putUInt("magic", kMagic) || !prefs_.putUShort("version", kVersion)) {
     return false;
   }
   return prefs_.putBool("complete", true);
+}
+
+bool SetupStateStore::reserveTransportCounter(uint64_t& counter) {
+  if (!complete()) return false;
+  const auto previous = prefs_.getULong64("request_counter", 0);
+  if (previous == UINT64_MAX) return false;
+  counter = previous + 1U;
+  return prefs_.putULong64("request_counter", counter) == sizeof(counter);
 }
 
 bool SetupStateStore::clear() {

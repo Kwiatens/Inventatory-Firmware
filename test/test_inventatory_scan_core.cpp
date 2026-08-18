@@ -165,7 +165,7 @@ void test_fixed_ring_buffer_fifo_and_overwrite() {
   TEST_ASSERT_TRUE(buffer.empty());
 }
 
-void test_protocol_v2_sync_round_trip() {
+void test_protocol_v3_sync_round_trip() {
   DeviceEventRecord event;
   event.eventId = "R1-42";
   event.sequence = 42;
@@ -178,14 +178,14 @@ void test_protocol_v2_sync_round_trip() {
   const String ack = "R1-41-result";
   const auto json = buildSyncRequestJson("sync-7", "R1", "0.2.0", "ready", -51, 1,
                                          &event, 1, &ack, 1, "lookup-9", "0002");
-  TEST_ASSERT_TRUE(json.indexOf("\"protocolVersion\":2") >= 0);
+  TEST_ASSERT_TRUE(json.indexOf("\"protocolVersion\":3") >= 0);
   TEST_ASSERT_TRUE(json.indexOf("\"type\":\"inventory.adjust\"") >= 0);
   TEST_ASSERT_TRUE(json.indexOf("\"value\":-3") >= 0);
   TEST_ASSERT_TRUE(json.indexOf("\"manufacturerPartNumber\":\"TPS7A2033PDBVR\"") >= 0);
   TEST_ASSERT_TRUE(json.indexOf("\"lookup\":{\"lookupId\":\"lookup-9\",\"code\":\"0002\"}") >= 0);
 
   const auto response = parseSyncResponseJson(
-      "{\"protocolVersion\":2,\"requestId\":\"sync-7\",\"acceptedEventIds\":[\"R1-42\"],"
+      "{\"protocolVersion\":3,\"requestId\":\"sync-7\",\"acceptedEventIds\":[\"R1-42\"],"
       "\"results\":[{\"resultId\":\"R1-42-result\",\"eventId\":\"R1-42\","
       "\"status\":\"completed\",\"existing\":true,\"itemName\":\"10k resistor\","
       "\"purposeLabel\":\"Resistor\","
@@ -210,7 +210,7 @@ void test_protocol_v2_sync_round_trip() {
   TEST_ASSERT_FALSE(isCurrentLookupResult(response, "lookup-stale"));
 
   const auto unavailable = parseSyncResponseJson(
-      "{\"protocolVersion\":2,\"requestId\":\"sync-8\",\"acceptedEventIds\":[],"
+      "{\"protocolVersion\":3,\"requestId\":\"sync-8\",\"acceptedEventIds\":[],"
       "\"results\":[],\"lookupResult\":{\"lookupId\":\"lookup-10\","
       "\"status\":\"unavailable\",\"itemName\":\"\"}}");
   TEST_ASSERT_TRUE(unavailable.hasLookupResult);
@@ -226,7 +226,7 @@ void test_quick_label_protocol_extensions() {
                                             nullptr, 0, nullptr, 0, {}, {}, &print);
   TEST_ASSERT_TRUE(request.indexOf("\"quickLabelPrint\":{\"requestId\":\"R1-label-7\"") >= 0);
   const auto response = parseSyncResponseJson(
-      "{\"protocolVersion\":2,\"requestId\":\"sync-label\",\"acceptedEventIds\":[],\"results\":[],"
+      "{\"protocolVersion\":3,\"requestId\":\"sync-label\",\"acceptedEventIds\":[],\"results\":[],"
       "\"quickLabels\":{\"revision\":4,\"presets\":[\"5V\",\"12V\"]},"
       "\"quickLabelPrintResult\":{\"requestId\":\"R1-label-7\",\"status\":\"completed\","
       "\"code\":\"\",\"message\":\"Label sent\"}}");
@@ -237,6 +237,18 @@ void test_quick_label_protocol_extensions() {
   TEST_ASSERT_EQUAL_STRING("12V", response.quickLabelPresets[1].c_str());
   TEST_ASSERT_TRUE(response.hasQuickLabelPrintResult);
   TEST_ASSERT_EQUAL_STRING("completed", response.quickLabelPrintStatus.c_str());
+}
+
+void test_transport_authentication_vectors() {
+  const String token = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+  TEST_ASSERT_EQUAL_STRING(
+      "37d6d6ef983dd97631462f2eae04faa133a5e6fbe066d3395d4c84c11edd81c3",
+      deviceRequestMac(token, "POST", "/api/v3/device/sync", "r1-test", 42, "{\"protocolVersion\":3}").c_str());
+  TEST_ASSERT_EQUAL_STRING("cf552c22d48743e1d2f665e8453b92cf8ea183c9692eda973c5a222820f68c03",
+                           deviceResponseMac(token, 42, 200, "{\"ok\":true}").c_str());
+  TEST_ASSERT_FALSE(transportMacMatches(deviceRequestMac(token, "POST", "/api/v3/device/sync", "r1-test", 42,
+                                                            "{\"protocolVersion\":3}"),
+                                        "0000000000000000000000000000000000000000000000000000000000000000"));
 }
 
 void test_ui_header_prefers_full_title_over_pc_status() {
@@ -309,7 +321,8 @@ void setup() {
   RUN_TEST(test_scan_json_escapes_datamatrix_separators);
   RUN_TEST(test_request_id_format);
   RUN_TEST(test_fixed_ring_buffer_fifo_and_overwrite);
-  RUN_TEST(test_protocol_v2_sync_round_trip);
+  RUN_TEST(test_protocol_v3_sync_round_trip);
+  RUN_TEST(test_transport_authentication_vectors);
   RUN_TEST(test_quick_label_protocol_extensions);
   RUN_TEST(test_ui_header_prefers_full_title_over_pc_status);
   RUN_TEST(test_ui_clipping_and_queue_boundaries);
