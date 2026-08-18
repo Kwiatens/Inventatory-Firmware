@@ -163,6 +163,7 @@ void InventatoryScanApp::loop() {
 bool InventatoryScanApp::beginNormalRuntime(const ProvisionedSettings& settings) {
   provisionedSettings_ = settings;
   clientConfig_.token = settings.deviceToken;
+  clientConfig_.transportCounterStore = &setupStore_;
   if (!startNetworkWorker()) return false;
   sendDebugMessage("boot");
   logState("boot");
@@ -948,7 +949,7 @@ void InventatoryScanApp::processNetworkResult() {
 
   if (!sent || status != 200) {
     pcOnline_ = false;
-    Serial.print("POST /api/v1/device/sync failed, status ");
+    Serial.print("POST /api/v3/device/sync failed, status ");
     Serial.println(status);
     if (pendingQuickLabelPrintId_.length() > 0) {
       pendingQuickLabelPrintId_.clear();

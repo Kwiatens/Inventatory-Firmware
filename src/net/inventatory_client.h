@@ -8,9 +8,12 @@
 
 namespace inventatory_scan {
 
+class SetupStateStore;
+
 struct InventatoryClientConfig {
   String deviceId;
   String token;
+  SetupStateStore* transportCounterStore = nullptr;
   String fallbackHost;
   uint16_t fallbackPort = 0;
 };
@@ -34,7 +37,7 @@ class InventatoryClient {
  private:
   bool connectToResolved();
   bool sendJson(const char* path, const String& body, int& httpStatus, String& responseBody);
-  bool readResponse(int& httpStatus, String& responseBody);
+  bool readResponse(int& httpStatus, String& responseBody, uint64_t counter);
 
   InventatoryClientConfig config_;
   WiFiClient client_;
