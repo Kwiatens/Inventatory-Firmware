@@ -130,23 +130,6 @@ bool InventatoryClient::resolveEndpoint(bool force) {
   return false;
 }
 
-bool InventatoryClient::postDebug(const String& message, const String& level) {
-  int httpStatus = 0;
-  String responseBody;
-  const auto payload = buildDebugRequestJson(config_.deviceId, makeRequestId(config_.deviceId, millis()),
-                                             level, message);
-  const auto sent = sendJson("/api/device/debug", payload, httpStatus, responseBody);
-  if (sent && httpStatus != 200) {
-    Serial.print("POST /api/device/debug -> HTTP ");
-    Serial.println(httpStatus);
-    if (responseBody.length() > 0) {
-      Serial.print("Response body: ");
-      Serial.println(responseBody.c_str());
-    }
-  }
-  return sent && httpStatus == 200;
-}
-
 bool InventatoryClient::connectToResolved() {
   if (!resolveEndpoint()) {
     return false;
@@ -250,34 +233,8 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
   return httpStatus >= 100;
 }
 
-bool InventatoryClient::postQuantity(const QuantityRequest& request, int& httpStatus, String& responseBody) {
-  const auto payload = buildQuantityRequestJson(request.deviceId, request.requestId, request.code, request.delta);
-  return sendJson("/api/device/quantity", payload, httpStatus, responseBody);
-}
-
-bool InventatoryClient::postScan(const ScanRequest& request, int& httpStatus, String& responseBody) {
-  const auto payload = buildScanRequestJson(request.deviceId, request.requestId, request.code, request.quantity);
-  return sendJson("/api/device/scan", payload, httpStatus, responseBody);
-}
-
-bool InventatoryClient::postStatus(const String& firmwareVersion, int rssi, const String& debug) {
-  int httpStatus = 0;
-  String responseBody;
-  const auto payload = buildStatusRequestJson(config_.deviceId, firmwareVersion, rssi, debug);
-  const auto sent = sendJson("/api/device/status", payload, httpStatus, responseBody);
-  if (sent && httpStatus != 200) {
-    Serial.print("POST /api/device/status -> HTTP ");
-    Serial.println(httpStatus);
-    if (responseBody.length() > 0) {
-      Serial.print("Response body: ");
-      Serial.println(responseBody.c_str());
-    }
-  }
-  return sent && httpStatus == 200;
-}
-
 bool InventatoryClient::postSync(const String& payload, int& httpStatus, String& responseBody) {
-  return sendJson("/api/v3/device/sync", payload, httpStatus, responseBody);
+  return sendJson("/api/v1/device/sync", payload, httpStatus, responseBody);
 }
 
 String InventatoryClient::endpointSummary() const {

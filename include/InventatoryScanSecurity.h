@@ -1,4 +1,4 @@
-// Inventatory Scan R1 transport v3 authentication helpers.
+// Inventatory Scan R1 transport v1 authentication helpers.
 #pragma once
 
 #include <Arduino.h>
@@ -7,7 +7,7 @@
 
 namespace inventatory_scan {
 
-constexpr int kInventatoryScanProtocolVersion = 3;
+constexpr int kInventatoryScanProtocolVersion = 1;
 
 inline int transportHexDigit(char ch) {
   if (ch >= '0' && ch <= '9') return ch - '0';
@@ -50,7 +50,7 @@ inline String transportMac(const String& token, const char* direction, const Str
   uint8_t key[32]{};
   uint8_t mac[32]{};
   if (!decodeTransportToken(token, root) ||
-      !transportHmac(root, sizeof(root), String("Inventatory Scan R1 transport v3 ") + direction, key) ||
+      !transportHmac(root, sizeof(root), String("Inventatory Scan R1 transport v1 ") + direction, key) ||
       !transportHmac(key, sizeof(key), input, mac)) {
     return {};
   }
@@ -59,13 +59,13 @@ inline String transportMac(const String& token, const char* direction, const Str
 
 inline String deviceRequestMac(const String& token, const char* method, const char* path, const String& deviceId,
                                uint64_t counter, const String& body) {
-  return transportMac(token, "client-to-server", String("Inventatory Scan R1/v3\nrequest\n") + method + '\n' +
+  return transportMac(token, "client-to-server", String("Inventatory Scan R1/v1\nrequest\n") + method + '\n' +
                                                  path + '\n' + deviceId + '\n' +
                                                  String(static_cast<unsigned long long>(counter)) + '\n' + body);
 }
 
 inline String deviceResponseMac(const String& token, uint64_t counter, int status, const String& body) {
-  return transportMac(token, "server-to-client", String("Inventatory Scan R1/v3\nresponse\n") +
+  return transportMac(token, "server-to-client", String("Inventatory Scan R1/v1\nresponse\n") +
                                                  String(static_cast<unsigned long long>(counter)) +
                                                  '\n' + String(status) + '\n' + body);
 }

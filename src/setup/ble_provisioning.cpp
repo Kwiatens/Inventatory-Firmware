@@ -23,7 +23,7 @@ class ServerCallbacks final : public BLEServerCallbacks {
   explicit ServerCallbacks(BleProvisioning& owner) : owner_(owner) {}
   void onDisconnect(BLEServer* server) override {
     // Keep first-use setup discoverable after a failed/cancelled attempt.
-    server->startAdvertising();
+    if (owner_.active()) server->startAdvertising();
   }
  private:
   BleProvisioning& owner_;
@@ -55,9 +55,15 @@ class RequestCallbacks final : public BLECharacteristicCallbacks {
 
 bool BleProvisioning::begin(const String& deviceId) {
   if (active_) return true;
+  if (requestMutex_ == nullptr) requestMutex_ = xSemaphoreCreateMutex();
+  if (requestMutex_ == nullptr) return false;
   pairingCode_ = 100000UL + (esp_random() % 900000UL);
   const auto suffix = deviceId.length() > 4 ? deviceId.substring(deviceId.length() - 4) : deviceId;
   BLEDevice::init(("Inventatory Setup " + suffix).c_str());
+  // The provisioning payload contains the SSID, password, and a 32-byte
+  // token. Negotiate enough ATT payload space to keep it a single write and
+  // avoid ambiguous prepared-write completion on desktop BLE stacks.
+  BLEDevice::setMTU(247);
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
   BLEDevice::setSecurityCallbacks(new SecurityCallbacks(*this));
   auto* security = new BLESecurity();
@@ -82,29 +88,40 @@ bool BleProvisioning::begin(const String& deviceId) {
   service->start();
   server_->getAdvertising()->addServiceUUID(kServiceUuid);
   server_->getAdvertising()->setScanResponse(true);
-  server_->startAdvertising();
   active_ = true;
+  server_->startAdvertising();
   publishStatus("READY");
   return true;
 }
 
 void BleProvisioning::end() {
   if (!active_) return;
+  active_ = false;
   BLEDevice::stopAdvertising();
   BLEDevice::deinit(true);
   server_ = nullptr;
   status_ = nullptr;
   request_ = nullptr;
-  requestPending_ = false;
-  pending_ = {};
-  active_ = false;
+  if (requestMutex_ != nullptr && xSemaphoreTake(requestMutex_, portMAX_DELAY) == pdTRUE) {
+    requestPending_ = false;
+    pending_ = {};
+    xSemaphoreGive(requestMutex_);
+  } else {
+    requestPending_ = false;
+    pending_ = {};
+  }
 }
 
 bool BleProvisioning::takeRequest(ProvisionedSettings& settings) {
-  if (!requestPending_) return false;
+  if (requestMutex_ == nullptr || xSemaphoreTake(requestMutex_, portMAX_DELAY) != pdTRUE) return false;
+  if (!requestPending_) {
+    xSemaphoreGive(requestMutex_);
+    return false;
+  }
   settings = pending_;
   pending_ = {};
   requestPending_ = false;
+  xSemaphoreGive(requestMutex_);
   return true;
 }
 
@@ -118,8 +135,13 @@ void BleProvisioning::handleEncryptedWrite(const std::string& value) {
     publishStatus("INVALID REQUEST");
     return;
   }
+  if (requestMutex_ == nullptr || xSemaphoreTake(requestMutex_, portMAX_DELAY) != pdTRUE) {
+    publishStatus("FAILED INTERNAL");
+    return;
+  }
   pending_ = parsed;
   requestPending_ = true;
+  xSemaphoreGive(requestMutex_);
   publishStatus("CONNECTING");
 }
 

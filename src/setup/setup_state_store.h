@@ -26,7 +26,7 @@ class SetupStateStore {
 
  private:
   static constexpr uint32_t kMagic = 0x49534554UL;  // "ISET"
-  static constexpr uint16_t kVersion = 2;
+  static constexpr uint16_t kVersion = 1;
 
   mutable Preferences prefs_;
 };
