@@ -109,6 +109,8 @@ class InventatoryScanApp {
   bool pcOnline_ = false;
   bool syncInFlight_ = false;
   bool networkStarted_ = false;
+  volatile bool networkInitializationComplete_ = false;
+  volatile bool networkInitializationSucceeded_ = false;
   bool setupMode_ = false;
   bool setupWifiConnecting_ = false;
   unsigned long setupWifiStartedAt_ = 0;

@@ -109,7 +109,16 @@ bool InventatoryScanApp::begin() {
     display_.tick();
     return true;
   }
-  return beginNormalRuntime(provisionedSettings_);
+  if (beginNormalRuntime(provisionedSettings_)) return true;
+  Serial.println("Normal runtime initialization failed; returning to BLE setup");
+  setupMode_ = true;
+  if (!provisioning_.begin(clientConfig_.deviceId)) {
+    Serial.println("BLE provisioning could not restart after runtime failure");
+    return false;
+  }
+  display_.showSetup(provisioning_.pairingCode(), "NETWORK ERROR");
+  display_.tick();
+  return true;
 }
 
 void InventatoryScanApp::loop() {
@@ -164,7 +173,12 @@ bool InventatoryScanApp::beginNormalRuntime(const ProvisionedSettings& settings)
   provisionedSettings_ = settings;
   clientConfig_.token = settings.deviceToken;
   clientConfig_.transportCounterStore = &setupStore_;
+  networkInitializationComplete_ = false;
+  networkInitializationSucceeded_ = false;
   if (!startNetworkWorker()) return false;
+  const auto deadline = millis() + 1000UL;
+  while (!networkInitializationComplete_ && millis() < deadline) delay(1);
+  if (!networkInitializationComplete_ || !networkInitializationSucceeded_) return false;
   sendDebugMessage("boot");
   logState("boot");
   updateConnectivityDisplay();
@@ -186,22 +200,29 @@ void InventatoryScanApp::serviceProvisioning() {
   if (!setupWifiConnecting_) return;
   if (WiFi.status() == WL_CONNECTED) {
     setupWifiConnecting_ = false;
-    if (!setupStore_.save(provisionedSettings_)) {
+    // Keep the record incomplete until the normal runtime has actually been
+    // started. A reset while BLE is being torn down must return to setup mode,
+    // not boot into a credentialed but unreachable runtime.
+    if (!setupStore_.savePending(provisionedSettings_)) {
       provisioning_.setResult(false, "SAVE FAILED");
       display_.showSetup(provisioning_.pairingCode(), "SAVE FAILED");
       WiFi.disconnect(false);
       return;
     }
+    Serial.println("Provisioning: credentials staged");
     provisioning_.setResult(true, "WIFI OK");
     // Give the subscribed desktop client a scheduling window to receive the
     // terminal notification before BLE is deinitialized below.
     delay(300);
     provisioning_.end();
     setupMode_ = false;
-    if (!beginNormalRuntime(provisionedSettings_)) {
+    if (!beginNormalRuntime(provisionedSettings_) || !setupStore_.commit()) {
+      Serial.println("Provisioning: normal runtime did not become ready; returning to BLE setup");
       setupMode_ = true;
       provisioning_.begin(clientConfig_.deviceId);
       display_.showSetup(provisioning_.pairingCode(), "NETWORK ERROR");
+    } else {
+      Serial.println("Provisioning: normal runtime ready");
     }
     return;
   }
@@ -396,6 +417,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     if (state_ == State::Idle) {
       if (display_.errorVisible()) display_.dismissError();
       else {
+        Serial.println("Opening device menu.");
         state_ = State::Menu;
         display_.showMenu();
       }
@@ -639,7 +661,15 @@ void InventatoryScanApp::networkTaskEntry(void* context) {
 }
 
 void InventatoryScanApp::networkTaskLoop() {
-  client_.begin(clientConfig_);
+  const bool clientReady = client_.begin(clientConfig_);
+  networkInitializationSucceeded_ = clientReady;
+  networkInitializationComplete_ = true;
+  if (!clientReady) {
+    Serial.println("Network worker: client initialization failed");
+    networkStarted_ = false;
+    vTaskDelete(nullptr);
+    return;
+  }
   wifiStarted_ = true;
   networkStarted_ = true;
   for (;;) {
@@ -844,7 +874,7 @@ bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, in
     return false;
   }
   if (eventId != nullptr) *eventId = event.eventId;
-  Serial.print("Queued protocol v2 event: ");
+  Serial.print("Queued protocol v1 event: ");
   Serial.println(event.eventId.c_str());
   lastSyncAttempt_ = 0;
   return true;
@@ -969,7 +999,7 @@ void InventatoryScanApp::processNetworkResult() {
       result.eventId = "local-protocol";
       result.status = "failed";
       result.code = status == 426 ? "UPDATE PC" : "PAIRING ERROR";
-      result.message = status == 426 ? "Protocol v2 required" : "Check device token";
+      result.message = status == 426 ? "Protocol v1 required" : "Check device token";
       display_.showResult(result);
     }
     return;
@@ -978,7 +1008,7 @@ void InventatoryScanApp::processNetworkResult() {
   const auto response = parseSyncResponseJson(body);
   if (!response.valid || response.requestId != requestId) {
     pcOnline_ = false;
-    Serial.println("Invalid protocol v2 sync response.");
+    Serial.println("Invalid protocol v1 sync response.");
     return;
   }
   pcOnline_ = true;

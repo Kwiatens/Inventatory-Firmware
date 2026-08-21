@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_system.h>
 
 #include "app/inventatory_scan_app.h"
 
@@ -17,6 +18,7 @@ void setup() {
   delay(1000); // Wait for Serial to initialize
 #endif
   Serial.println("Inventatory Scan R1 booting");
+  Serial.printf("Reset reason: %d\r\n", static_cast<int>(esp_reset_reason()));
   app.begin();
 }
 

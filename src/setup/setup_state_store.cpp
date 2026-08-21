@@ -29,7 +29,7 @@ bool SetupStateStore::load(ProvisionedSettings& settings) const {
   return settings.wifiSsid.length() > 0 && settings.deviceToken.length() >= 32;
 }
 
-bool SetupStateStore::save(const ProvisionedSettings& settings) {
+bool SetupStateStore::savePending(const ProvisionedSettings& settings) {
   if (settings.wifiSsid.length() == 0 || settings.wifiSsid.length() > 32 ||
       settings.wifiPassword.length() > 63 || settings.deviceToken.length() < 32 ||
       settings.deviceToken.length() > 128) {
@@ -48,7 +48,19 @@ bool SetupStateStore::save(const ProvisionedSettings& settings) {
       !prefs_.putUInt("magic", kMagic) || !prefs_.putUShort("version", kVersion)) {
     return false;
   }
+  return prefs_.putBool("complete", false);
+}
+
+bool SetupStateStore::commit() {
+  if (prefs_.getUInt("magic", 0) != kMagic || prefs_.getUShort("version", 0) != kVersion ||
+      prefs_.getString("ssid", "").length() == 0 || prefs_.getString("token", "").length() < 32) {
+    return false;
+  }
   return prefs_.putBool("complete", true);
+}
+
+bool SetupStateStore::save(const ProvisionedSettings& settings) {
+  return savePending(settings) && commit();
 }
 
 bool SetupStateStore::reserveTransportCounter(uint64_t& counter) {
