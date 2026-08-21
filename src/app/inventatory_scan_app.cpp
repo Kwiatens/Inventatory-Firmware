@@ -193,6 +193,9 @@ void InventatoryScanApp::serviceProvisioning() {
       return;
     }
     provisioning_.setResult(true, "WIFI OK");
+    // Give the subscribed desktop client a scheduling window to receive the
+    // terminal notification before BLE is deinitialized below.
+    delay(300);
     provisioning_.end();
     setupMode_ = false;
     if (!beginNormalRuntime(provisionedSettings_)) {
@@ -706,7 +709,10 @@ void InventatoryScanApp::networkTaskLoop() {
       }
     } else if (hasDebug && WiFi.isConnected()) {
       networkBusy_ = true;
-      client_.postDebug(debugMessage, debugLevel);
+      Serial.print("Scanner diagnostic [");
+      Serial.print(debugLevel.c_str());
+      Serial.print("]: ");
+      Serial.println(debugMessage.c_str());
       networkBusy_ = false;
     }
 
@@ -949,7 +955,7 @@ void InventatoryScanApp::processNetworkResult() {
 
   if (!sent || status != 200) {
     pcOnline_ = false;
-    Serial.print("POST /api/v3/device/sync failed, status ");
+    Serial.print("POST /api/v1/device/sync failed, status ");
     Serial.println(status);
     if (pendingQuickLabelPrintId_.length() > 0) {
       pendingQuickLabelPrintId_.clear();

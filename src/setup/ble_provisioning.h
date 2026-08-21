@@ -4,6 +4,8 @@
 #include "setup/setup_state_store.h"
 
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <string>
 
 class BLECharacteristic;
@@ -32,6 +34,7 @@ class BleProvisioning {
   uint32_t pairingCode_ = 0;
   bool requestPending_ = false;
   ProvisionedSettings pending_;
+  SemaphoreHandle_t requestMutex_ = nullptr;
 };
 
 }  // namespace inventatory_scan
