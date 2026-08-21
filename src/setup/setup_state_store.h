@@ -19,6 +19,8 @@ class SetupStateStore {
  public:
   bool begin();
   bool load(ProvisionedSettings& settings) const;
+  bool savePending(const ProvisionedSettings& settings);
+  bool commit();
   bool save(const ProvisionedSettings& settings);
   bool reserveTransportCounter(std::uint64_t& counter);
   bool clear();
