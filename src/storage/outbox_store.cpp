@@ -63,6 +63,7 @@ bool OutboxStore::begin(const char* namespaceName, const char* deviceId) {
   namespaceName_ = namespaceName == nullptr ? String() : String(namespaceName);
   deviceId_ = deviceId == nullptr ? String() : String(deviceId);
   storageReady_ = false;
+  loaded_ = false;
   return ensureStorage();
 }
 
@@ -78,6 +79,7 @@ bool OutboxStore::ensureStorage() {
 void OutboxStore::end() {
   prefs_.end();
   storageReady_ = false;
+  loaded_ = false;
 }
 
 void OutboxStore::copyString(char* dest, std::size_t capacity, const String& value) {
@@ -107,20 +109,24 @@ DeviceEventRecord OutboxStore::fromRecord(const Record& record) const {
   return event;
 }
 
-bool OutboxStore::writeHeader() {
+bool OutboxStore::writeHeader(const OutboxQueueState& state) {
   Header header;
   header.magic = kMagic;
   header.version = kVersion;
-  header.count = static_cast<uint16_t>(count_);
-  header.head = static_cast<uint16_t>(head_);
-  header.nextSequence = nextSequence_;
+  header.count = static_cast<uint16_t>(state.count);
+  header.head = static_cast<uint16_t>(state.head);
+  header.nextSequence = state.nextSequence;
   return prefs_.putBytes(kHeaderKey, &header, sizeof(header)) == sizeof(header);
 }
 
 bool OutboxStore::writeSlot(std::size_t slot) {
+  return writeSlot(slot, records_[slot]);
+}
+
+bool OutboxStore::writeSlot(std::size_t slot, const Record& record) {
   char key[8];
   slotKey(slot, key);
-  return prefs_.putBytes(key, &records_[slot], sizeof(Record)) == sizeof(Record);
+  return prefs_.putBytes(key, &record, sizeof(Record)) == sizeof(Record);
 }
 
 bool OutboxStore::readSlot(std::size_t slot) {
@@ -151,8 +157,8 @@ bool OutboxStore::loadCurrentLayout() {
   for (std::size_t offset = 0; offset < count_; ++offset) {
     if (!readSlot((head_ + offset) % kCapacity)) {
       // A queued event lost its record; treat the whole queue as unreadable
-      // rather than syncing an event with blank fields.
-      clear();
+      // rather than syncing an event with blank fields. Keep the NVS contents
+      // intact so a transient read failure can be retried on the next boot.
       return false;
     }
   }
@@ -163,16 +169,7 @@ bool OutboxStore::persistQueue() {
   for (std::size_t offset = 0; offset < count_; ++offset) {
     if (!writeSlot((head_ + offset) % kCapacity)) return false;
   }
-  return writeHeader();
-}
-
-bool OutboxStore::rebuildStorage() {
-  // Last resort when NVS refuses a write. The whole queue is mirrored in RAM,
-  // so the namespace can be erased and written again from scratch. This is what
-  // reclaims the old monolithic blob and any orphaned slot on a partition that
-  // is too full to hold the old and the new layout side by side.
-  if (!prefs_.clear()) return false;
-  return persistQueue();
+  return writeHeader(makeOutboxQueueState(head_, count_, tail_, nextSequence_));
 }
 
 bool OutboxStore::adoptMigratedRecords(std::size_t count, uint32_t nextSequence) {
@@ -185,8 +182,8 @@ bool OutboxStore::adoptMigratedRecords(std::size_t count, uint32_t nextSequence)
     prefs_.remove(kLegacyStateKey);
     return true;
   }
-  if (rebuildStorage()) return true;
-
+  // Leave the legacy record in place. A failed migration write must be
+  // retryable on the next boot; clearing the namespace here would lose it.
   clear();
   return false;
 }
@@ -249,14 +246,22 @@ OutboxStore::MigrationResult OutboxStore::migrateLegacyState() {
 }
 
 bool OutboxStore::load() {
+  loaded_ = false;
   if (!storageReady_) {
     clear();
     return false;
   }
-  if (loadCurrentLayout()) return true;
-  if (prefs_.isKey(kLegacyStateKey)) {
+  if (loadCurrentLayout()) {
+    loaded_ = true;
+    return true;
+  }
+  const bool legacyPresent = prefs_.isKey(kLegacyStateKey);
+  if (legacyPresent) {
     const auto migration = migrateLegacyState();
-    if (migration == MigrationResult::Migrated) return true;
+    if (migration == MigrationResult::Migrated) {
+      loaded_ = true;
+      return true;
+    }
     if (migration == MigrationResult::WriteFailed) {
       // The old queue is still readable, so it is kept for the next boot rather
       // than discarded because storage was momentarily unwritable.
@@ -266,8 +271,13 @@ bool OutboxStore::load() {
   }
 
   clear();
-  if (!prefs_.clear()) return false;
-  return writeHeader();
+  // A missing header is a fresh install (or only contains orphaned slot keys),
+  // so initialize it in place. Never clear the namespace after a failed read or
+  // write: unknown/legacy keys may still contain the only recoverable queue.
+  if (legacyPresent || prefs_.isKey(kHeaderKey)) return false;
+  if (!writeHeader(makeOutboxQueueState(head_, count_, tail_, nextSequence_))) return false;
+  loaded_ = true;
+  return true;
 }
 
 OutboxStore::EnqueueResult OutboxStore::enqueue(DeviceEventKind kind, const String& code, int value,
@@ -278,9 +288,9 @@ OutboxStore::EnqueueResult OutboxStore::enqueue(DeviceEventKind kind, const Stri
   const auto trimmed = trimCopy(code);
   if (trimmed.length() == 0 || trimmed.length() >= kCodeLen || value == 0) return EnqueueResult::Rejected;
   if (!ensureStorage()) return EnqueueResult::StorageFailed;
+  if (!loaded_ && !load()) return EnqueueResult::StorageFailed;
 
   const auto slot = tail_;
-  const auto previous = records_[slot];
   Record record{};
   record.sequence = nextSequence_;
   record.value = value;
@@ -289,45 +299,55 @@ OutboxStore::EnqueueResult OutboxStore::enqueue(DeviceEventKind kind, const Stri
   copyString(record.manufacturer, sizeof(record.manufacturer), manufacturer);
   copyString(record.manufacturerPartNumber, sizeof(record.manufacturerPartNumber), manufacturerPartNumber);
   copyString(record.encodedPartName, sizeof(record.encodedPartName), encodedPartName);
-  records_[slot] = record;
-  const auto previousTail = tail_;
-  tail_ = (tail_ + 1U) % kCapacity;
-  ++count_;
-  ++nextSequence_;
+  const auto current = makeOutboxQueueState(head_, count_, tail_, nextSequence_);
+  OutboxQueueState next = current;
+  next.tail = (tail_ + 1U) % kCapacity;
+  ++next.count;
+  ++next.nextSequence;
 
   // The record is stored before the header so a power cut can only leave an
   // unreferenced slot behind, never a queued event without its payload.
-  if (!(writeSlot(slot) && writeHeader()) && !rebuildStorage()) {
-    tail_ = previousTail;
-    --count_;
-    --nextSequence_;
-    records_[slot] = previous;
+  // If either write fails, the old header and in-memory state remain the
+  // source of truth; the new slot is simply unreferenced and harmless.
+  if (!writeSlot(slot, record) || !writeHeader(next)) {
     return EnqueueResult::StorageFailed;
   }
 
+  records_[slot] = record;
+  head_ = next.head;
+  count_ = next.count;
+  tail_ = next.tail;
+  nextSequence_ = next.nextSequence;
   if (created != nullptr) *created = fromRecord(record);
   return EnqueueResult::Queued;
 }
 
 bool OutboxStore::peek(std::size_t offset, DeviceEventRecord& event) const {
-  if (offset >= count_) return false;
+  if (!loaded_ || offset >= count_) return false;
   event = fromRecord(records_[(head_ + offset) % kCapacity]);
   return true;
 }
 
 bool OutboxStore::pop(DeviceEventRecord* event) {
-  if (empty()) return false;
+  if (!loaded_ || empty()) return false;
   const auto slot = head_;
+  const auto current = makeOutboxQueueState(head_, count_, tail_, nextSequence_);
+  OutboxQueueState next;
+  if (!prepareOutboxPop(current, kCapacity, next)) return false;
+
+  // Commit the header before changing RAM or erasing the payload. If NVS
+  // rejects the write, the event remains queued and can be retried safely.
+  if (!writeHeader(next)) return false;
+
   if (event != nullptr) *event = fromRecord(records_[slot]);
-  head_ = (head_ + 1U) % kCapacity;
-  --count_;
-  if (count_ == 0) head_ = tail_ = 0;
-  // The header is committed first: a power cut between the two writes leaves an
-  // acknowledged event's payload behind, which is harmless, whereas the reverse
-  // order could resend it.
-  const bool persisted = writeHeader();
-  if (storageReady_) eraseSlot(slot);
-  return persisted;
+  head_ = next.head;
+  count_ = next.count;
+  tail_ = next.tail;
+  nextSequence_ = next.nextSequence;
+  // A power cut after the header commit can leave this payload behind, but it
+  // is no longer referenced by the header and is safe to reclaim later.
+  eraseSlot(slot);
+  return true;
 }
 
 void OutboxStore::clear() {

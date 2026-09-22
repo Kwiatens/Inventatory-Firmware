@@ -180,8 +180,9 @@ void DisplayController::showSending() {
 
 void DisplayController::applyResult(const SyncResult& result) {
   clearContent();
-  const bool failed = result.status == "failed";
+  const bool completed = result.status == "completed";
   const bool warning = result.status == "completed_with_warning";
+  const bool failed = result.status == "failed" || (!completed && !warning);
   model_.mode = failed ? DisplayUiMode::Error : (warning ? DisplayUiMode::Warning : DisplayUiMode::Success);
   model_.bodyKind = DisplayBodyKind::Task;
   model_.showPcStatus = true;

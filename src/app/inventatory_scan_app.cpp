@@ -69,7 +69,12 @@ bool InventatoryScanApp::begin() {
   display_.showSplash();
   display_.tick();
   keypadInit();
-  scanner_.begin(9600);
+  if (!scanner_.begin(9600)) {
+    Serial.println("Scanner initialization failed; verify the GM65 connection and profile.");
+    display_.showBoot("SCANNER ERROR");
+    display_.tick();
+    return false;
+  }
   scanner_.flushInput();
   display_.showBoot({});
   display_.tick();
@@ -216,6 +221,7 @@ void InventatoryScanApp::serviceProvisioning() {
     delay(300);
     provisioning_.end();
     setupMode_ = false;
+    scanner_.flushInput();
     if (!beginNormalRuntime(provisionedSettings_) || !setupStore_.commit()) {
       Serial.println("Provisioning: normal runtime did not become ready; returning to BLE setup");
       setupMode_ = true;
@@ -235,8 +241,21 @@ void InventatoryScanApp::serviceProvisioning() {
 }
 
 void InventatoryScanApp::pollScanner() {
+  if (state_ != State::WaitingForResult && deferredScan_.length() > 0) {
+    const auto code = deferredScan_;
+    deferredScan_.clear();
+    handleScan(code);
+    return;
+  }
   String code;
   if (scanner_.poll(code)) {
+    // Preserve one completed scan while an inventory result is pending. Stop
+    // draining after this so subsequent scanner input remains subject to the
+    // UART's fixed bound instead of silently replacing the deferred scan.
+    if (state_ == State::WaitingForResult) {
+      if (deferredScan_.length() == 0) deferredScan_ = code;
+      return;
+    }
     handleScan(code);
   }
 }
@@ -244,7 +263,7 @@ void InventatoryScanApp::pollScanner() {
 void InventatoryScanApp::handleScan(const String& code) {
   if (!scanMayInterruptUi(setupMode_, powerMode_ == PowerMode::Standby,
                           otaRequested_ || otaActive_, state_ == State::ConfirmReprovision,
-                          state_ == State::PrintingLabel || state_ == State::WaitingForResult)) {
+                          state_ == State::PrintingLabel)) {
     Serial.println("Scan ignored while the current operation blocks scanning.");
     return;
   }
@@ -259,8 +278,6 @@ void InventatoryScanApp::handleScan(const String& code) {
     return;
   }
 
-  Serial.print("GM65 scan: ");
-  Serial.println(trimmed.c_str());
   if (isDataMatrixScan(raw)) {
     DecodedComponentFields decoded;
     if (!decodeComponentDataMatrix(raw, decoded)) {
@@ -290,7 +307,7 @@ void InventatoryScanApp::handleScan(const String& code) {
     Serial.print("Decoded default quantity: ");
     Serial.println(quantity_.displayText().c_str());
     Serial.println("Enter quantity, then press A to add. C cancels.");
-    sendDebugMessage(String("data matrix pending ") + forwardedCode + " qty " + quantity_.displayText(), "scan");
+    sendDebugMessage("data matrix scan pending", "scan");
     return;
   }
 
@@ -312,7 +329,7 @@ void InventatoryScanApp::handleScan(const String& code) {
                           QuantityLookupState::Pending);
     lastSyncAttempt_ = 0;
     Serial.println("Enter quantity, then press A to add or B to subtract. C cancels.");
-    sendDebugMessage(String("qr quantity scan ") + trimmed, "scan");
+    sendDebugMessage("inventory scan pending", "scan");
     return;
   }
 
@@ -321,10 +338,23 @@ void InventatoryScanApp::handleScan(const String& code) {
 
 void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
   if (event.type == InventatoryKeyEventType::ProvisioningReset) {
+    networkPowerOffRequested_ = false;
+    networkPaused_ = true;
+    const auto pauseDeadline = millis() + 1000UL;
+    while (networkStarted_ && !networkPauseAcknowledged_ &&
+           static_cast<long>(pauseDeadline - millis()) > 0) {
+      delay(1);
+    }
+    if (networkStarted_ && !networkPauseAcknowledged_) {
+      networkPaused_ = false;
+      Serial.println("Provisioning reset deferred because network storage is busy.");
+      return;
+    }
     if (setupStore_.clear()) {
       Serial.println("Provisioning reset requested; restarting into BLE setup.");
       ESP.restart();
     }
+    networkPaused_ = false;
     Serial.println("Provisioning reset could not clear NVS.");
     return;
   }
@@ -503,9 +533,7 @@ bool InventatoryScanApp::serviceOta() {
 
   if (provisionedSettings_.wifiSsid.length() == 0) {
     Serial.println("OTA request ignored because setup is incomplete.");
-    otaRequested_ = false;
-    otaActive_ = false;
-    networkPaused_ = false;
+    recoverFromOtaFailure();
     return false;
   }
 
@@ -518,9 +546,7 @@ bool InventatoryScanApp::serviceOta() {
   if (!otaActive_) {
     if (!startOtaService()) {
       Serial.println("OTA service failed to start; resuming normal operation.");
-      otaRequested_ = false;
-      otaActive_ = false;
-      networkPaused_ = false;
+      recoverFromOtaFailure();
       return false;
     }
   }
@@ -611,6 +637,7 @@ bool InventatoryScanApp::startOtaService() {
     result.message = "Update failed";
     result.resultId = "local-ota";
     result.eventId = "local-ota";
+    recoverFromOtaFailure();
     display_.showResult(result);
   });
 
@@ -622,6 +649,17 @@ bool InventatoryScanApp::startOtaService() {
   Serial.println(WiFi.localIP());
   sendDebugMessage(String("ota ready at ") + WiFi.localIP().toString(), "warn");
   return true;
+}
+
+void InventatoryScanApp::recoverFromOtaFailure() {
+  otaRequested_ = false;
+  otaActive_ = false;
+  networkPowerOffRequested_ = false;
+  networkPaused_ = false;
+  WiFi.setSleep(true);
+  lastReconnectAttempt_ = 0;
+  lastSyncAttempt_ = 0;
+  state_ = State::Idle;
 }
 
 void InventatoryScanApp::sendDebugMessage(const String& message, const String& level) {
@@ -644,8 +682,9 @@ bool InventatoryScanApp::startNetworkWorker() {
     Serial.println("Network worker: mutex allocation failed");
     return false;
   }
+  TaskHandle_t createdTask = nullptr;
   const auto created = xTaskCreatePinnedToCore(networkTaskEntry, "inventatory-net", 8192, this, 1,
-                                                &networkTask_, 0);
+                                                &createdTask, 0);
   if (created != pdPASS) {
     Serial.println("Network worker: task allocation failed");
     vSemaphoreDelete(networkMutex_);
@@ -653,6 +692,8 @@ bool InventatoryScanApp::startNetworkWorker() {
     networkTask_ = nullptr;
     return false;
   }
+  networkTask_ = createdTask;
+  if (networkInitializationComplete_ && !networkInitializationSucceeded_) networkTask_ = nullptr;
   return true;
 }
 
@@ -667,6 +708,10 @@ void InventatoryScanApp::networkTaskLoop() {
   if (!clientReady) {
     Serial.println("Network worker: client initialization failed");
     networkStarted_ = false;
+    networkTask_ = nullptr;
+    auto* failedMutex = networkMutex_;
+    networkMutex_ = nullptr;
+    if (failedMutex != nullptr) vSemaphoreDelete(failedMutex);
     vTaskDelete(nullptr);
     return;
   }
@@ -874,8 +919,7 @@ bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, in
     return false;
   }
   if (eventId != nullptr) *eventId = event.eventId;
-  Serial.print("Queued protocol v1 event: ");
-  Serial.println(event.eventId.c_str());
+  Serial.println("Queued protocol v1 inventory event.");
   lastSyncAttempt_ = 0;
   return true;
 }
@@ -1060,7 +1104,12 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
       }
     }
     if (!accepted) break;
-    outbox_.pop();
+    if (!outbox_.pop()) {
+      // Keep the event queued when its acknowledgement could not be made
+      // durable; the next sync attempt can retry it without data loss.
+      Serial.println("Outbox acknowledgement was not persisted; retaining event.");
+      break;
+    }
   }
   if (isCurrentLookupResult(response, activeLookupId_)) {
     lookupMissCount_ = 0;

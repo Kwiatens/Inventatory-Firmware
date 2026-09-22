@@ -2,6 +2,8 @@
 
 #include "setup/ble_provisioning.h"
 
+#include "InventatoryScanSecurity.h"
+
 #include <BLE2902.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -153,7 +155,7 @@ bool BleProvisioning::parseRequest(const std::string& value, ProvisionedSettings
   const auto passwordLength = static_cast<uint8_t>(value[2]);
   const auto tokenLength = static_cast<uint8_t>(value[3]);
   const size_t expected = 4U + ssidLength + passwordLength + tokenLength;
-  if (ssidLength == 0 || ssidLength > 32 || passwordLength > 63 || tokenLength < 32 || tokenLength > 128 ||
+  if (ssidLength == 0 || ssidLength > 32 || passwordLength > 63 || tokenLength != 64 ||
       value.size() != expected) return false;
   size_t offset = 4;
   settings.wifiSsid = String(value.data() + offset).substring(0, ssidLength);
@@ -162,7 +164,7 @@ bool BleProvisioning::parseRequest(const std::string& value, ProvisionedSettings
   offset += passwordLength;
   settings.deviceToken = String(value.data() + offset).substring(0, tokenLength);
   return settings.wifiSsid.length() == ssidLength && settings.wifiPassword.length() == passwordLength &&
-         settings.deviceToken.length() == tokenLength;
+         settings.deviceToken.length() == tokenLength && isValidTransportToken(settings.deviceToken);
 }
 
 void BleProvisioning::publishStatus(const String& publicMessage) {

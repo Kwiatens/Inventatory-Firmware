@@ -1,0 +1,56 @@
+# Inventory Scanner firmware audit remediation ledger
+
+## Baseline
+
+- Audited revision: `4ba9ddf0dc1be4ccffa49bd6e88dfa412c1e6a92`
+- Codex Security scan: `a3b90110-7f18-4579-abc2-d90bf091f692`
+- Phase 2 branch: `codex/firmware-release-hardening`
+- The sealed Phase 1 report and scan artifacts are retained outside this
+  worktree. This ledger records dispositions without replacing that baseline.
+
+Status meanings: **implemented** means the source change and relevant build
+checks are complete; **verified** additionally requires the listed regression
+evidence; **blocked** means a release-gate check still requires physical
+hardware or production provisioning evidence.
+
+| ID | Severity | Disposition | Implementation and regression evidence | Remaining verification |
+| --- | --- | --- | --- | --- |
+| FW-001 | P1 | Implemented | Outbox slot/header mutations are staged and committed without destructive namespace clearing; failed pop retains the event. `prepareOutboxPop` regression coverage and test-image compilation pass. | Execute NVS write/read/power-loss fault matrix on hardware. |
+| FW-002 | P1 | Implemented | One scan completed during `WaitingForResult` is retained in `deferredScan_` and processed after the result; it is no longer consumed and discarded. | Hardware UART test with result delay, repeated scans, and buffer saturation. |
+| FW-003 | P1 | Implemented | Every handled OTA failure clears OTA state, restores Wi-Fi sleep, resumes the network worker, and returns UI state to idle. | Inject each ArduinoOTA error on hardware and verify scanning/reconnection. |
+| FW-004 | P1 | Verified statically | Tests now assert protocol v1 paths/vectors and current display clipping behavior; firmware and embedded test images compile. | Run Unity assertions on a connected ESP32-S3. |
+| FW-005 | P1 | Implemented | Root GPL-3.0-only license, clean-checkout configuration bootstrap, and build/upload documentation added. | Repeat on a fresh public clone in CI. |
+| FW-006 | P2 | Implemented | Inventory and quick-label result statuses use explicit allowlists; malformed/unknown statuses invalidate the whole response and display code fails closed. Regression cases compile. | Execute Unity cases on hardware and compatibility test against desktop app. |
+| FW-007 | P2 | Implemented | BLE provisioning, persistent-state load/save/commit, and network-client startup all require exactly 32 bytes encoded as 64 hexadecimal characters. Token tests compile. | Pair/re-pair on hardware with valid and invalid payloads. |
+| FW-008 | P2 | Partial; release blocker | HTTP headers, bodies, and total response bytes are bounded before append; decimal `Content-Length` is mandatory and exact; transfer encoding is rejected; HMAC remains before parsing/state mutation. Boundary tests compile. Independent review confirmed the unbounded-allocation path is closed, but the desktop currently permits/produces responses beyond the firmware's 8 KiB contract. | Define and enforce one shared response-size contract, add live parser/rogue-endpoint tests, and validate maximum representative desktop data. |
+| FW-009 | P2 | Implemented | Scanner bytes accumulated during setup are flushed immediately before normal runtime starts. | Hardware pairing test with injected setup-mode barcode bytes. |
+| FW-010 | P2 | Partially implemented | Cross-core flags and the task handle use atomics; failed worker startup clears the handle; provisioning reset pauses the worker before clearing shared NVS. Firmware build passes. | FreeRTOS stress/TSAN-equivalent review and reset-during-sync hardware test. |
+| FW-011 | P2 | Implemented | GM65 boot-profile write failures now propagate from `begin()` and stop startup with an explicit scanner error. | Disconnect/fault GM65 UART on hardware and verify recovery behavior. |
+| FW-012 | P2 | Implemented | Raw-byte, assembled barcode, code-bearing debug, and event-identifier serial logs were removed while scan/outbox/sync data flows remain intact. | Capture USB/UART during valid, invalid, and oversized scans. |
+| FW-013 | P2 | Implemented | PlatformIO platform and direct libraries are exact-version pinned; USB is the default; OTA is isolated and reads its password from ignored configuration. | Reproduce USB and OTA image builds on clean Linux and Windows hosts. |
+| FW-014 | P2 | Implemented | CI builds USB/OTA firmware, the test image, and display example; an opt-in self-hosted job executes hardware tests. README documents hardware, dependencies, licenses, and workflows. | First CI run and configured self-hosted hardware runner. |
+
+## Build and test evidence
+
+- USB firmware: `pio run -e tenstar_esp32s3_zero_usb` — passed.
+- Embedded test image: `pio test -e tenstar_esp32s3_zero_usb
+  --without-uploading --without-testing` — passed compilation; zero tests were
+  executed by design.
+- Resulting final USB image: 77,300 bytes RAM (23.6%) and 1,450,461 bytes
+  flash (88.5% of the configured application partition). The OTA image uses
+  the same RAM and 1,450,465 bytes flash.
+- No firmware was flashed and no production configuration or live inventory
+  data was accessed during remediation.
+
+## Release gate
+
+The source is not yet declared release-ready. Required physical evidence is:
+
+1. Execute the Unity suite on the target ESP32-S3/Scan R1 assembly.
+2. Run NVS fault and reset-during-sync tests for FW-001 and FW-010.
+3. Exercise delayed-result scanning, every OTA error callback, BLE pairing,
+   scanner-profile failure, and serial-log capture on hardware.
+4. Validate the 8 KiB authenticated response-body contract with the released
+   desktop application and representative maximum inventory data.
+5. Record production flash-encryption, secure-boot, JTAG, and eFuse policy; the
+   repository cannot prove those device-provisioning controls.

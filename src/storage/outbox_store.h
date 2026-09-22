@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <Preferences.h>
 
+#include "InventatoryScanOutbox.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -108,8 +110,9 @@ class OutboxStore {
   static void slotKey(std::size_t slot, char (&out)[8]);
 
   DeviceEventRecord fromRecord(const Record& record) const;
-  bool writeHeader();
+  bool writeHeader(const OutboxQueueState& state);
   bool writeSlot(std::size_t slot);
+  bool writeSlot(std::size_t slot, const Record& record);
   bool readSlot(std::size_t slot);
   void eraseSlot(std::size_t slot);
   enum class MigrationResult : uint8_t { Migrated, NotRecognized, WriteFailed };
@@ -117,7 +120,6 @@ class OutboxStore {
   bool ensureStorage();
   bool loadCurrentLayout();
   bool persistQueue();
-  bool rebuildStorage();
   MigrationResult migrateLegacyState();
   bool adoptMigratedRecords(std::size_t count, uint32_t nextSequence);
 
@@ -125,6 +127,7 @@ class OutboxStore {
   String namespaceName_;
   String deviceId_;
   bool storageReady_ = false;
+  bool loaded_ = false;
   Record records_[kCapacity]{};
   std::size_t count_ = 0;
   std::size_t head_ = 0;

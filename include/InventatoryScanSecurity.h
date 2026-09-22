@@ -27,6 +27,11 @@ inline bool decodeTransportToken(const String& token, uint8_t (&bytes)[32]) {
   return true;
 }
 
+inline bool isValidTransportToken(const String& token) {
+  uint8_t bytes[32]{};
+  return decodeTransportToken(token, bytes);
+}
+
 inline String transportHex(const uint8_t* bytes, size_t length) {
   static constexpr char kHex[] = "0123456789abcdef";
   String result;

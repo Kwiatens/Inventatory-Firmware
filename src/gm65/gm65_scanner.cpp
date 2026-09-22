@@ -63,11 +63,11 @@ bool Gm65Scanner::begin(uint32_t baudRate) {
   serial_.begin(baudRate_, SERIAL_8N1, GM65_RX_PIN, GM65_TX_PIN);
   serial_.setTimeout(5);
   delay(100);
-  applyBootProfile();
+  const bool profileApplied = applyBootProfile();
   flushInput();
   acceptAfterMs_ = millis() + kStartupSettleMs;
   active_ = true;
-  return true;
+  return profileApplied;
 }
 
 void Gm65Scanner::end() {
@@ -188,10 +188,6 @@ bool Gm65Scanner::poll(String& code) {
       lastByteAt_ = 0;
       continue;
     }
-    // TEMP DIAGNOSTIC: dump every raw scanner byte (hex + printable char) so we
-    // can see the full QR frame the GM65 emits. Remove once resolved.
-    Serial.printf("GM65 rx 0x%02X %c\r\n", static_cast<unsigned>(static_cast<unsigned char>(ch)),
-                  (std::isprint(static_cast<unsigned char>(ch)) ? ch : '.'));
     if (ch == '\r' || ch == '\n') {
       if (discardingOversized_ || frameCorrupt_) {
         discardingOversized_ = false;

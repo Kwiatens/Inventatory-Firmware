@@ -16,6 +16,8 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
+#include <atomic>
+
 namespace inventatory_scan {
 
 class InventatoryScanApp {
@@ -64,6 +66,7 @@ class InventatoryScanApp {
   bool serviceOta();
   bool startOtaService();
   bool ensureWiFiForOta();
+  void recoverFromOtaFailure();
   void enterStandby();
   void exitStandby();
   void submitCurrent(char action);
@@ -98,27 +101,28 @@ class InventatoryScanApp {
   String scannedManufacturer_;
   String scannedManufacturerPartNumber_;
   String scannedPartName_;
+  String deferredScan_;
   State state_ = State::Idle;
   PendingScanType pendingScanType_ = PendingScanType::None;
-  PowerMode powerMode_ = PowerMode::Normal;
-  bool wifiStarted_ = false;
-  bool wifiConnectedReported_ = false;
-  bool inventatorySoftwarePrimed_ = false;
+  std::atomic<PowerMode> powerMode_{PowerMode::Normal};
+  std::atomic_bool wifiStarted_{false};
+  std::atomic_bool wifiConnectedReported_{false};
+  std::atomic_bool inventatorySoftwarePrimed_{false};
   bool otaRequested_ = false;
   bool otaActive_ = false;
-  bool pcOnline_ = false;
+  std::atomic_bool pcOnline_{false};
   bool syncInFlight_ = false;
-  bool networkStarted_ = false;
-  volatile bool networkInitializationComplete_ = false;
-  volatile bool networkInitializationSucceeded_ = false;
+  std::atomic_bool networkStarted_{false};
+  std::atomic_bool networkInitializationComplete_{false};
+  std::atomic_bool networkInitializationSucceeded_{false};
   bool setupMode_ = false;
   bool setupWifiConnecting_ = false;
   unsigned long setupWifiStartedAt_ = 0;
-  volatile bool networkPaused_ = false;
-  volatile bool networkPauseAcknowledged_ = false;
-  volatile bool networkPowerOffRequested_ = false;
-  volatile bool networkBusy_ = false;
-  TaskHandle_t networkTask_ = nullptr;
+  std::atomic_bool networkPaused_{false};
+  std::atomic_bool networkPauseAcknowledged_{false};
+  std::atomic_bool networkPowerOffRequested_{false};
+  std::atomic_bool networkBusy_{false};
+  std::atomic<TaskHandle_t> networkTask_{nullptr};
   SemaphoreHandle_t networkMutex_ = nullptr;
   bool syncJobPending_ = false;
   String syncJobRequestId_;
@@ -135,7 +139,7 @@ class InventatoryScanApp {
   String awaitingResultEventId_;
   String activeLookupId_;
   String activeLookupCode_;
-  unsigned long lastReconnectAttempt_ = 0;
+  std::atomic_ulong lastReconnectAttempt_{0};
   unsigned long lastSyncAttempt_ = 0;
   uint32_t syncSequence_ = 1;
   uint32_t lookupSequence_ = 1;
