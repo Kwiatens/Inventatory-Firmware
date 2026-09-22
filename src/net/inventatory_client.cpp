@@ -1,6 +1,7 @@
 #include "net/inventatory_client.h"
 
 #include "InventatoryScanCore.h"
+#include "InventatoryScanHttp.h"
 #include "InventatoryScanSecurity.h"
 #include "config/config.h"
 #include "config/version.h"
@@ -14,7 +15,6 @@ namespace inventatory_scan {
 namespace {
 
 constexpr unsigned long kHttpResponseTimeoutMs = 600U;
-
 String headerValue(const String& headers, const char* name) {
   const auto wanted = String(name);
   int lineStart = 0;
@@ -33,6 +33,20 @@ String headerValue(const String& headers, const char* name) {
   return {};
 }
 
+bool parseContentLength(const String& value, std::size_t& length) {
+  if (value.length() == 0) return false;
+  std::size_t parsed = 0;
+  for (std::size_t index = 0; index < value.length(); ++index) {
+    const char ch = value[index];
+    if (ch < '0' || ch > '9') return false;
+    const auto digit = static_cast<std::size_t>(ch - '0');
+    if (parsed > (kMaxHttpBodyBytes - digit) / 10U) return false;
+    parsed = parsed * 10U + digit;
+  }
+  length = parsed;
+  return true;
+}
+
 }  // namespace
 
 bool InventatoryClient::begin(const InventatoryClientConfig& config) {
@@ -44,7 +58,8 @@ bool InventatoryClient::begin(const InventatoryClientConfig& config) {
   mdnsStarted_ = false;
   lastResolveAttempt_ = 0;
 
-  if (config_.deviceId.length() == 0 || config_.token.length() == 0 || config_.transportCounterStore == nullptr) {
+  if (config_.deviceId.length() == 0 || !isValidTransportToken(config_.token) ||
+      config_.transportCounterStore == nullptr) {
     return false;
   }
 
@@ -187,6 +202,8 @@ bool InventatoryClient::sendJson(const char* path, const String& body, int& http
 
 bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint64_t counter) {
   String response;
+  response.reserve(1024);
+  int headerEnd = -1;
   const auto started = millis();
   while (millis() - started < kHttpResponseTimeoutMs) {
     while (client_.available() > 0) {
@@ -194,7 +211,18 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
       if (raw < 0) {
         break;
       }
+      if (!httpResponseAppendAllowed(response.length())) {
+        client_.stop();
+        return false;
+      }
       response += static_cast<char>(raw);
+      if (headerEnd < 0) {
+        headerEnd = response.indexOf("\r\n\r\n");
+        if (headerEnd < 0 && !httpHeaderWithinLimit(response.length())) {
+          client_.stop();
+          return false;
+        }
+      }
     }
     if (!client_.connected() && client_.available() == 0) {
       break;
@@ -205,8 +233,7 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
   client_.stop();
 
   const auto text = response.c_str();
-  const auto headerEnd = response.indexOf("\r\n\r\n");
-  if (headerEnd < 0) {
+  if (headerEnd < 0 || !httpHeaderWithinLimit(static_cast<std::size_t>(headerEnd))) {
     return false;
   }
   const auto firstLineEnd = response.indexOf("\r\n");
@@ -219,8 +246,15 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
       httpStatus = statusText.toInt();
     }
   }
-  responseBody = text + headerEnd + 4;
   const auto headers = response.substring(0, headerEnd);
+  if (headerValue(headers, "Transfer-Encoding").length() > 0) return false;
+  std::size_t contentLength = 0;
+  if (!parseContentLength(headerValue(headers, "Content-Length"), contentLength) ||
+      !httpBodyWithinLimit(contentLength) ||
+      response.length() != static_cast<std::size_t>(headerEnd + 4) + contentLength) {
+    return false;
+  }
+  responseBody = text + headerEnd + 4;
   const auto responseCounter = headerValue(headers, "X-Inventatory-Counter");
   const auto responseMac = headerValue(headers, "X-Inventatory-Mac");
   if (headerValue(headers, "X-Inventatory-Protocol") != String(kInventatoryScanProtocolVersion) ||

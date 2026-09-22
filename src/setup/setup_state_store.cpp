@@ -2,6 +2,8 @@
 
 #include "setup/setup_state_store.h"
 
+#include "InventatoryScanSecurity.h"
+
 namespace inventatory_scan {
 
 namespace {
@@ -26,13 +28,12 @@ bool SetupStateStore::load(ProvisionedSettings& settings) const {
   settings.wifiSsid = prefs_.getString("ssid", "");
   settings.wifiPassword = prefs_.getString("password", "");
   settings.deviceToken = prefs_.getString("token", "");
-  return settings.wifiSsid.length() > 0 && settings.deviceToken.length() >= 32;
+  return settings.wifiSsid.length() > 0 && isValidTransportToken(settings.deviceToken);
 }
 
 bool SetupStateStore::savePending(const ProvisionedSettings& settings) {
   if (settings.wifiSsid.length() == 0 || settings.wifiSsid.length() > 32 ||
-      settings.wifiPassword.length() > 63 || settings.deviceToken.length() < 32 ||
-      settings.deviceToken.length() > 128) {
+      settings.wifiPassword.length() > 63 || !isValidTransportToken(settings.deviceToken)) {
     return false;
   }
 
@@ -53,7 +54,7 @@ bool SetupStateStore::savePending(const ProvisionedSettings& settings) {
 
 bool SetupStateStore::commit() {
   if (prefs_.getUInt("magic", 0) != kMagic || prefs_.getUShort("version", 0) != kVersion ||
-      prefs_.getString("ssid", "").length() == 0 || prefs_.getString("token", "").length() < 32) {
+      prefs_.getString("ssid", "").length() == 0 || !isValidTransportToken(prefs_.getString("token", ""))) {
     return false;
   }
   return prefs_.putBool("complete", true);

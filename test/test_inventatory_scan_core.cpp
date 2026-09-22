@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "InventatoryScanCore.h"
+#include "InventatoryScanHttp.h"
 #include "InventatoryScanOutbox.h"
 #include "InventatoryScanSync.h"
 #include "InventatoryScanUiPolicy.h"
@@ -165,7 +166,32 @@ void test_fixed_ring_buffer_fifo_and_overwrite() {
   TEST_ASSERT_TRUE(buffer.empty());
 }
 
-void test_protocol_v3_sync_round_trip() {
+void test_outbox_pop_transition_is_staged_before_commit() {
+  const auto current = makeOutboxQueueState(14, 2, 0, 43);
+  OutboxQueueState next;
+
+  TEST_ASSERT_TRUE(prepareOutboxPop(current, 16, next));
+  TEST_ASSERT_EQUAL_UINT32(14, current.head);
+  TEST_ASSERT_EQUAL_UINT32(2, current.count);
+  TEST_ASSERT_EQUAL_UINT32(0, current.tail);
+  TEST_ASSERT_EQUAL_UINT32(43, current.nextSequence);
+  TEST_ASSERT_EQUAL_UINT32(15, next.head);
+  TEST_ASSERT_EQUAL_UINT32(1, next.count);
+  TEST_ASSERT_EQUAL_UINT32(0, next.tail);
+  TEST_ASSERT_EQUAL_UINT32(43, next.nextSequence);
+
+  const auto last = makeOutboxQueueState(15, 1, 0, 9);
+  TEST_ASSERT_TRUE(prepareOutboxPop(last, 16, next));
+  TEST_ASSERT_EQUAL_UINT32(0, next.head);
+  TEST_ASSERT_EQUAL_UINT32(0, next.count);
+  TEST_ASSERT_EQUAL_UINT32(0, next.tail);
+  TEST_ASSERT_EQUAL_UINT32(9, next.nextSequence);
+
+  TEST_ASSERT_FALSE(prepareOutboxPop(makeOutboxQueueState(0, 0, 0, 1), 16, next));
+  TEST_ASSERT_FALSE(prepareOutboxPop(current, 0, next));
+}
+
+void test_protocol_v1_sync_round_trip() {
   DeviceEventRecord event;
   event.eventId = "R1-42";
   event.sequence = 42;
@@ -178,14 +204,14 @@ void test_protocol_v3_sync_round_trip() {
   const String ack = "R1-41-result";
   const auto json = buildSyncRequestJson("sync-7", "R1", "0.2.0", "ready", -51, 1,
                                          &event, 1, &ack, 1, "lookup-9", "0002");
-  TEST_ASSERT_TRUE(json.indexOf("\"protocolVersion\":3") >= 0);
+  TEST_ASSERT_TRUE(json.indexOf("\"protocolVersion\":1") >= 0);
   TEST_ASSERT_TRUE(json.indexOf("\"type\":\"inventory.adjust\"") >= 0);
   TEST_ASSERT_TRUE(json.indexOf("\"value\":-3") >= 0);
   TEST_ASSERT_TRUE(json.indexOf("\"manufacturerPartNumber\":\"TPS7A2033PDBVR\"") >= 0);
   TEST_ASSERT_TRUE(json.indexOf("\"lookup\":{\"lookupId\":\"lookup-9\",\"code\":\"0002\"}") >= 0);
 
   const auto response = parseSyncResponseJson(
-      "{\"protocolVersion\":3,\"requestId\":\"sync-7\",\"acceptedEventIds\":[\"R1-42\"],"
+      "{\"protocolVersion\":1,\"requestId\":\"sync-7\",\"acceptedEventIds\":[\"R1-42\"],"
       "\"results\":[{\"resultId\":\"R1-42-result\",\"eventId\":\"R1-42\","
       "\"status\":\"completed\",\"existing\":true,\"itemName\":\"10k resistor\","
       "\"purposeLabel\":\"Resistor\","
@@ -210,7 +236,7 @@ void test_protocol_v3_sync_round_trip() {
   TEST_ASSERT_FALSE(isCurrentLookupResult(response, "lookup-stale"));
 
   const auto unavailable = parseSyncResponseJson(
-      "{\"protocolVersion\":3,\"requestId\":\"sync-8\",\"acceptedEventIds\":[],"
+      "{\"protocolVersion\":1,\"requestId\":\"sync-8\",\"acceptedEventIds\":[],"
       "\"results\":[],\"lookupResult\":{\"lookupId\":\"lookup-10\","
       "\"status\":\"unavailable\",\"itemName\":\"\"}}");
   TEST_ASSERT_TRUE(unavailable.hasLookupResult);
@@ -226,7 +252,7 @@ void test_quick_label_protocol_extensions() {
                                             nullptr, 0, nullptr, 0, {}, {}, &print);
   TEST_ASSERT_TRUE(request.indexOf("\"quickLabelPrint\":{\"requestId\":\"R1-label-7\"") >= 0);
   const auto response = parseSyncResponseJson(
-      "{\"protocolVersion\":3,\"requestId\":\"sync-label\",\"acceptedEventIds\":[],\"results\":[],"
+      "{\"protocolVersion\":1,\"requestId\":\"sync-label\",\"acceptedEventIds\":[],\"results\":[],"
       "\"quickLabels\":{\"revision\":4,\"presets\":[\"5V\",\"12V\"]},"
       "\"quickLabelPrintResult\":{\"requestId\":\"R1-label-7\",\"status\":\"completed\","
       "\"code\":\"\",\"message\":\"Label sent\"}}");
@@ -242,13 +268,38 @@ void test_quick_label_protocol_extensions() {
 void test_transport_authentication_vectors() {
   const String token = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
   TEST_ASSERT_EQUAL_STRING(
-      "37d6d6ef983dd97631462f2eae04faa133a5e6fbe066d3395d4c84c11edd81c3",
-      deviceRequestMac(token, "POST", "/api/v3/device/sync", "r1-test", 42, "{\"protocolVersion\":3}").c_str());
-  TEST_ASSERT_EQUAL_STRING("cf552c22d48743e1d2f665e8453b92cf8ea183c9692eda973c5a222820f68c03",
+      "d99b3246f156ffc7b1cf9507f98aeb47603e93f103945badc3e95641e5c8f685",
+      deviceRequestMac(token, "POST", "/api/v1/device/sync", "r1-test", 42, "{\"protocolVersion\":1}").c_str());
+  TEST_ASSERT_EQUAL_STRING("ec5e858f7b38260c65df43b570e13a7dceab39361d4f17ebf3fe8d4523024423",
                            deviceResponseMac(token, 42, 200, "{\"ok\":true}").c_str());
-  TEST_ASSERT_FALSE(transportMacMatches(deviceRequestMac(token, "POST", "/api/v3/device/sync", "r1-test", 42,
-                                                            "{\"protocolVersion\":3}"),
+  TEST_ASSERT_FALSE(transportMacMatches(deviceRequestMac(token, "POST", "/api/v1/device/sync", "r1-test", 42,
+                                                            "{\"protocolVersion\":1}"),
                                         "0000000000000000000000000000000000000000000000000000000000000000"));
+  TEST_ASSERT_TRUE(isValidTransportToken(token));
+  TEST_ASSERT_FALSE(isValidTransportToken(token.substring(0, 63)));
+  TEST_ASSERT_FALSE(isValidTransportToken(String("z") + token.substring(1)));
+}
+
+void test_unknown_result_status_is_rejected() {
+  const auto unknown = parseSyncResponseJson(
+      "{\"protocolVersion\":1,\"requestId\":\"sync-unknown\",\"acceptedEventIds\":[],"
+      "\"results\":[{\"resultId\":\"result-1\",\"eventId\":\"event-1\","
+      "\"status\":\"pending\"}]}" );
+  TEST_ASSERT_FALSE(unknown.valid);
+
+  const auto unknownPrint = parseSyncResponseJson(
+      "{\"protocolVersion\":1,\"requestId\":\"sync-print\",\"acceptedEventIds\":[],\"results\":[],"
+      "\"quickLabelPrintResult\":{\"requestId\":\"print-1\",\"status\":\"queued\"}}" );
+  TEST_ASSERT_FALSE(unknownPrint.valid);
+}
+
+void test_http_response_limits_are_bounded() {
+  TEST_ASSERT_TRUE(httpHeaderWithinLimit(kMaxHttpHeaderBytes));
+  TEST_ASSERT_FALSE(httpHeaderWithinLimit(kMaxHttpHeaderBytes + 1U));
+  TEST_ASSERT_TRUE(httpBodyWithinLimit(kMaxHttpBodyBytes));
+  TEST_ASSERT_FALSE(httpBodyWithinLimit(kMaxHttpBodyBytes + 1U));
+  TEST_ASSERT_TRUE(httpResponseAppendAllowed(kMaxHttpResponseBytes - 1U));
+  TEST_ASSERT_FALSE(httpResponseAppendAllowed(kMaxHttpResponseBytes));
 }
 
 void test_ui_header_prefers_full_title_over_pc_status() {
@@ -259,7 +310,7 @@ void test_ui_header_prefers_full_title_over_pc_status() {
 
 void test_ui_clipping_and_queue_boundaries() {
   const auto monospaceWidth = [](std::size_t length) { return static_cast<int>(length * 5U); };
-  TEST_ASSERT_EQUAL_UINT32(5, displayClippedPrefixLength(5, 25, 3, monospaceWidth));
+  TEST_ASSERT_EQUAL_UINT32(4, displayClippedPrefixLength(5, 25, 3, monospaceWidth));
   TEST_ASSERT_EQUAL_UINT32(4, displayClippedPrefixLength(5, 24, 3, monospaceWidth));
   TEST_ASSERT_EQUAL_UINT32(0, displayClippedPrefixLength(5, 2, 3, monospaceWidth));
   TEST_ASSERT_FALSE(displayQueueDepth(0));
@@ -321,9 +372,12 @@ void setup() {
   RUN_TEST(test_scan_json_escapes_datamatrix_separators);
   RUN_TEST(test_request_id_format);
   RUN_TEST(test_fixed_ring_buffer_fifo_and_overwrite);
-  RUN_TEST(test_protocol_v3_sync_round_trip);
+  RUN_TEST(test_outbox_pop_transition_is_staged_before_commit);
+  RUN_TEST(test_protocol_v1_sync_round_trip);
   RUN_TEST(test_transport_authentication_vectors);
   RUN_TEST(test_quick_label_protocol_extensions);
+  RUN_TEST(test_unknown_result_status_is_rejected);
+  RUN_TEST(test_http_response_limits_are_bounded);
   RUN_TEST(test_ui_header_prefers_full_title_over_pc_status);
   RUN_TEST(test_ui_clipping_and_queue_boundaries);
   RUN_TEST(test_ui_timing_and_activity_policy);

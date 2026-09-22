@@ -56,6 +56,14 @@ struct SyncResponse {
   String quickLabelPrintMessage;
 };
 
+inline bool isInventoryResultStatus(const String& status) {
+  return status == "completed" || status == "completed_with_warning" || status == "failed";
+}
+
+inline bool isQuickLabelPrintStatus(const String& status) {
+  return status == "completed" || status == "failed";
+}
+
 inline const char* syncEventType(DeviceEventKind kind) {
   return kind == DeviceEventKind::InventoryReceive ? "inventory.receive" : "inventory.adjust";
 }
@@ -288,7 +296,11 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
     response.result.location = jsonStringValue(object, "location");
     response.result.code = jsonStringValue(object, "code");
     response.result.message = jsonStringValue(object, "message");
-    response.hasResult = response.result.resultId.length() > 0 && response.result.eventId.length() > 0;
+    if (response.result.resultId.length() == 0 || response.result.eventId.length() == 0 ||
+        !isInventoryResultStatus(response.result.status)) {
+      return response;
+    }
+    response.hasResult = true;
   }
   const auto lookup = jsonObjectValue(body, "lookupResult");
   if (lookup.length() > 0) {
@@ -312,8 +324,11 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
     response.quickLabelPrintStatus = jsonStringValue(quickLabelPrint, "status");
     response.quickLabelPrintCode = jsonStringValue(quickLabelPrint, "code");
     response.quickLabelPrintMessage = jsonStringValue(quickLabelPrint, "message");
-    response.hasQuickLabelPrintResult = response.quickLabelPrintRequestId.length() > 0 &&
-                                         response.quickLabelPrintStatus.length() > 0;
+    if (response.quickLabelPrintRequestId.length() == 0 ||
+        !isQuickLabelPrintStatus(response.quickLabelPrintStatus)) {
+      return response;
+    }
+    response.hasQuickLabelPrintResult = true;
   }
   response.valid = true;
   return response;

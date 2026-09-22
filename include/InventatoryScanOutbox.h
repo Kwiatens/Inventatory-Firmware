@@ -3,8 +3,43 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace inventatory_scan {
+
+// The persistent outbox header stores these values as one state transition.
+// Callers can prepare a successor on a copy and publish it only after the
+// corresponding NVS write succeeds.
+struct OutboxQueueState {
+  std::size_t head = 0;
+  std::size_t count = 0;
+  std::size_t tail = 0;
+  uint32_t nextSequence = 1;
+};
+
+inline OutboxQueueState makeOutboxQueueState(std::size_t head, std::size_t count, std::size_t tail,
+                                             uint32_t nextSequence) {
+  OutboxQueueState state;
+  state.head = head;
+  state.count = count;
+  state.tail = tail;
+  state.nextSequence = nextSequence;
+  return state;
+}
+
+inline bool prepareOutboxPop(const OutboxQueueState& current, std::size_t capacity,
+                             OutboxQueueState& next) {
+  if (capacity == 0 || current.count == 0 || current.count > capacity || current.head >= capacity ||
+      current.tail >= capacity) {
+    return false;
+  }
+
+  next = current;
+  next.head = (current.head + 1U) % capacity;
+  --next.count;
+  if (next.count == 0) next.head = next.tail = 0;
+  return true;
+}
 
 template <typename T, std::size_t Capacity>
 class FixedRingBuffer {

@@ -1,0 +1,99 @@
+name: Firmware CI
+
+on:
+  push:
+    paths:
+      - '.github/workflows/firmware.yml'
+      - 'boards/**'
+      - 'examples/**'
+      - 'include/**'
+      - 'partitions.csv'
+      - 'platformio.ini'
+      - 'src/**'
+      - 'test/**'
+      - 'tools/**'
+  pull_request:
+    paths:
+      - '.github/workflows/firmware.yml'
+      - 'boards/**'
+      - 'examples/**'
+      - 'include/**'
+      - 'partitions.csv'
+      - 'platformio.ini'
+      - 'src/**'
+      - 'test/**'
+      - 'tools/**'
+  workflow_dispatch:
+    inputs:
+      run_hardware_tests:
+        description: Run the embedded Unity tests on the attached Scan R1 board
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build firmware and test image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned PlatformIO Core
+        run: python -m pip install platformio==6.1.19
+
+      - name: Bootstrap non-secret build configuration
+        run: cp src/config/config.example.h src/config/config.h
+
+      - name: Reject scanner payload diagnostics
+        run: |
+          ! git grep -n -E 'GM65 rx|GM65 scan:' -- src
+          ! git grep -n -E 'sendDebugMessage\(.*(scannedCode_|trimmed|forwardedCode|manufacturerPartNumber)' -- src
+
+      - name: Build USB firmware
+        run: pio run -e tenstar_esp32s3_zero_usb
+
+      - name: Build OTA firmware without uploading
+        run: pio run -e tenstar_esp32s3_zero_ota
+
+      - name: Build embedded Unity test image
+        run: pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
+
+      - name: Build display smoke-test example
+        working-directory: examples/gmg12864_spi_test
+        run: pio run -e tenstar_esp32s3_zero
+
+  hardware-tests:
+    name: Embedded Unity tests
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_hardware_tests }}
+    runs-on: [self-hosted, windows, inventatory-scan-r1]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pinned PlatformIO Core
+        run: python -m pip install platformio==6.1.19
+
+      - name: Bootstrap non-secret build configuration
+        shell: pwsh
+        run: Copy-Item src/config/config.example.h src/config/config.h
+
+      - name: Upload and run embedded Unity tests
+        run: pio test -e tenstar_esp32s3_zero_usb
