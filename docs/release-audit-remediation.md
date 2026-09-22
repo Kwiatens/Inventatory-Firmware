@@ -2,9 +2,11 @@
 
 ## Baseline
 
-- Audited revision: `4ba9ddf0dc1be4ccffa49bd6e88dfa412c1e6a92`
-- Codex Security scan: `a3b90110-7f18-4579-abc2-d90bf091f692`
-- Phase 2 branch: `codex/firmware-release-hardening`
+- Audited revision: `f5c0eb105836058be85ca8bcddd4f9966da930d1`
+- Security scan: `a3b90110-7f18-4579-abc2-d90bf091f692`
+- Phase 2 implementation branch: `firmware-release-hardening` (merged into
+  `main`). Build evidence was captured at firmware source revision `5a35df1`;
+  later cleanup commits changed only a comment and this ledger.
 - The sealed Phase 1 report and scan artifacts are retained outside this
   worktree. This ledger records dispositions without replacing that baseline.
 
@@ -36,9 +38,11 @@ hardware or production provisioning evidence.
 - Embedded test image: `pio test -e tenstar_esp32s3_zero_usb
   --without-uploading --without-testing` — passed compilation; zero tests were
   executed by design.
-- Resulting final USB image: 77,300 bytes RAM (23.6%) and 1,450,461 bytes
-  flash (88.5% of the configured application partition). The OTA image uses
-  the same RAM and 1,450,465 bytes flash.
+- Verified USB image from `5a35df1`: 77,300 bytes RAM (23.6%) and 1,450,997
+  bytes flash (88.6% of the configured application partition). The OTA image
+  uses the same RAM and flash size. Both builds completed successfully without
+  flashing hardware; PlatformIO emitted its expected OTA upload-port advisory
+  because no device host was supplied.
 - No firmware was flashed and no production configuration or live inventory
   data was accessed during remediation.
 
