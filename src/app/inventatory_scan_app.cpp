@@ -1031,7 +1031,12 @@ void InventatoryScanApp::processNetworkResult() {
     pcOnline_ = false;
     Serial.print("POST /api/v1/device/sync failed, status ");
     Serial.println(status);
-    if (pendingQuickLabelPrintId_.length() > 0) {
+    // An authenticated 5xx means the desktop callback may already have
+    // performed an idempotent print operation but could not fit its response
+    // in the shared body budget. Keep the request for the next sync so the
+    // cached desktop result can be delivered without printing twice.
+    const bool retryableServerFailure = sent && status >= 500 && status <= 599;
+    if (pendingQuickLabelPrintId_.length() > 0 && !retryableServerFailure) {
       pendingQuickLabelPrintId_.clear();
       pendingQuickLabelPresetIndex_ = 0;
       state_ = State::Idle;
