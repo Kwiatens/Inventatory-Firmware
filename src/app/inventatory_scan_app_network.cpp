@@ -311,7 +311,7 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
                                quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
     }
   } else if (state_ == State::QuickLabels) {
-    // A normal protocol-v2 response without the optional extension means the paired desktop app is older.
+    // A protocol-v1 response without the optional quick-label extension means the paired desktop app is older.
     quickLabelSnapshotReceived_ = true;
     pcSupportsQuickLabels_ = false;
     display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
