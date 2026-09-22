@@ -294,6 +294,10 @@ void test_unknown_result_status_is_rejected() {
 }
 
 void test_http_response_limits_are_bounded() {
+  // Keep this literal synchronized with the desktop protocol contract in
+  // InventatoryScanProtocol.h. The device must accept every valid bounded
+  // desktop response before it begins parsing the authenticated body.
+  TEST_ASSERT_EQUAL_UINT32(8192U, kMaxHttpBodyBytes);
   TEST_ASSERT_TRUE(httpHeaderWithinLimit(kMaxHttpHeaderBytes));
   TEST_ASSERT_FALSE(httpHeaderWithinLimit(kMaxHttpHeaderBytes + 1U));
   TEST_ASSERT_TRUE(httpBodyWithinLimit(kMaxHttpBodyBytes));
