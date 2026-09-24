@@ -154,15 +154,7 @@ void InventatoryScanApp::handleScan(const String& code) {
 
 void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
   if (event.type == InventatoryKeyEventType::ProvisioningReset) {
-    networkPowerOffRequested_ = false;
-    networkPaused_ = true;
-    const auto pauseDeadline = millis() + 1000UL;
-    while (networkStarted_ && !networkPauseAcknowledged_ &&
-           static_cast<long>(pauseDeadline - millis()) > 0) {
-      delay(1);
-    }
-    if (networkStarted_ && !networkPauseAcknowledged_) {
-      networkPaused_ = false;
+    if (!pauseNetworkForSetupTransition()) {
       Serial.println("Provisioning reset deferred because network storage is busy.");
       return;
     }
@@ -170,7 +162,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       Serial.println("Provisioning reset requested; restarting into BLE setup.");
       ESP.restart();
     }
-    networkPaused_ = false;
+    resumeNetworkAfterSetupTransition();
     Serial.println("Provisioning reset could not clear NVS.");
     return;
   }
@@ -302,10 +294,12 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       return;
     }
     if (state_ == State::ConfirmReprovision && event.type == InventatoryKeyEventType::Add) {
-      if (setupStore_.clear()) {
+      const bool paused = pauseNetworkForSetupTransition();
+      if (paused && setupStore_.clear()) {
         Serial.println("Re-pair requested from quick settings; restarting BLE setup.");
         ESP.restart();
       }
+      if (paused) resumeNetworkAfterSetupTransition();
       display_.showQuickLabelPrintResult(false, "RESET FAILED");
       state_ = State::Idle;
       return;
