@@ -24,20 +24,27 @@ hardware or production provisioning evidence.
 | FW-005 | P1 | Implemented | Root GPL-3.0-only license, clean-checkout configuration bootstrap, and build/upload documentation added. | Repeat on a fresh public clone in CI. |
 | FW-006 | P2 | Implemented | Inventory and quick-label result statuses use explicit allowlists; malformed/unknown statuses invalidate the whole response and display code fails closed. Regression cases compile. | Execute Unity cases on hardware and compatibility test against desktop app. |
 | FW-007 | P2 | Implemented | BLE provisioning, persistent-state load/save/commit, and network-client startup all require exactly 32 bytes encoded as 64 hexadecimal characters. Token tests compile. | Pair/re-pair on hardware with valid and invalid payloads. |
-| FW-008 | P2 | Implemented; hardware verification pending | HTTP headers, bodies, and total response bytes are bounded before append; decimal `Content-Length` is mandatory and exact; transfer encoding is rejected; HMAC remains before parsing/state mutation. The desktop now shares the 8 KiB body limit, bounds optional response text, rejects any callback response that still exceeds the limit with an authenticated retryable error, and covers realistic/maximum serialized responses. Authenticated desktop 5xx failures retain a pending quick-label request so an idempotent cached result can be delivered on retry. Boundary tests compile. | Execute the firmware parser against the released desktop and representative maximum inventory data; add live rogue-endpoint coverage when hardware is available. |
+| FW-008 | P2 | Implemented; hardware verification pending | HTTP headers (1,024 bytes), bodies (8,192 bytes), and total response bytes are bounded before append; decimal `Content-Length` is mandatory and exact; transfer encoding is rejected; HMAC remains before parsing/state mutation. The desktop now shares the 8 KiB body limit, bounds optional response text, rejects any callback response that still exceeds the limit with an authenticated retryable error, and covers realistic/maximum serialized responses. Authenticated desktop 5xx failures retain a pending quick-label request so an idempotent cached result can be delivered on retry. Boundary tests compile. | Execute the firmware parser against the released desktop and representative maximum inventory data; add live rogue-endpoint coverage when hardware is available. |
 | FW-009 | P2 | Implemented | Scanner bytes accumulated during setup are flushed immediately before normal runtime starts. | Hardware pairing test with injected setup-mode barcode bytes. |
-| FW-010 | P2 | Partially implemented | Cross-core flags and the task handle use atomics; failed worker startup clears the handle; provisioning reset pauses the worker before clearing shared NVS. Firmware build passes. | FreeRTOS stress/TSAN-equivalent review and reset-during-sync hardware test. |
+| FW-010 | P2 | Partially implemented | Cross-core flags and the task handle use atomics; failed worker startup releases resources before clearing the handle; runtime retries preserve ready-worker state and wait for pause acknowledgement before BLE/NVS transitions. Provisioning reset also pauses before clearing shared NVS. USB firmware build passes. | FreeRTOS stress/TSAN-equivalent review and reset-during-sync hardware test. |
 | FW-011 | P2 | Implemented | GM65 boot-profile write failures now propagate from `begin()` and stop startup with an explicit scanner error. | Disconnect/fault GM65 UART on hardware and verify recovery behavior. |
 | FW-012 | P2 | Implemented | Raw-byte, assembled barcode, code-bearing debug, and event-identifier serial logs were removed while scan/outbox/sync data flows remain intact. | Capture USB/UART during valid, invalid, and oversized scans. |
 | FW-013 | P2 | Implemented | PlatformIO platform and direct libraries are exact-version pinned; USB is the default; OTA is isolated and reads its password from ignored configuration. | Reproduce USB and OTA image builds on clean Linux and Windows hosts. |
 | FW-014 | P2 | Implemented | CI builds USB/OTA firmware, the test image, and display example; an opt-in self-hosted job executes hardware tests. README documents hardware, dependencies, licenses, and workflows. | First CI run and configured self-hosted hardware runner. |
 
+## Shared protocol reference
+
+The desktop and firmware contract is documented in the [shared transport v1
+protocol specification](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/scanner-transport-security.md).
+
 ## Build and test evidence
 
 - USB firmware: `pio run -e tenstar_esp32s3_zero_usb` — passed.
-- Embedded test image: `pio test -e tenstar_esp32s3_zero_usb
-  --without-uploading --without-testing` — passed compilation; zero tests were
-  executed by design.
+- Embedded test image compile-only command: `pio test -e tenstar_esp32s3_zero_usb
+  --without-uploading --without-testing`: compiles the Unity image; it does not
+  execute assertions.
+- Hardware assertion command: `pio test -e tenstar_esp32s3_zero_usb`: uploads the
+  image and executes assertions on an attached board; this command was not run.
 - Verified USB image from `5a35df1`: 77,300 bytes RAM (23.6%) and 1,450,997
   bytes flash (88.6% of the configured application partition). The OTA image
   uses the same RAM and flash size. Both builds completed successfully without
