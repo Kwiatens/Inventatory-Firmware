@@ -290,10 +290,11 @@ void DisplayRenderer::drawActions(const String& actionsText) {
       drawKeyChip(x, style::kFooterBaselineY, word[0]);
       x += style::kChipLabelGap;
     } else {
+      const int wordWidth = lcd_.getStrWidth(word.c_str());
       const int remaining = style::kScreenW - x;
-      if (lcd_.getStrWidth(word.c_str()) > remaining) break;
+      if (wordWidth > remaining) break;
       lcd_.drawStr(x, style::kFooterBaselineY, word.c_str());
-      x += lcd_.getStrWidth(word.c_str()) + spaceWidth;
+      x += wordWidth + spaceWidth;
     }
   }
 }
