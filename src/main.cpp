@@ -6,6 +6,7 @@
 using namespace inventatory_scan;
 
 static InventatoryScanApp app;
+static bool appReady = false;
 
 void setup() {
   Serial.begin(115200);
@@ -19,9 +20,13 @@ void setup() {
 #endif
   Serial.println("Inventatory Scan R1 booting");
   Serial.printf("Reset reason: %d\r\n", static_cast<int>(esp_reset_reason()));
-  app.begin();
+  appReady = app.begin();
 }
 
 void loop() {
-  app.loop();
+  if (appReady) {
+    app.loop();
+  } else {
+    delay(1000);
+  }
 }
