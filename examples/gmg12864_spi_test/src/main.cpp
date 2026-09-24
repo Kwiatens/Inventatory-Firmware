@@ -52,6 +52,6 @@ void loop() {
   if (now - lastUpdateMs >= 1000) {
     lastUpdateMs = now;
     drawScreen(now / 1000);
-    Serial.printf("Display update: %lu s\\n", static_cast<unsigned long>(now / 1000));
+    Serial.printf("Display update: %lu s\n", static_cast<unsigned long>(now / 1000));
   }
 }
