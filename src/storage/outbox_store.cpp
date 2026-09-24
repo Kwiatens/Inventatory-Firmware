@@ -284,12 +284,15 @@ OutboxStore::EnqueueResult OutboxStore::enqueue(DeviceEventKind kind, const Stri
                                                 DeviceEventRecord* created, const String& manufacturer,
                                                 const String& manufacturerPartNumber,
                                                 const String& encodedPartName) {
-  if (full()) return EnqueueResult::QueueFull;
   const auto trimmed = trimCopy(code);
   if (trimmed.length() == 0 || trimmed.length() >= kCodeLen || value == 0) return EnqueueResult::Rejected;
   if (!ensureStorage()) return EnqueueResult::StorageFailed;
   if (!loaded_ && !load()) return EnqueueResult::StorageFailed;
+  if (full()) return EnqueueResult::QueueFull;
 
+  const auto current = makeOutboxQueueState(head_, count_, tail_, nextSequence_);
+  OutboxQueueState next;
+  if (!prepareOutboxEnqueue(current, kCapacity, next)) return EnqueueResult::StorageFailed;
   const auto slot = tail_;
   Record record{};
   record.sequence = nextSequence_;
@@ -299,12 +302,6 @@ OutboxStore::EnqueueResult OutboxStore::enqueue(DeviceEventKind kind, const Stri
   copyString(record.manufacturer, sizeof(record.manufacturer), manufacturer);
   copyString(record.manufacturerPartNumber, sizeof(record.manufacturerPartNumber), manufacturerPartNumber);
   copyString(record.encodedPartName, sizeof(record.encodedPartName), encodedPartName);
-  const auto current = makeOutboxQueueState(head_, count_, tail_, nextSequence_);
-  OutboxQueueState next = current;
-  next.tail = (tail_ + 1U) % kCapacity;
-  ++next.count;
-  ++next.nextSequence;
-
   // The record is stored before the header so a power cut can only leave an
   // unreferenced slot behind, never a queued event without its payload.
   // If either write fails, the old header and in-memory state remain the
