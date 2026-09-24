@@ -11,6 +11,37 @@
 
 namespace inventatory_scan {
 
+namespace {
+
+constexpr unsigned long kNetworkPauseTimeoutMs = 1000UL;
+
+}  // namespace
+
+bool InventatoryScanApp::pauseNetworkForSetupTransition() {
+  const bool wasPaused = networkPaused_.load();
+  const bool wasPowerOffRequested = networkPowerOffRequested_.load();
+  networkPowerOffRequested_ = true;
+  networkPauseAcknowledged_ = false;
+  networkPaused_ = true;
+
+  const auto pauseDeadline = millis() + kNetworkPauseTimeoutMs;
+  while (networkTask_.load() != nullptr && !networkPauseAcknowledged_ &&
+         static_cast<long>(pauseDeadline - millis()) > 0) {
+    delay(1);
+  }
+  if (networkTask_.load() != nullptr && !networkPauseAcknowledged_) {
+    networkPowerOffRequested_ = wasPowerOffRequested;
+    networkPaused_ = wasPaused;
+    return false;
+  }
+  return true;
+}
+
+void InventatoryScanApp::resumeNetworkAfterSetupTransition() {
+  networkPowerOffRequested_ = false;
+  networkPaused_ = false;
+}
+
 void InventatoryScanApp::sendDebugMessage(const String& message, const String& level) {
   if (networkPaused_ || !WiFi.isConnected() || trimCopy(message).length() == 0) {
     return;
@@ -25,12 +56,14 @@ void InventatoryScanApp::sendDebugMessage(const String& message, const String& l
 }
 
 bool InventatoryScanApp::startNetworkWorker() {
-  if (networkTask_ != nullptr) return true;
+  if (networkTask_.load() != nullptr) return true;
   networkMutex_ = xSemaphoreCreateMutex();
   if (networkMutex_ == nullptr) {
     Serial.println("Network worker: mutex allocation failed");
     return false;
   }
+
+  networkTaskStartReleased_ = false;
   TaskHandle_t createdTask = nullptr;
   const auto created = xTaskCreatePinnedToCore(networkTaskEntry, "inventatory-net", 8192, this, 1,
                                                 &createdTask, 0);
@@ -38,11 +71,12 @@ bool InventatoryScanApp::startNetworkWorker() {
     Serial.println("Network worker: task allocation failed");
     vSemaphoreDelete(networkMutex_);
     networkMutex_ = nullptr;
-    networkTask_ = nullptr;
     return false;
   }
+
+  // The worker waits on this flag so an early init failure cannot race handle publication.
   networkTask_ = createdTask;
-  if (networkInitializationComplete_ && !networkInitializationSucceeded_) networkTask_ = nullptr;
+  networkTaskStartReleased_ = true;
   return true;
 }
 
@@ -51,16 +85,18 @@ void InventatoryScanApp::networkTaskEntry(void* context) {
 }
 
 void InventatoryScanApp::networkTaskLoop() {
+  while (!networkTaskStartReleased_.load()) vTaskDelay(pdMS_TO_TICKS(1));
+
   const bool clientReady = client_.begin(clientConfig_);
   networkInitializationSucceeded_ = clientReady;
   networkInitializationComplete_ = true;
   if (!clientReady) {
     Serial.println("Network worker: client initialization failed");
     networkStarted_ = false;
-    networkTask_ = nullptr;
     auto* failedMutex = networkMutex_;
     networkMutex_ = nullptr;
     if (failedMutex != nullptr) vSemaphoreDelete(failedMutex);
+    networkTask_ = nullptr;
     vTaskDelete(nullptr);
     return;
   }
@@ -120,9 +156,7 @@ void InventatoryScanApp::networkTaskLoop() {
     if (hasSync) {
       int status = 0;
       String body;
-      networkBusy_ = true;
       const bool sent = WiFi.isConnected() && client_.postSync(payload, status, body);
-      networkBusy_ = false;
       if (xSemaphoreTake(networkMutex_, portMAX_DELAY) == pdTRUE) {
         syncResultRequestId_ = requestId;
         syncResultSent_ = sent;
@@ -132,12 +166,10 @@ void InventatoryScanApp::networkTaskLoop() {
         xSemaphoreGive(networkMutex_);
       }
     } else if (hasDebug && WiFi.isConnected()) {
-      networkBusy_ = true;
       Serial.print("Scanner diagnostic [");
       Serial.print(debugLevel.c_str());
       Serial.print("]: ");
       Serial.println(debugMessage.c_str());
-      networkBusy_ = false;
     }
 
     vTaskDelay(pdMS_TO_TICKS(10));
@@ -170,7 +202,6 @@ void InventatoryScanApp::reconnectWiFiWorker() {
   if (WiFi.status() == WL_CONNECTED) {
     if (!wifiConnectedReported_) {
       wifiConnectedReported_ = true;
-      inventatorySoftwarePrimed_ = false;
       lastSyncAttempt_ = 0;
       // Do not disclose provisioning metadata through the serial console.
       Serial.println("Local Wi-Fi connected");
@@ -179,7 +210,6 @@ void InventatoryScanApp::reconnectWiFiWorker() {
   }
 
   wifiConnectedReported_ = false;
-  inventatorySoftwarePrimed_ = false;
   pcOnline_ = false;
   if (lastReconnectAttempt_ != 0 && millis() - lastReconnectAttempt_ < WIFI_RECONNECT_INTERVAL_MS) {
     return;

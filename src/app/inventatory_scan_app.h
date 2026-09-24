@@ -86,6 +86,9 @@ class InventatoryScanApp {
   void persistContrast();
   void serviceProvisioning();
   bool beginNormalRuntime(const ProvisionedSettings& settings);
+  bool enterSetupAfterRuntimeFailure();
+  bool pauseNetworkForSetupTransition();
+  void resumeNetworkAfterSetupTransition();
 
   Gm65Scanner scanner_;
   OutboxStore outbox_;
@@ -107,7 +110,6 @@ class InventatoryScanApp {
   std::atomic<PowerMode> powerMode_{PowerMode::Normal};
   std::atomic_bool wifiStarted_{false};
   std::atomic_bool wifiConnectedReported_{false};
-  std::atomic_bool inventatorySoftwarePrimed_{false};
   bool otaRequested_ = false;
   bool otaActive_ = false;
   std::atomic_bool pcOnline_{false};
@@ -116,13 +118,14 @@ class InventatoryScanApp {
   std::atomic_bool networkInitializationComplete_{false};
   std::atomic_bool networkInitializationSucceeded_{false};
   bool setupMode_ = false;
+  bool setupRestartPending_ = false;
   bool setupWifiConnecting_ = false;
   unsigned long setupWifiStartedAt_ = 0;
   std::atomic_bool networkPaused_{false};
   std::atomic_bool networkPauseAcknowledged_{false};
   std::atomic_bool networkPowerOffRequested_{false};
-  std::atomic_bool networkBusy_{false};
   std::atomic<TaskHandle_t> networkTask_{nullptr};
+  std::atomic_bool networkTaskStartReleased_{false};
   SemaphoreHandle_t networkMutex_ = nullptr;
   bool syncJobPending_ = false;
   String syncJobRequestId_;
