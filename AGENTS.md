@@ -48,8 +48,8 @@ specifications in the tree:
 - `SECURITY.md`: Vulnerability reporting process and transport security boundaries.
 - `docs/release-audit-remediation.md`: Authoritative remediation ledger (FW-001
   through FW-014), verification status, and hardware release gates.
-- `../Inventatory-Software/docs/scanner-transport-security.md`: Shared transport v1
-  protocol specification, replay counter mechanics, and 8 KiB response-body bounds.
+- [Shared transport v1 protocol specification](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/scanner-transport-security.md): replay counter
+  mechanics and 8 KiB response-body bounds.
 
 Do not guess protocol or hardware requirements when an authoritative document exists.
 
@@ -128,7 +128,8 @@ agents must distinguish between immutable invariants and mutable implementation 
 8. **NVS namespace safety**: NVS namespace identifiers must not exceed 15
    characters (plus null terminator). Calling `clear()` on the outbox namespace
    is prohibited.
-9. **Memory safety**: Bounded buffers on all external inputs (barcodes <= 512 bytes,
+9. **Memory safety**: Bounded buffers on all external inputs (raw GM65 UART
+   frames <= 1,024 bytes, accepted decoded barcode payloads <= 512 bytes, and
    manufacturer part numbers <= 64 chars). No unbounded heap allocations.
 
 ### Implementation choices (May evolve with proper justification)
@@ -224,7 +225,7 @@ The firmware utilizes both ESP32-S3 cores using FreeRTOS:
    are protected by `networkMutex_`. Lock contention must be minimal; do not hold
    `networkMutex_` during network I/O or display rendering.
 4. **Atomic flags**: Single-variable state (`networkStarted_`, `networkPaused_`,
-   `networkPauseAcknowledged_`, `networkBusy_`, `powerMode_`, `wifiStarted_`) uses
+   `networkPauseAcknowledged_`, `powerMode_`, `wifiStarted_`) uses
    `std::atomic<T>`.
 5. **Task lifecycle handshake**: When entering BLE provisioning or ArduinoOTA,
    Core 1 signals `networkPaused_ = true` and must await `networkPauseAcknowledged_`
@@ -362,11 +363,17 @@ pio run -e tenstar_esp32s3_zero_usb
 pio run -e tenstar_esp32s3_zero_ota
 ```
 
-### Static test build (Host-only check)
+### Unity test image compile-only check (no device required)
 Compiles the embedded Unity test image to verify types, syntax, and links without
 requiring connected hardware:
 ```powershell
 pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
+```
+
+Hardware assertion execution uploads and runs the Unity assertions on an
+attached Scan R1 board:
+```powershell
+pio test -e tenstar_esp32s3_zero_usb
 ```
 
 ### Standalone display smoke test
