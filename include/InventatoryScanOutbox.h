@@ -27,6 +27,24 @@ inline OutboxQueueState makeOutboxQueueState(std::size_t head, std::size_t count
   return state;
 }
 
+inline bool prepareOutboxEnqueue(const OutboxQueueState& current, std::size_t capacity,
+                                 OutboxQueueState& next) {
+  if (capacity == 0 || current.count >= capacity || current.head >= capacity ||
+      current.tail >= capacity || current.nextSequence == 0 || current.nextSequence == UINT32_MAX) {
+    return false;
+  }
+  const auto headRemaining = capacity - current.head;
+  const auto expectedTail = current.count >= headRemaining ? current.count - headRemaining
+                                                          : current.head + current.count;
+  if (current.tail != expectedTail) return false;
+
+  next = current;
+  next.tail = (current.tail + 1U) % capacity;
+  ++next.count;
+  ++next.nextSequence;
+  return true;
+}
+
 inline bool prepareOutboxPop(const OutboxQueueState& current, std::size_t capacity,
                              OutboxQueueState& next) {
   if (capacity == 0 || current.count == 0 || current.count > capacity || current.head >= capacity ||
