@@ -50,11 +50,16 @@ void test_datamatrix_decoding_fixtures() {
   TEST_ASSERT_EQUAL_STRING("NE555P", decoded.auxiliaryPartNumber.c_str());
   TEST_ASSERT_EQUAL_INT(10, decoded.quantity);
 
+  TEST_ASSERT_TRUE(decodeComponentDataMatrix("[)>06PNE555P1PLOT123Q9999", decoded));
+  TEST_ASSERT_EQUAL_INT(9999, decoded.quantity);
+  TEST_ASSERT_FALSE(decodeComponentDataMatrix("[)>06PNE555P1PLOT123Q10000", decoded));
+
   const String nameOnly = String("[)>") + static_cast<char>(0x1E) + "06" + static_cast<char>(0x1D) +
       "NUnidentified sensor" + static_cast<char>(0x1E) + static_cast<char>(0x04);
   TEST_ASSERT_TRUE(decodeComponentDataMatrix(nameOnly, decoded));
   TEST_ASSERT_EQUAL_STRING("", decoded.manufacturerPartNumber.c_str());
   TEST_ASSERT_EQUAL_STRING("Unidentified sensor", decoded.encodedPartName.c_str());
+  TEST_ASSERT_EQUAL_INT(1, decoded.quantity);
 
   TEST_ASSERT_FALSE(decodeComponentDataMatrix("[)>05PNE555P", decoded));
   TEST_ASSERT_FALSE(decodeComponentDataMatrix("[)>06Q2", decoded));
@@ -191,6 +196,22 @@ void test_outbox_pop_transition_is_staged_before_commit() {
   TEST_ASSERT_FALSE(prepareOutboxPop(current, 0, next));
 }
 
+void test_outbox_enqueue_transition_is_bounded() {
+  OutboxQueueState next;
+  const auto full = makeOutboxQueueState(0, 16, 0, 17);
+  TEST_ASSERT_FALSE(prepareOutboxEnqueue(full, 16, next));
+
+  const auto current = makeOutboxQueueState(14, 1, 15, 9);
+  TEST_ASSERT_TRUE(prepareOutboxEnqueue(current, 16, next));
+  TEST_ASSERT_EQUAL_UINT32(14, next.head);
+  TEST_ASSERT_EQUAL_UINT32(2, next.count);
+  TEST_ASSERT_EQUAL_UINT32(0, next.tail);
+  TEST_ASSERT_EQUAL_UINT32(10, next.nextSequence);
+
+  const auto inconsistent = makeOutboxQueueState(14, 1, 7, 9);
+  TEST_ASSERT_FALSE(prepareOutboxEnqueue(inconsistent, 16, next));
+}
+
 void test_protocol_v1_sync_round_trip() {
   DeviceEventRecord event;
   event.eventId = "R1-42";
@@ -293,13 +314,57 @@ void test_unknown_result_status_is_rejected() {
   TEST_ASSERT_FALSE(unknownPrint.valid);
 }
 
+void test_sync_response_json_is_strictly_parsed() {
+  const String valid =
+      R"json({"protocolVersion":1,"requestId":"sync-9","acceptedEventIds":[],"results":[]})json";
+  TEST_ASSERT_FALSE(parseSyncResponseJson(valid + " trailing").valid);
+
+  const auto fieldLikeText = parseSyncResponseJson(
+      R"json({"requestId":"sync-evil, \"protocolVersion\":1","protocolVersion":0,"acceptedEventIds":[],"results":[]})json");
+  TEST_ASSERT_FALSE(fieldLikeText.valid);
+
+  const auto wrongType = parseSyncResponseJson(
+      R"json({"protocolVersion":"1","requestId":"sync-10","acceptedEventIds":[],"results":[]})json");
+  TEST_ASSERT_FALSE(wrongType.valid);
+
+  const auto malformedEscape = parseSyncResponseJson(
+      R"json({"protocolVersion":1,"requestId":"sync-\q","acceptedEventIds":[],"results":[]})json");
+  TEST_ASSERT_FALSE(malformedEscape.valid);
+
+  const auto nonStringAcknowledgement = parseSyncResponseJson(
+      R"json({"protocolVersion":1,"requestId":"sync-11","acceptedEventIds":[true],"results":[]})json");
+  TEST_ASSERT_FALSE(nonStringAcknowledgement.valid);
+
+  const auto laterUnknownStatus = parseSyncResponseJson(
+      R"json({"protocolVersion":1,"requestId":"sync-12","acceptedEventIds":[],"results":[{"resultId":"r1","eventId":"e1","status":"completed"},{"resultId":"r2","eventId":"e2","status":"pending"}]})json");
+  TEST_ASSERT_FALSE(laterUnknownStatus.valid);
+
+  const auto malformedNumber = parseSyncResponseJson(
+      R"json({"protocolVersion":1,"requestId":"sync-13","acceptedEventIds":[],"results":[{"resultId":"r1","eventId":"e1","status":"completed","quantity":7tail}]})json");
+  TEST_ASSERT_FALSE(malformedNumber.valid);
+
+  const auto unicodeEscape = parseSyncResponseJson(
+      R"json({"protocolVersion":1,"requestId":"sync-\u0041","acceptedEventIds":[],"results":[]})json");
+  TEST_ASSERT_TRUE(unicodeEscape.valid);
+  TEST_ASSERT_EQUAL_STRING("sync-A", unicodeEscape.requestId.c_str());
+
+  const String validUtf8 = String(R"json({"protocolVersion":1,"requestId":"sync-)json") +
+      static_cast<char>(0xC3) + static_cast<char>(0xBC) + R"json(","acceptedEventIds":[],"results":[]})json";
+  TEST_ASSERT_TRUE(parseSyncResponseJson(validUtf8).valid);
+
+  const String malformedUtf8 = String(R"json({"protocolVersion":1,"requestId":"sync-)json") +
+      static_cast<char>(0xC0) + static_cast<char>(0xAF) + R"json(","acceptedEventIds":[],"results":[]})json";
+  TEST_ASSERT_FALSE(parseSyncResponseJson(malformedUtf8).valid);
+}
+
 void test_http_response_limits_are_bounded() {
   // Keep this literal synchronized with the desktop protocol contract in
   // InventatoryScanProtocol.h. The device must accept every valid bounded
   // desktop response before it begins parsing the authenticated body.
+  TEST_ASSERT_EQUAL_UINT32(1024U, kMaxHttpHeaderBytes);
   TEST_ASSERT_EQUAL_UINT32(8192U, kMaxHttpBodyBytes);
-  TEST_ASSERT_TRUE(httpHeaderWithinLimit(kMaxHttpHeaderBytes));
-  TEST_ASSERT_FALSE(httpHeaderWithinLimit(kMaxHttpHeaderBytes + 1U));
+  TEST_ASSERT_TRUE(httpHeaderWithinLimit(1024U));
+  TEST_ASSERT_FALSE(httpHeaderWithinLimit(1025U));
   TEST_ASSERT_TRUE(httpBodyWithinLimit(kMaxHttpBodyBytes));
   TEST_ASSERT_FALSE(httpBodyWithinLimit(kMaxHttpBodyBytes + 1U));
   TEST_ASSERT_TRUE(httpResponseAppendAllowed(kMaxHttpResponseBytes - 1U));
@@ -334,7 +399,7 @@ void test_ui_timing_and_activity_policy() {
   TEST_ASSERT_FALSE(uiActivityEnabled(false, false));
   TEST_ASSERT_EQUAL_UINT32(250, style::kRailActivityStepMs);
   TEST_ASSERT_EQUAL_INT(1, style::kChipPadX);
-  TEST_ASSERT_EQUAL_INT(0, style::kChipTopPadY);
+  TEST_ASSERT_EQUAL_INT(1, style::kChipTopPadY);
   TEST_ASSERT_EQUAL_INT(1, style::kChipBottomPadY);
   TEST_ASSERT_EQUAL_INT(0, uiRailSweepOffset(0, style::kRailActivityStepMs,
                                               style::kRailActivityTravel,
@@ -377,10 +442,12 @@ void setup() {
   RUN_TEST(test_request_id_format);
   RUN_TEST(test_fixed_ring_buffer_fifo_and_overwrite);
   RUN_TEST(test_outbox_pop_transition_is_staged_before_commit);
+  RUN_TEST(test_outbox_enqueue_transition_is_bounded);
   RUN_TEST(test_protocol_v1_sync_round_trip);
   RUN_TEST(test_transport_authentication_vectors);
   RUN_TEST(test_quick_label_protocol_extensions);
   RUN_TEST(test_unknown_result_status_is_rejected);
+  RUN_TEST(test_sync_response_json_is_strictly_parsed);
   RUN_TEST(test_http_response_limits_are_bounded);
   RUN_TEST(test_ui_header_prefers_full_title_over_pc_status);
   RUN_TEST(test_ui_clipping_and_queue_boundaries);
