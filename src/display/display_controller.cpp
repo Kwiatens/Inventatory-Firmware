@@ -67,15 +67,14 @@ void DisplayController::showSplash() {
 }
 
 void DisplayController::showBoot(const String& stage) {
-  (void)stage;
   clearContent();
   model_.mode = DisplayUiMode::Boot;
   model_.bodyKind = DisplayBodyKind::Task;
   model_.rail = DisplayRailStyle::Activity;
   model_.showPcStatus = false;
   model_.header = "Starting";
-  model_.primary = "Getting ready";
-  model_.secondary = "Scanner and network";
+  model_.primary = stage.length() > 0 ? stage : "Getting ready";
+  model_.secondary = stage.length() > 0 ? "See USB serial for details" : "Scanner and network";
   markDirty();
 }
 
