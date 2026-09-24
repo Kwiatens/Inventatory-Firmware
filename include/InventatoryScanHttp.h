@@ -4,7 +4,7 @@
 
 namespace inventatory_scan {
 
-constexpr std::size_t kMaxHttpHeaderBytes = 2048U;
+constexpr std::size_t kMaxHttpHeaderBytes = 1024U;
 constexpr std::size_t kMaxHttpBodyBytes = 8192U;
 constexpr std::size_t kMaxHttpResponseBytes = kMaxHttpHeaderBytes + 4U + kMaxHttpBodyBytes;
 

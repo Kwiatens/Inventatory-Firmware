@@ -146,11 +146,20 @@ inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields&
     }
   }
   if (quantityText.length() > 0) {
+    constexpr int kMaximumEditableQuantity = 9999;
+    int parsedQuantity = 0;
     bool numeric = true;
     for (size_t index = 0; index < quantityText.length(); ++index) {
-      if (!std::isdigit(static_cast<unsigned char>(quantityText[index]))) numeric = false;
+      const auto ch = static_cast<unsigned char>(quantityText[index]);
+      if (!std::isdigit(ch)) {
+        numeric = false;
+        break;
+      }
+      const int digit = static_cast<int>(ch - '0');
+      if (parsedQuantity > (kMaximumEditableQuantity - digit) / 10) return false;
+      parsedQuantity = parsedQuantity * 10 + digit;
     }
-    if (numeric && quantityText.toInt() > 0) decoded.quantity = static_cast<int>(quantityText.toInt());
+    if (numeric && parsedQuantity > 0) decoded.quantity = parsedQuantity;
   }
   if (decoded.manufacturerPartNumber.length() > 0 &&
       !isStandardManufacturerPartNumber(decoded.manufacturerPartNumber)) decoded.manufacturerPartNumber.clear();
