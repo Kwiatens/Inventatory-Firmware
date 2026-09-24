@@ -28,5 +28,5 @@ physical confirmation and stores the provisioned token in ESP32 NVS. Production
 device policy for secure boot, flash encryption, JTAG, and eFuses is controlled
 by manufacturing/provisioning and is not established by this source tree.
 
-See the desktop application's `docs/scanner-transport-security.md` for the
+See the [shared transport v1 protocol specification](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/scanner-transport-security.md) for the
 cross-device protocol and operational assumptions.
