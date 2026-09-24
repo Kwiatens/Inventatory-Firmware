@@ -36,7 +36,7 @@ permissions:
 
 jobs:
   build:
-    name: Build firmware and test image
+    name: Build firmware and compile Unity image
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -66,7 +66,7 @@ jobs:
       - name: Build OTA firmware without uploading
         run: pio run -e tenstar_esp32s3_zero_ota
 
-      - name: Build embedded Unity test image
+      - name: Compile embedded Unity image (assertions not run)
         run: pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
 
       - name: Build display smoke-test example
@@ -74,7 +74,7 @@ jobs:
         run: pio run -e tenstar_esp32s3_zero
 
   hardware-tests:
-    name: Embedded Unity tests
+    name: Run embedded Unity assertions on hardware
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_hardware_tests }}
     runs-on: [self-hosted, windows, inventatory-scan-r1]
     steps:
@@ -95,5 +95,5 @@ jobs:
         shell: pwsh
         run: Copy-Item src/config/config.example.h src/config/config.h
 
-      - name: Upload and run embedded Unity tests
+      - name: Upload image and run Unity assertions
         run: pio test -e tenstar_esp32s3_zero_usb
