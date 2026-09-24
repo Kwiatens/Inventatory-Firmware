@@ -64,6 +64,8 @@ bool InventatoryScanApp::begin() {
     setupMode_ = true;
     if (!provisioning_.begin(clientConfig_.deviceId)) {
       Serial.println("BLE provisioning could not start");
+      display_.showBoot("BLE ERROR");
+      display_.tick();
       return false;
     }
     display_.showSetup(provisioning_.pairingCode());
@@ -72,14 +74,7 @@ bool InventatoryScanApp::begin() {
   }
   if (beginNormalRuntime(provisionedSettings_)) return true;
   Serial.println("Normal runtime initialization failed; returning to BLE setup");
-  setupMode_ = true;
-  if (!provisioning_.begin(clientConfig_.deviceId)) {
-    Serial.println("BLE provisioning could not restart after runtime failure");
-    return false;
-  }
-  display_.showSetup(provisioning_.pairingCode(), "NETWORK ERROR");
-  display_.tick();
-  return true;
+  return enterSetupAfterRuntimeFailure();
 }
 
 void InventatoryScanApp::loop() {
@@ -134,12 +129,52 @@ bool InventatoryScanApp::beginNormalRuntime(const ProvisionedSettings& settings)
   provisionedSettings_ = settings;
   clientConfig_.token = settings.deviceToken;
   clientConfig_.transportCounterStore = &setupStore_;
-  networkInitializationComplete_ = false;
-  networkInitializationSucceeded_ = false;
-  if (!startNetworkWorker()) return false;
-  const auto deadline = millis() + 1000UL;
-  while (!networkInitializationComplete_ && millis() < deadline) delay(1);
-  if (!networkInitializationComplete_ || !networkInitializationSucceeded_) return false;
+
+  if (networkTask_.load() == nullptr) {
+    networkInitializationComplete_ = false;
+    networkInitializationSucceeded_ = false;
+    networkStarted_ = false;
+    wifiStarted_ = false;
+    networkPauseAcknowledged_ = false;
+    networkPowerOffRequested_ = false;
+    networkPaused_ = false;
+    if (!startNetworkWorker()) return false;
+  }
+
+  const auto startupDeadline = millis() + 1000UL;
+  while (networkTask_.load() != nullptr && !networkInitializationComplete_ &&
+         static_cast<long>(startupDeadline - millis()) > 0) {
+    delay(1);
+  }
+  if (!networkInitializationComplete_ || !networkInitializationSucceeded_ || networkTask_.load() == nullptr) {
+    return false;
+  }
+
+  const auto readyDeadline = millis() + 1000UL;
+  while (networkTask_.load() != nullptr && !networkStarted_ &&
+         static_cast<long>(readyDeadline - millis()) > 0) {
+    delay(1);
+  }
+  if (!networkStarted_ || networkTask_.load() == nullptr) return false;
+
+  if (networkPaused_) {
+    const auto pauseDeadline = millis() + 1000UL;
+    while (networkTask_.load() != nullptr && !networkPauseAcknowledged_ &&
+           static_cast<long>(pauseDeadline - millis()) > 0) {
+      delay(1);
+    }
+    if (networkTask_.load() != nullptr && !networkPauseAcknowledged_) return false;
+
+    networkPowerOffRequested_ = false;
+    networkPaused_ = false;
+    const auto resumeDeadline = millis() + 1000UL;
+    while (networkTask_.load() != nullptr && networkPauseAcknowledged_ &&
+           static_cast<long>(resumeDeadline - millis()) > 0) {
+      delay(1);
+    }
+    if (networkTask_.load() == nullptr || networkPauseAcknowledged_) return false;
+  }
+
   sendDebugMessage("boot");
   logState("boot");
   updateConnectivityDisplay();
@@ -148,7 +183,33 @@ bool InventatoryScanApp::beginNormalRuntime(const ProvisionedSettings& settings)
   return true;
 }
 
+bool InventatoryScanApp::enterSetupAfterRuntimeFailure() {
+  setupMode_ = true;
+  if (!pauseNetworkForSetupTransition()) {
+    setupRestartPending_ = true;
+    display_.showBoot("NETWORK BUSY");
+    display_.tick();
+    return true;
+  }
+
+  setupRestartPending_ = false;
+  if (!provisioning_.begin(clientConfig_.deviceId)) {
+    Serial.println("BLE provisioning could not restart after runtime failure");
+    display_.showBoot("BLE ERROR");
+    display_.tick();
+    return false;
+  }
+  display_.showSetup(provisioning_.pairingCode(), "NETWORK ERROR");
+  display_.tick();
+  return true;
+}
+
 void InventatoryScanApp::serviceProvisioning() {
+  if (setupRestartPending_) {
+    enterSetupAfterRuntimeFailure();
+    return;
+  }
+
   ProvisionedSettings request;
   if (provisioning_.takeRequest(request)) {
     provisionedSettings_ = request;
@@ -180,9 +241,7 @@ void InventatoryScanApp::serviceProvisioning() {
     scanner_.flushInput();
     if (!beginNormalRuntime(provisionedSettings_) || !setupStore_.commit()) {
       Serial.println("Provisioning: normal runtime did not become ready; returning to BLE setup");
-      setupMode_ = true;
-      provisioning_.begin(clientConfig_.deviceId);
-      display_.showSetup(provisioning_.pairingCode(), "NETWORK ERROR");
+      enterSetupAfterRuntimeFailure();
     } else {
       Serial.println("Provisioning: normal runtime ready");
     }

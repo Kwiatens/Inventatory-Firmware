@@ -21,7 +21,6 @@ void InventatoryScanApp::enterStandby() {
   lastReconnectAttempt_ = 0;
   lastSyncAttempt_ = 0;
   wifiConnectedReported_ = false;
-  inventatorySoftwarePrimed_ = false;
 
   networkPowerOffRequested_ = true;
   networkPaused_ = true;
@@ -43,7 +42,6 @@ void InventatoryScanApp::exitStandby() {
   networkPowerOffRequested_ = false;
   networkPaused_ = false;
   wifiConnectedReported_ = false;
-  inventatorySoftwarePrimed_ = false;
   lastReconnectAttempt_ = 0;
   lastSyncAttempt_ = 0;
   powerMode_ = PowerMode::Normal;
