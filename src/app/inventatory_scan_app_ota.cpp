@@ -95,7 +95,9 @@ bool InventatoryScanApp::startOtaService() {
   ArduinoOTA.onStart([this]() {
     otaActive_ = true;
     Serial.println("OTA start: flashing new firmware.");
+    otaDisplayedPercent_ = 0;
     display_.showOta("UPDATING", 0);
+    display_.tick();
   });
   ArduinoOTA.onEnd([this]() {
     Serial.println();
@@ -113,7 +115,14 @@ bool InventatoryScanApp::startOtaService() {
     }
     const unsigned int percent = (progress * 100U) / total;
     Serial.printf("OTA progress: %u%%\r", percent);
-    display_.showOta("UPDATING", static_cast<int>(percent));
+    // The upload runs to completion inside ArduinoOTA.handle() on this core, so
+    // the loop does not tick the display until it ends; render from here. tick()
+    // only redraws when the percentage or the dot's blink changed.
+    if (static_cast<int>(percent) != otaDisplayedPercent_) {
+      otaDisplayedPercent_ = static_cast<int>(percent);
+      display_.showOta("UPDATING", otaDisplayedPercent_);
+    }
+    display_.tick();
   });
   ArduinoOTA.onError([this](ota_error_t error) {
     Serial.print("OTA error: ");

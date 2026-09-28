@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include "InventatoryScanUiPolicy.h"
+
 namespace inventatory_scan {
 
 enum class DisplayUiMode {
@@ -41,7 +43,14 @@ enum class DisplayBodyKind {
   Contrast,
   Confirm,
   Setup,
+};
+
+// What the dot of the ›i mark shows on the boot and update screens.
+enum class DisplayBrandDot {
+  Full,
+  Busy,
   Progress,
+  Fault,
 };
 
 enum class DisplayRailStyle {
@@ -61,6 +70,7 @@ struct RenderActivity {
   bool alternate = false;
   bool quantityCursorVisible = true;
   int railActivityOffset = 0;
+  uint8_t brandDotSlots = 0;
 };
 
 struct DisplayModel {
@@ -69,6 +79,9 @@ struct DisplayModel {
   DisplayRailStyle rail = DisplayRailStyle::Activity;
   DisplayConnectivityState connectivity = DisplayConnectivityState::Offline;
   bool showPcStatus = true;
+  DisplayBrandDot brandDot = DisplayBrandDot::Full;
+  // Elements of the boot lockup built so far; the full lockup outside the intro.
+  int introStep = kBrandIntroSteps;
   bool animateEllipsis = false;
   bool receiveQuantity = false;
   std::size_t queueDepth = 0;
