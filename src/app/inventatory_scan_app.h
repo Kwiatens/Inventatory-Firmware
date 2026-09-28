@@ -112,6 +112,9 @@ class InventatoryScanApp {
   std::atomic_bool wifiConnectedReported_{false};
   bool otaRequested_ = false;
   bool otaActive_ = false;
+  // Last percentage shown on the update screen; ArduinoOTA reports progress
+  // per received chunk, far more often than the percentage changes.
+  int otaDisplayedPercent_ = -1;
   std::atomic_bool pcOnline_{false};
   bool syncInFlight_ = false;
   std::atomic_bool networkStarted_{false};
