@@ -4,6 +4,7 @@
 
 #include "InventatoryScanUiPolicy.h"
 #include "config/hardware.h"
+#include "config/version.h"
 #include "display/display_style.h"
 
 namespace inventatory_scan {
@@ -17,6 +18,8 @@ void DisplayController::markDirty() { dirty_ = true; }
 
 void DisplayController::clearContent() {
   model_.animateEllipsis = false;
+  model_.brandDot = DisplayBrandDot::Full;
+  model_.introStep = kBrandIntroSteps;
   model_.header.clear();
   model_.primary.clear();
   model_.secondary.clear();
@@ -60,22 +63,41 @@ void DisplayController::showSplash() {
   clearContent();
   model_.mode = DisplayUiMode::Splash;
   model_.primary = "Inventatory";
-  model_.secondary = "Scan R1";
+  model_.secondary = "Scanner R1";
+  model_.tertiary = String("v") + kFirmwareVersion;
   model_.rail = DisplayRailStyle::None;
   model_.showPcStatus = false;
   markDirty();
 }
 
+void DisplayController::playBootIntro() {
+  showSplash();
+  const unsigned long start = millis();
+  model_.introStep = -1;
+  for (;;) {
+    const unsigned long now = millis();
+    const int step = brandIntroStep(now - start);
+    if (step != model_.introStep) {
+      model_.introStep = step;
+      lastActivity_ = computeActivity(now);
+      renderer_.render(model_, lastActivity_);
+      lastStartLineRecoveryMs_ = now;
+    }
+    if (step >= kBrandIntroSteps) break;
+    delay(10);
+  }
+  dirty_ = false;
+}
+
+// Boot keeps the splash lockup on screen until the scanner is ready; a failed
+// stage replaces the product name and breaks the dot.
 void DisplayController::showBoot(const String& stage) {
-  clearContent();
+  showSplash();
   model_.mode = DisplayUiMode::Boot;
-  model_.bodyKind = DisplayBodyKind::Task;
-  model_.rail = DisplayRailStyle::Activity;
-  model_.showPcStatus = false;
-  model_.header = "Starting";
-  model_.primary = stage.length() > 0 ? stage : "Getting ready";
-  model_.secondary = stage.length() > 0 ? "See USB serial for details" : "Scanner and network";
-  markDirty();
+  if (stage.length() == 0) return;
+  model_.primary = stage;
+  model_.secondary = "See USB serial";
+  model_.brandDot = DisplayBrandDot::Fault;
 }
 
 void DisplayController::showReady() {
@@ -256,23 +278,20 @@ void DisplayController::showOta(const String& text, int percent) {
   standby_ = false;
   renderer_.setPowerSave(false);
   model_.mode = DisplayUiMode::Ota;
+  model_.rail = DisplayRailStyle::None;
   model_.showPcStatus = false;
-  model_.header = "Software update";
-  model_.secondary = "Scanning is paused";
+  model_.primary = "Updating";
   model_.otaPercent = constrain(percent, 0, 100);
+  // The i's dot carries the status, as in the desktop update wizard.
   if (text == "RESTARTING") {
-    model_.bodyKind = DisplayBodyKind::Result;
-    model_.rail = DisplayRailStyle::Static;
-    model_.primary = "Restarting scanner";
-    model_.secondary = "Please wait";
+    model_.brandDot = DisplayBrandDot::Full;
+    model_.secondary = "Restarting";
   } else if (text == "UPDATING") {
-    model_.bodyKind = DisplayBodyKind::Progress;
-    model_.rail = DisplayRailStyle::None;
-    model_.primary = String("Installing / ") + model_.otaPercent + "%";
+    model_.brandDot = DisplayBrandDot::Progress;
+    model_.secondary = String(model_.otaPercent) + "%";
   } else {
-    model_.bodyKind = DisplayBodyKind::Task;
-    model_.rail = DisplayRailStyle::Activity;
-    model_.primary = "Preparing update";
+    model_.brandDot = DisplayBrandDot::Busy;
+    model_.secondary = "Preparing";
   }
   markDirty();
 }
@@ -433,12 +452,22 @@ RenderActivity DisplayController::computeActivity(unsigned long now) const {
   if (!standby_ && model_.mode == DisplayUiMode::Quantity) {
     activity.quantityCursorVisible = !uiActivityAlternate(now);
   }
+  if (!standby_) {
+    switch (model_.brandDot) {
+      case DisplayBrandDot::Full: activity.brandDotSlots = kBrandDotFull; break;
+      case DisplayBrandDot::Busy: activity.brandDotSlots = brandDotBusy(now); break;
+      case DisplayBrandDot::Progress:
+        activity.brandDotSlots = brandDotProgress(model_.otaPercent, now);
+        break;
+      case DisplayBrandDot::Fault: activity.brandDotSlots = kBrandDotFault; break;
+    }
+  }
   return activity;
 }
 
 bool DisplayController::activityEquals(const RenderActivity& a, const RenderActivity& b) {
   return a.alternate == b.alternate && a.quantityCursorVisible == b.quantityCursorVisible &&
-         a.railActivityOffset == b.railActivityOffset;
+         a.railActivityOffset == b.railActivityOffset && a.brandDotSlots == b.brandDotSlots;
 }
 
 void DisplayController::tick() {
