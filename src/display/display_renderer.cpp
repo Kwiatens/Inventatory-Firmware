@@ -10,6 +10,15 @@
 
 namespace inventatory_scan {
 
+namespace {
+
+// Chevron column for each body row of the ›i mark, top to bottom; the stem
+// fills column 4 of the same rows.
+constexpr int kChevronColumns[style::kMarkBodyRows] = {0, 1, 2, 1, 0};
+constexpr int kStemColumn = 4;
+
+}  // namespace
+
 DisplayRenderer::DisplayRenderer()
     : lcd_(U8G2_R0, hardware::kLcdClockPin, hardware::kLcdDataPin,
            hardware::kLcdCsPin, hardware::kLcdDcPin, hardware::kLcdResetPin) {}
@@ -242,17 +251,6 @@ void DisplayRenderer::drawSetup(const DisplayModel& model) {
   }
 }
 
-void DisplayRenderer::drawProgress(const DisplayModel& model) {
-  lcd_.setFont(style::kFontHeading);
-  drawClipped(style::kProgressX, 27, style::kProgressW, model.primary);
-  lcd_.drawFrame(style::kProgressX, style::kProgressY, style::kProgressW, style::kProgressH);
-  lcd_.drawBox(style::kProgressX + 2, style::kProgressY + 2,
-               ((style::kProgressW - 4) * constrain(model.otaPercent, 0, 100)) / 100,
-               style::kProgressH - 4);
-  lcd_.setFont(style::kFontRegular);
-  drawClipped(style::kProgressX, 53, style::kProgressW, model.secondary);
-}
-
 bool DisplayRenderer::isKeyToken(const String& word) {
   if (word.length() != 1) return false;
   return (word[0] >= 'A' && word[0] <= 'D') || word[0] == '#';
@@ -299,20 +297,126 @@ void DisplayRenderer::drawActions(const String& actionsText) {
   }
 }
 
-void DisplayRenderer::drawSplash(const DisplayModel& model) {
-  lcd_.setFont(style::kFontValue);
-  const int titleWidth = lcd_.getStrWidth(model.primary.c_str());
-  lcd_.drawStr(max(0, (style::kScreenW - titleWidth) / 2), 34, model.primary.c_str());
+// bodyCells counts the body in build order: chevron pixels top to bottom, then
+// stem rows bottom-up.
+void DisplayRenderer::drawMark(int x, int y, int unit, uint8_t dotSlots, bool showEmptySlots,
+                               int bodyCells) {
+  const int bodyY = y + style::kMarkBodyRow * unit;
+  const int chevronRows = constrain(bodyCells, 0, style::kMarkBodyRows);
+  for (int row = 0; row < chevronRows; ++row) {
+    lcd_.drawBox(x + kChevronColumns[row] * unit, bodyY + row * unit, unit, unit);
+  }
+  const int stemRows = constrain(bodyCells - style::kMarkBodyRows, 0, style::kMarkBodyRows);
+  if (stemRows > 0) {
+    lcd_.drawBox(x + kStemColumn * unit, bodyY + (style::kMarkBodyRows - stemRows) * unit, unit,
+                 stemRows * unit);
+  }
+
+  // The dot is one cell split into four slots; with an odd unit the left and
+  // top slots take the extra pixel so a full dot matches the stem's width.
+  const int lead = (unit + 1) / 2;
+  for (int slot = 0; slot < 4; ++slot) {
+    const int column = slot & 1;
+    const int row = slot >> 1;
+    const int slotX = x + kStemColumn * unit + column * lead;
+    const int slotY = y + row * lead;
+    const int slotW = column == 0 ? lead : unit - lead;
+    const int slotH = row == 0 ? lead : unit - lead;
+    if ((dotSlots & (1U << slot)) != 0U) {
+      lcd_.drawBox(slotX, slotY, slotW, slotH);
+    } else if (showEmptySlots) {
+      lcd_.drawPixel(slotX + slotW / 2, slotY + slotH / 2);
+    }
+  }
+}
+
+// Boot: the mark on the left with its body, without the dot, centred on the
+// screen; the name beside it, centred on that body; the flashed firmware version
+// in the bottom-right corner.
+void DisplayRenderer::drawBoot(const DisplayModel& model, const RenderActivity& activity) {
+  const int unit = style::kBootMarkUnit;
+  const int markY =
+      (style::kScreenH - style::kMarkBodyRows * unit) / 2 - style::kMarkBodyRow * unit;
+  drawMark(style::kBootMarkX, markY, unit,
+           activity.brandDotSlots & brandIntroDot(model.introStep), false, model.introStep);
+  if (model.introStep < kBrandIntroSteps) return;
+
+  const int textX = style::kBootMarkX + style::kMarkCols * unit + style::kBootColumnGap;
+  const int textW = style::kHeaderRightX - textX;
+  const int middle = markY + (style::kMarkBodyRow * unit) + (style::kMarkBodyRows * unit) / 2;
+  // The name takes the large face; a longer boot error falls back to the heading.
+  lcd_.setFont(style::kFontBrand);
+  const uint8_t* const titleFont =
+      lcd_.getStrWidth(model.primary.c_str()) <= textW ? style::kFontBrand : style::kFontHeading;
+  lcd_.setFont(titleFont);
+  const int titleAscent = lcd_.getAscent();
+  lcd_.setFont(style::kFontHeading);
+  const int detailAscent = lcd_.getAscent();
+  const int blockHeight = titleAscent + style::kBootLineGap + detailAscent;
+  const int titleY = middle - blockHeight / 2 + titleAscent;
+  drawClipped(textX, titleY + style::kBootLineGap + detailAscent, textW, model.secondary);
+  lcd_.setFont(titleFont);
+  drawClipped(textX, titleY, textW, model.primary);
+
   lcd_.setFont(style::kFontRegular);
-  const int subtitleWidth = lcd_.getStrWidth(model.secondary.c_str());
-  lcd_.drawStr(max(0, (style::kScreenW - subtitleWidth) / 2), 49, model.secondary.c_str());
+  const int versionWidth = lcd_.getStrWidth(model.tertiary.c_str());
+  lcd_.drawStr(style::kHeaderRightX - versionWidth, style::kFooterBaselineY,
+               model.tertiary.c_str());
+}
+
+void DisplayRenderer::drawUpdate(const DisplayModel& model, const RenderActivity& activity) {
+  const int unit = style::kUpdateMarkUnit;
+  const int markX = (style::kScreenW - (style::kMarkCols * unit + style::kUpdateColumnGap +
+                                        style::kUpdateColumnW)) /
+                    2;
+  const int bodyHeight = style::kMarkBodyRows * unit;
+  const int bodyY = (style::kScreenH - bodyHeight) / 2;
+  drawMark(markX, bodyY - style::kMarkBodyRow * unit, unit, activity.brandDotSlots, true);
+
+  const int textX = markX + style::kMarkCols * unit + style::kUpdateColumnGap;
+  const int middle = bodyY + bodyHeight / 2;
+  lcd_.setFont(style::kFontHeading);
+  const int titleAscent = lcd_.getAscent();
+  if (model.brandDot == DisplayBrandDot::Progress) {
+    lcd_.setFont(style::kFontValue);
+    const int valueAscent = lcd_.getAscent();
+    const int blockHeight = titleAscent + style::kUpdatePercentGap + valueAscent +
+                            style::kUpdateBarGap + style::kUpdateBarBlockH;
+    const int titleY = middle - blockHeight / 2 + titleAscent;
+    const int valueY = titleY + style::kUpdatePercentGap + valueAscent;
+    const int barY = valueY + style::kUpdateBarGap;
+    drawClipped(textX, valueY, style::kUpdateColumnW, model.secondary);
+    lcd_.setFont(style::kFontHeading);
+    drawClipped(textX, titleY, style::kUpdateColumnW, model.primary);
+    // Pixel blocks like the website's dashed indicator; unlit blocks keep a floor.
+    const int lit = (constrain(model.otaPercent, 0, 100) * style::kUpdateBarBlocks + 50) / 100;
+    for (int block = 0; block < style::kUpdateBarBlocks; ++block) {
+      const int blockX = textX + block * (style::kUpdateBarBlockW + 1);
+      if (block < lit) {
+        lcd_.drawBox(blockX, barY, style::kUpdateBarBlockW, style::kUpdateBarBlockH);
+      } else {
+        lcd_.drawHLine(blockX, barY + style::kUpdateBarBlockH - 1, style::kUpdateBarBlockW);
+      }
+    }
+    return;
+  }
+  lcd_.setFont(style::kFontRegular);
+  const int detailAscent = lcd_.getAscent();
+  const int blockHeight = titleAscent + style::kUpdateTitleGap + detailAscent;
+  const int titleY = middle - blockHeight / 2 + titleAscent;
+  drawClipped(textX, titleY + style::kUpdateTitleGap + detailAscent, style::kUpdateColumnW,
+              model.secondary);
+  lcd_.setFont(style::kFontHeading);
+  drawClipped(textX, titleY, style::kUpdateColumnW, model.primary);
 }
 
 void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& activity) {
   lcd_.clearBuffer();
   lcd_.setDrawColor(1);
-  if (model.mode == DisplayUiMode::Splash) {
-    drawSplash(model);
+  if (model.mode == DisplayUiMode::Splash || model.mode == DisplayUiMode::Boot) {
+    drawBoot(model, activity);
+  } else if (model.mode == DisplayUiMode::Ota) {
+    drawUpdate(model, activity);
   } else {
     drawHeader(model, activity);
     drawRail(model.rail, activity);
@@ -324,7 +428,6 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
       case DisplayBodyKind::Contrast: drawContrast(model); break;
       case DisplayBodyKind::Confirm: drawConfirm(model); break;
       case DisplayBodyKind::Setup: drawSetup(model); break;
-      case DisplayBodyKind::Progress: drawProgress(model); break;
     }
     drawActions(model.actions);
   }

@@ -429,6 +429,58 @@ void test_scan_preemption_policy() {
   TEST_ASSERT_FALSE(scanMayInterruptUi(false, false, false, false, true));
 }
 
+void test_brand_dot_policy() {
+  // Busy: one slot travels clockwise TL -> TR -> BR -> BL in 200 ms steps.
+  TEST_ASSERT_EQUAL_HEX8(0x01, brandDotBusy(0));
+  TEST_ASSERT_EQUAL_HEX8(0x01, brandDotBusy(199));
+  TEST_ASSERT_EQUAL_HEX8(0x02, brandDotBusy(200));
+  TEST_ASSERT_EQUAL_HEX8(0x08, brandDotBusy(400));
+  TEST_ASSERT_EQUAL_HEX8(0x04, brandDotBusy(600));
+  TEST_ASSERT_EQUAL_HEX8(0x01, brandDotBusy(800));
+  // Progress: one slot per quarter, the next one blinks every 400 ms.
+  TEST_ASSERT_EQUAL_HEX8(0x01, brandDotProgress(0, 0));
+  TEST_ASSERT_EQUAL_HEX8(0x00, brandDotProgress(0, 400));
+  TEST_ASSERT_EQUAL_HEX8(0x03, brandDotProgress(42, 0));
+  TEST_ASSERT_EQUAL_HEX8(0x01, brandDotProgress(42, 400));
+  TEST_ASSERT_EQUAL_HEX8(0x07, brandDotProgress(50, 0));
+  TEST_ASSERT_EQUAL_HEX8(0x03, brandDotProgress(50, 799));
+  TEST_ASSERT_EQUAL_HEX8(0x0F, brandDotProgress(99, 0));
+  TEST_ASSERT_EQUAL_HEX8(0x07, brandDotProgress(99, 400));
+  TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandDotProgress(100, 0));
+  TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandDotProgress(100, 400));
+  TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandDotProgress(250, 400));
+  TEST_ASSERT_EQUAL_HEX8(0x00, brandDotProgress(-5, 400));
+  TEST_ASSERT_EQUAL_HEX8(0x09, kBrandDotFault);
+  // The update column fits beside the mark on the 128 px screen.
+  TEST_ASSERT_TRUE(style::kMarkCols * style::kUpdateMarkUnit + style::kUpdateColumnGap +
+                       style::kUpdateColumnW <=
+                   style::kScreenW);
+  TEST_ASSERT_TRUE(style::kMarkRows * style::kBootMarkUnit < style::kScreenH);
+}
+
+void test_brand_intro_policy() {
+  // Chevron pixels from 150 ms, stem rows from 700 ms, dot slots from 1100 ms,
+  // the name at 1450 ms.
+  TEST_ASSERT_EQUAL_INT(0, brandIntroStep(0));
+  TEST_ASSERT_EQUAL_INT(0, brandIntroStep(149));
+  TEST_ASSERT_EQUAL_INT(1, brandIntroStep(150));
+  TEST_ASSERT_EQUAL_INT(5, brandIntroStep(699));
+  TEST_ASSERT_EQUAL_INT(6, brandIntroStep(700));
+  TEST_ASSERT_EQUAL_INT(10, brandIntroStep(1099));
+  TEST_ASSERT_EQUAL_INT(11, brandIntroStep(1100));
+  TEST_ASSERT_EQUAL_INT(14, brandIntroStep(1449));
+  TEST_ASSERT_EQUAL_INT(kBrandIntroSteps, brandIntroStep(1450));
+  TEST_ASSERT_EQUAL_INT(kBrandIntroSteps, brandIntroStep(60000));
+  for (int step = 1; step < kBrandIntroSteps; ++step) {
+    TEST_ASSERT_TRUE(brandIntroStepAt(step) < brandIntroStepAt(step + 1));
+  }
+  TEST_ASSERT_EQUAL_HEX8(0x00, brandIntroDot(10));
+  TEST_ASSERT_EQUAL_HEX8(0x01, brandIntroDot(11));
+  TEST_ASSERT_EQUAL_HEX8(0x07, brandIntroDot(13));
+  TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandIntroDot(14));
+  TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandIntroDot(kBrandIntroSteps));
+}
+
 void setup() {
   UNITY_BEGIN();
   RUN_TEST(test_standardized_scanner_codes);
@@ -453,6 +505,8 @@ void setup() {
   RUN_TEST(test_ui_clipping_and_queue_boundaries);
   RUN_TEST(test_ui_timing_and_activity_policy);
   RUN_TEST(test_scan_preemption_policy);
+  RUN_TEST(test_brand_dot_policy);
+  RUN_TEST(test_brand_intro_policy);
   UNITY_END();
 }
 

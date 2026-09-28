@@ -22,12 +22,11 @@ static_assert(sizeof(kOutboxNamespace) <= 16, "NVS namespace exceeds ESP32's 15-
 bool InventatoryScanApp::begin() {
   Serial.println("Inventatory Scan R1 booting");
   display_.begin();
-  display_.showSplash();
-  display_.tick();
+  display_.playBootIntro();
   keypadInit();
   if (!scanner_.begin(9600)) {
     Serial.println("Scanner initialization failed; verify the GM65 connection and profile.");
-    display_.showBoot("SCANNER ERROR");
+    display_.showBoot("Scanner error");
     display_.tick();
     return false;
   }
@@ -64,7 +63,7 @@ bool InventatoryScanApp::begin() {
     setupMode_ = true;
     if (!provisioning_.begin(clientConfig_.deviceId)) {
       Serial.println("BLE provisioning could not start");
-      display_.showBoot("BLE ERROR");
+      display_.showBoot("Bluetooth error");
       display_.tick();
       return false;
     }
@@ -187,7 +186,7 @@ bool InventatoryScanApp::enterSetupAfterRuntimeFailure() {
   setupMode_ = true;
   if (!pauseNetworkForSetupTransition()) {
     setupRestartPending_ = true;
-    display_.showBoot("NETWORK BUSY");
+    display_.showBoot("Network busy");
     display_.tick();
     return true;
   }
@@ -195,7 +194,7 @@ bool InventatoryScanApp::enterSetupAfterRuntimeFailure() {
   setupRestartPending_ = false;
   if (!provisioning_.begin(clientConfig_.deviceId)) {
     Serial.println("BLE provisioning could not restart after runtime failure");
-    display_.showBoot("BLE ERROR");
+    display_.showBoot("Bluetooth error");
     display_.tick();
     return false;
   }

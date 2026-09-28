@@ -25,9 +25,11 @@ class DisplayRenderer {
   void drawContrast(const DisplayModel& model);
   void drawConfirm(const DisplayModel& model);
   void drawSetup(const DisplayModel& model);
-  void drawProgress(const DisplayModel& model);
   void drawActions(const String& actions);
-  void drawSplash(const DisplayModel& model);
+  void drawMark(int x, int y, int unit, uint8_t dotSlots, bool showEmptySlots,
+                int bodyCells = kBrandIntroBodyCells);
+  void drawBoot(const DisplayModel& model, const RenderActivity& activity);
+  void drawUpdate(const DisplayModel& model, const RenderActivity& activity);
   void drawClipped(int x, int y, int maxWidth, const String& text);
   void drawWrapped(int x, int firstBaselineY, int maxWidth, const String& text,
                    std::size_t maxLines, int lineStep);
