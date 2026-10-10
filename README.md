@@ -89,7 +89,9 @@ pio run -e tenstar_esp32s3_zero_ota -t upload --upload-port <device-hostname-or-
 The OTA hostname must match `DEVICE_ID`/`ArduinoOTA.setHostname()` (for
 example, the device's `.local` name). Keep the password outside source
 control, CI logs, release artifacts, and command history. CI never performs an
-OTA upload.
+OTA upload. A new OTA image is confirmed after 30 seconds of healthy runtime;
+if the device crashes or loses power before that, it returns to the previous
+image, so leave the scanner powered for half a minute after an update.
 
 ## Hardware notes
 

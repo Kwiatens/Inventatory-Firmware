@@ -8,7 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- OTA images are confirmed only after 30 s of healthy runtime; a crash or reset before that rolls back to the previous image.
+- Operator-confirmed repair of an unreadable offline queue (readable scans are kept).
+- GM65 profile writes are verified against the module's acknowledgement; a scanner fault no longer stops the device from booting.
+- OTA images are confirmed only after 30 s of healthy runtime; a crash or reset before that (including powering the device off right after an update) rolls back to the previous image.
 - First-party keypad matrix scanner with two-sample debounce and per-key hold timing; the `Keypad` library dependency is removed.
 - Holding `#` opens the re-pair confirmation (idle only); `C` returns to Ready.
 - CI logging gate fails closed and has real patterns; jobs have timeouts.

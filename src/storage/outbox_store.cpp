@@ -175,6 +175,7 @@ bool OutboxStore::loadCurrentLayout() {
       // A queued event lost its record; treat the whole queue as unreadable
       // rather than syncing an event with blank fields. Keep the NVS contents
       // intact so a transient read failure can be retried on the next boot.
+      unreadable_ = true;
       return false;
     }
   }
@@ -265,6 +266,7 @@ OutboxStore::MigrationResult OutboxStore::migrateLegacyState() {
 
 bool OutboxStore::load() {
   loaded_ = false;
+  unreadable_ = false;
   if (!storageReady_) {
     clear();
     return false;
@@ -371,6 +373,64 @@ void OutboxStore::clear() {
   memset(records_, 0, sizeof(records_));
   count_ = head_ = tail_ = 0;
   nextSequence_ = 1;
+}
+
+OutboxStore::RepairResult OutboxStore::repair(std::size_t& salvaged, std::size_t& dropped) {
+  if (!storageReady_ || !unreadable_) return RepairResult::NothingToRepair;
+  if (prefs_.getBytesLength(kHeaderKey) != sizeof(Header)) return RepairResult::NothingToRepair;
+  Header header{};
+  if (prefs_.getBytes(kHeaderKey, &header, sizeof(header)) != sizeof(header) || header.magic != kMagic ||
+      header.version != kVersion) {
+    return RepairResult::NothingToRepair;
+  }
+
+  const std::size_t count = std::min<std::size_t>(header.count, kCapacity);
+  const std::size_t head = std::min<std::size_t>(header.head, kCapacity - 1U);
+
+  // The in-memory queue is unusable while unreadable_ is set, so records_ doubles
+  // as the scratch area (a 16-record array on the stack would be about 4 KB).
+  Record* const kept = records_;
+  salvaged = 0;
+  dropped = 0;
+
+  for (std::size_t offset = 0; offset < count; ++offset) {
+    char key[8];
+    slotKey((head + offset) % kCapacity, key);
+    if (prefs_.getBytesLength(key) == sizeof(Record)) {
+      if (prefs_.getBytes(key, &kept[salvaged], sizeof(Record)) == sizeof(Record)) {
+        salvaged++;
+        continue;
+      }
+    }
+    dropped++;
+  }
+
+  if (dropped == 0) {
+    load();
+    return RepairResult::NothingToRepair;
+  }
+
+  for (std::size_t i = 0; i < salvaged; ++i) {
+    if (!writeSlot(i, kept[i])) return RepairResult::StorageFailed;
+  }
+
+  // The old header stays valid until the header write; a cut while slots are being rewritten
+  // can lose records, accepted because this is an operator-initiated last-resort recovery of an already corrupt queue.
+  if (!writeHeader(makeOutboxQueueState(0, salvaged, salvaged % kCapacity, header.nextSequence))) {
+    return RepairResult::StorageFailed;
+  }
+
+  for (std::size_t i = salvaged; i < kCapacity; ++i) {
+    eraseSlot(i);
+  }
+
+  head_ = 0;
+  count_ = salvaged;
+  tail_ = salvaged % kCapacity;
+  nextSequence_ = header.nextSequence;
+  loaded_ = true;
+  unreadable_ = false;
+  return RepairResult::Repaired;
 }
 
 }  // namespace inventatory_scan

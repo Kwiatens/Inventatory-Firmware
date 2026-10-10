@@ -71,6 +71,10 @@ class OutboxStore {
   bool full() const { return count_ == kCapacity; }
   std::size_t freeStorageEntries() { return storageReady_ ? prefs_.freeEntries() : 0U; }
   uint32_t nextSequence() const { return nextSequence_; }
+  bool unreadable() const { return unreadable_; }
+
+  enum class RepairResult : uint8_t { Repaired, NothingToRepair, StorageFailed };
+  RepairResult repair(std::size_t& salvaged, std::size_t& dropped);
 
  private:
   static constexpr uint32_t kMagic = 0x48534f51UL;
@@ -130,6 +134,7 @@ class OutboxStore {
   String deviceId_;
   bool storageReady_ = false;
   bool loaded_ = false;
+  bool unreadable_ = false;
   Record records_[kCapacity]{};
   std::size_t count_ = 0;
   std::size_t head_ = 0;
