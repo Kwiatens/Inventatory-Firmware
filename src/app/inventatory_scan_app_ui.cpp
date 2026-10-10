@@ -135,6 +135,7 @@ DisplayConnectivityState InventatoryScanApp::connectivityState() const {
 }
 
 void InventatoryScanApp::updateConnectivityDisplay() {
+  display_.setQueueUnreadable(outbox_.unreadable());
   const bool wifiOnline = WiFi.isConnected();
   display_.setConnectivity(connectivityState(), wifiOnline, pcOnline_, outbox_.size());
   if (state_ == State::AwaitQuantity && activeLookupId_.length() > 0) {
