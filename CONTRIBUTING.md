@@ -10,9 +10,10 @@ If you are an autonomous coding agent, `AGENTS.md` is your authoritative operati
 
 ## Licensing
 This project is licensed under GPL-3.0-only. All contributions must be under the same license.
-New files must include the SPDX headers:
+New source files (C, C++, Python) must start with the SPDX headers:
 `SPDX-FileCopyrightText: <year> <author>`
 `SPDX-License-Identifier: GPL-3.0-only`
+Documentation and configuration files are covered by the repository `LICENSE`.
 
 ## Security and Vulnerabilities
 Report suspected vulnerabilities privately as described in `SECURITY.md`. **Never** open a public issue or pull request for a security vulnerability.
@@ -37,19 +38,26 @@ pio run -e tenstar_esp32s3_zero_ota
 ```
 
 ## Testing
-The embedded Unity assertions require physical hardware. Our CI runs a compile-only check:
+Run the host suite first. It needs no hardware, and it runs the same Unity assertions the device runs, with stand-ins for the Arduino, NVS and mbedtls APIs (see `host-tests/`). It needs a C++17 compiler, `make` and the OpenSSL development headers:
+```bash
+make -C host-tests test                              # build and run
+make -C host-tests SANITIZE=address,undefined test   # the same, with sanitizers (what CI runs)
+```
+
+The embedded Unity suite in `test/` also runs on the board. CI compiles that image but does not upload it or run its assertions:
 ```powershell
 pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
 ```
-This check verifies syntax and linkage but does not run runtime tests.
+Running the assertions on a board is a manual step, which needs an attached Scan R1 and is recorded in the pull request.
 
 ## Zero Sensitive Logging
-The firmware enforces a zero-sensitive-logging rule. Passwords, tokens, HMAC keys, raw UART buffers, and decoded barcodes must never be logged. CI fails the build if any of these `git grep` checks matches (the authoritative patterns live in `.github/workflows/firmware.yml`; run them locally before opening a pull request):
+The firmware enforces a zero-sensitive-logging rule. Passwords, tokens, HMAC keys, raw UART buffers, and decoded barcodes must never be logged. CI fails the build if any of these `git grep` checks matches. Run them from the repository root before opening a pull request; each must print nothing (exit code 1):
 ```bash
-git grep -n -E "GM65 rx|GM65 scan:" src
-git grep -n -E "(Serial\.(print|println|printf)|sendDebugMessage)\(.*(scannedCode_|forwardedCode|wifiPassword|deviceToken|clientConfig_\.token)" src
+git grep -n -E -e "GM65 rx|GM65 scan:" -- src
+git grep -n -E -e "sendDebugMessage\(.*(scannedCode_|trimmed|forwardedCode|manufacturerPartNumber)" -- src
+git grep -n -E -e "(Serial\.(print|println|printf)|sendDebugMessage)\(.*(scannedCode_|forwardedCode|wifiPassword|deviceToken|clientConfig_\.token|settings\.deviceToken)" -- src
 ```
-Both commands must print nothing (exit code 1).
+The patterns in `.github/workflows/firmware.yml` are authoritative; keep this list in step with them.
 
 ## Code of Conduct
 Participation is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
