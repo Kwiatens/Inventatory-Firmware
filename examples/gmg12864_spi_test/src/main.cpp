@@ -22,13 +22,14 @@ U8G2_ST7565_ERC12864_ALT_F_4W_SW_SPI lcd(
 void drawScreen(uint32_t seconds) {
   lcd.clearBuffer();
   lcd.setFont(u8g2_font_6x12_tf);
-  lcd.drawStr(8, 16, "Inventatory");
-  lcd.drawStr(8, 32, "Scan R1");
-  lcd.drawHLine(0, 40, lcd.getDisplayWidth());
-  lcd.drawStr(8, 58, "GMG12864");
-  lcd.drawStr(8, 74, "Display OK");
-  lcd.drawFrame(4, 88, lcd.getDisplayWidth() - 8, 28);
-  lcd.setCursor(8, 107);
+  // u8g2_font_6x12_tf is a 12 px cell (about 9 px ascent, 3 px descent), so each
+  // baseline sits 12 px below the previous one and everything stays in 0..63.
+  lcd.drawStr(7, 11, "Inventatory Scan R1");  // rows 2..14
+  lcd.drawHLine(0, 15, lcd.getDisplayWidth());
+  lcd.drawStr(8, 27, "GMG12864");             // rows 18..30
+  lcd.drawStr(8, 39, "Display OK");           // rows 30..42
+  lcd.drawFrame(0, 44, lcd.getDisplayWidth(), 20);  // rows 44..63
+  lcd.setCursor(8, 58);                       // rows 49..61
   lcd.print("Up: ");
   lcd.print(seconds);
   lcd.print(" s");
