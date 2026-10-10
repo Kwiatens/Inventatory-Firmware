@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include <Arduino.h>
-#include <Keypad.h>
 
 #include "config/config.h"
 #include "keypad.h"
@@ -22,6 +21,108 @@ HoldGesture holdGesture_ = HoldGesture::None;
 bool dShortPressPending_ = false;
 bool hashShortPressPending_ = false;
 
+enum KeyState { IDLE, PRESSED, HOLD, RELEASED };
+
+constexpr byte kRows = 4;
+constexpr byte kColumns = 4;
+constexpr byte kKeyCount = kRows * kColumns;
+constexpr unsigned long kScanIntervalMs = 20UL;
+
+const char kKeyTable[kRows][kColumns] = {
+    {'1', '2', '3', 'A'},
+    {'4', '5', '6', 'B'},
+    {'7', '8', '9', 'C'},
+    {'*', '0', '#', 'D'}};
+
+const byte kRowPins[kRows] = {KEYPAD_ROW_1_PIN, KEYPAD_ROW_2_PIN, KEYPAD_ROW_3_PIN, KEYPAD_ROW_4_PIN};
+const byte kColumnPins[kColumns] = {KEYPAD_COLUMN_1_PIN, KEYPAD_COLUMN_2_PIN, KEYPAD_COLUMN_3_PIN,
+                                    KEYPAD_COLUMN_4_PIN};
+
+struct Key {
+  char kchar = 0;
+  KeyState kstate = IDLE;
+  bool stateChanged = false;
+  bool lastClosed = false;      // contact state seen in the previous scan
+  unsigned long pressedAt = 0;  // when this key entered PRESSED (each key times its own hold)
+};
+
+// Scanned 4x4 matrix. A key leaves IDLE or PRESSED/HOLD only after two
+// consecutive scans (20 ms apart) agree, which rejects contact bounce. Rows
+// are inputs with pull-ups; one column at a time is pulled low.
+class MatrixKeypad {
+ public:
+  MatrixKeypad() {
+    for (byte r = 0; r < kRows; ++r) {
+      for (byte c = 0; c < kColumns; ++c) key[r * kColumns + c].kchar = kKeyTable[r][c];
+    }
+  }
+
+  // Scans at most every kScanIntervalMs. Returns true when any key changed state.
+  bool getKeys() {
+    const unsigned long now = millis();
+    if (now - lastScanAt_ < kScanIntervalMs) return false;
+    lastScanAt_ = now;
+
+    bool closed[kKeyCount];
+    scan(closed);
+
+    bool activity = false;
+    for (byte i = 0; i < kKeyCount; ++i) {
+      Key& k = key[i];
+      k.stateChanged = false;
+      const bool stable = closed[i] == k.lastClosed;
+      k.lastClosed = closed[i];
+      switch (k.kstate) {
+        case IDLE:
+          if (closed[i] && stable) transition(k, PRESSED, now);
+          break;
+        case PRESSED:
+          if (now - k.pressedAt > kKeyHoldTimeMs) {
+            transition(k, HOLD, now);
+          } else if (!closed[i] && stable) {
+            transition(k, RELEASED, now);
+          }
+          break;
+        case HOLD:
+          if (!closed[i] && stable) transition(k, RELEASED, now);
+          break;
+        case RELEASED:
+          transition(k, IDLE, now);
+          break;
+      }
+      activity = activity || k.stateChanged;
+    }
+    return activity;
+  }
+
+  byte numKeys() const { return kKeyCount; }
+
+  Key key[kKeyCount];
+
+ private:
+  static void transition(Key& k, KeyState next, unsigned long now) {
+    k.kstate = next;
+    k.stateChanged = true;
+    if (next == PRESSED) k.pressedAt = now;
+  }
+
+  static void scan(bool (&closed)[kKeyCount]) {
+    // Rows are re-initialised on every scan so the pins can be shared.
+    for (byte r = 0; r < kRows; ++r) pinMode(kRowPins[r], INPUT_PULLUP);
+    for (byte c = 0; c < kColumns; ++c) {
+      pinMode(kColumnPins[c], OUTPUT);
+      digitalWrite(kColumnPins[c], LOW);
+      delayMicroseconds(5);  // let the row lines settle
+      for (byte r = 0; r < kRows; ++r) closed[r * kColumns + c] = digitalRead(kRowPins[r]) == LOW;
+      // High impedance ends the column pulse.
+      digitalWrite(kColumnPins[c], HIGH);
+      pinMode(kColumnPins[c], INPUT);
+    }
+  }
+
+  unsigned long lastScanAt_ = 0;
+};
+
 bool isActiveState(KeyState state) {
   return state == PRESSED || state == HOLD;
 }
@@ -30,7 +131,7 @@ bool isHeldState(KeyState state) {
   return state == HOLD;
 }
 
-int findKeyIndexForChar(Keypad& keypadRef, char keyChar) {
+int findKeyIndexForChar(MatrixKeypad& keypadRef, char keyChar) {
   for (byte i = 0; i < keypadRef.numKeys(); ++i) {
     if (keypadRef.key[i].kchar == keyChar) {
       return static_cast<int>(i);
@@ -39,48 +140,24 @@ int findKeyIndexForChar(Keypad& keypadRef, char keyChar) {
   return -1;
 }
 
+MatrixKeypad keypad;
+
 }  // namespace
 
-static char KeyTable[4][4] = {
-  {'1', '2', '3', 'A'},
-  {'4', '5', '6', 'B'},
-  {'7', '8', '9', 'C'},
-  {'*', '0', '#', 'D'}
-};
-
-static byte KEYPAD_ROW_PINS[4] = {
-  KEYPAD_ROW_1_PIN,
-  KEYPAD_ROW_2_PIN,
-  KEYPAD_ROW_3_PIN,
-  KEYPAD_ROW_4_PIN
-};
-
-static byte KEYPAD_COLUMN_PINS[4] = {
-  KEYPAD_COLUMN_1_PIN,
-  KEYPAD_COLUMN_2_PIN,
-  KEYPAD_COLUMN_3_PIN,
-  KEYPAD_COLUMN_4_PIN
-};
-
-static Keypad keypad = Keypad(makeKeymap(KeyTable), KEYPAD_ROW_PINS, KEYPAD_COLUMN_PINS, 4, 4);
-
 void keypadInit() {
-  keypad.setDebounceTime(20);
-  keypad.setHoldTime(kKeyHoldTimeMs);
-
   Serial.print("Keypad rows: ");
-  for (byte i = 0; i < 4; i++) {
+  for (byte i = 0; i < kRows; i++) {
     if (i > 0) {
       Serial.print(", ");
     }
-    Serial.print(KEYPAD_ROW_PINS[i]);
+    Serial.print(kRowPins[i]);
   }
   Serial.print(" | cols: ");
-  for (byte i = 0; i < 4; i++) {
+  for (byte i = 0; i < kColumns; i++) {
     if (i > 0) {
       Serial.print(", ");
     }
-    Serial.print(KEYPAD_COLUMN_PINS[i]);
+    Serial.print(kColumnPins[i]);
   }
   Serial.println();
 }
@@ -195,4 +272,3 @@ bool keypadPoll(InventatoryKeyEvent& event) {
 
   return false;
 }
-
