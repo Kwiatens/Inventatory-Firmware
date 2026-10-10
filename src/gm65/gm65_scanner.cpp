@@ -69,7 +69,7 @@ bool Gm65Scanner::begin(uint32_t baudRate) {
   const bool profileApplied = applyBootProfile();
   flushInput();
   acceptAfterMs_ = millis() + kStartupSettleMs;
-  active_ = true;
+  active_ = profileApplied;
   return profileApplied;
 }
 
@@ -102,7 +102,7 @@ bool Gm65Scanner::resume() {
   const bool ok = applyBootProfile();
   flushInput();
   acceptAfterMs_ = millis() + kStartupSettleMs;
-  active_ = true;
+  active_ = ok;
   return ok;
 }
 
@@ -118,6 +118,12 @@ void Gm65Scanner::flushInput() {
 
 bool Gm65Scanner::active() const {
   return active_;
+}
+
+void Gm65Scanner::drainRx() {
+  while (serial_.available() > 0) {
+    serial_.read();
+  }
 }
 
 uint16_t Gm65Scanner::crcCcitt(const uint8_t* bytes, size_t length) {
@@ -136,6 +142,8 @@ uint16_t Gm65Scanner::crcCcitt(const uint8_t* bytes, size_t length) {
 }
 
 bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value) {
+  drainRx();
+
   const uint8_t frame[] = {
       0x7E,
       0x00,
@@ -158,7 +166,31 @@ bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value) {
     return false;
   }
   serial_.flush();
+
+  uint8_t reply[7];
+  size_t replyLen = 0;
+  unsigned long start = millis();
+  while (replyLen < 7 && millis() - start <= 150) {
+    if (serial_.available() > 0) {
+      reply[replyLen++] = serial_.read();
+    } else {
+      delay(1);
+    }
+  }
+
   delay(20);
+
+  if (replyLen != 7) {
+    return false;
+  }
+
+  const uint8_t expected[] = {0x02, 0x00, 0x00, 0x01, 0x00, 0x33, 0x31};
+  for (size_t i = 0; i < 7; ++i) {
+    if (reply[i] != expected[i]) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -167,14 +199,23 @@ bool Gm65Scanner::writeZoneBit(uint16_t address, uint8_t value) {
 }
 
 bool Gm65Scanner::applyBootProfile() {
-  bool ok = true;
-  for (const auto& entry : kBootProfile) {
-    ok = writeZoneBit(entry.address, entry.value) && ok;
+  for (int attempt = 1; attempt <= 3; ++attempt) {
+    bool attemptOk = true;
+    for (const auto& entry : kBootProfile) {
+      if (!writeZoneBit(entry.address, entry.value)) {
+        attemptOk = false;
+        break;
+      }
+    }
+    if (attemptOk && writeZoneByte(0x09, 0x0000, 0x00)) {
+      serial_.flush();
+      delay(50);
+      return true;
+    }
+    Serial.println("GM65 profile not acknowledged");
+    delay(50);
   }
-  ok = writeZoneByte(0x09, 0x0000, 0x00) && ok;
-  serial_.flush();
-  delay(50);
-  return ok;
+  return false;
 }
 
 bool Gm65Scanner::poll(String& code) {
