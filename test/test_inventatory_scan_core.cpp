@@ -368,6 +368,22 @@ void test_sync_response_json_is_strictly_parsed() {
       R"json({"protocolVersion":1,"requestId":"sync-12","acceptedEventIds":[],"results":[{"resultId":"r1","eventId":"e1","status":"completed"},{"resultId":"r2","eventId":"e2","status":"pending"}]})json");
   TEST_ASSERT_FALSE(laterUnknownStatus.valid);
 
+  // Optional objects serialised as null are treated as absent; other kinds stay invalid.
+  const auto nullOptionals = parseSyncResponseJson(
+      R"json({"protocolVersion":1,"requestId":"sync-14","acceptedEventIds":[],"results":[],"lookupResult":null,"quickLabels":null,"quickLabelPrintResult":null})json");
+  TEST_ASSERT_TRUE(nullOptionals.valid);
+  TEST_ASSERT_FALSE(nullOptionals.hasLookupResult);
+  TEST_ASSERT_FALSE(nullOptionals.hasQuickLabels);
+  TEST_ASSERT_FALSE(nullOptionals.hasQuickLabelPrintResult);
+  TEST_ASSERT_FALSE(parseSyncResponseJson(
+      R"json({"protocolVersion":1,"requestId":"sync-15","acceptedEventIds":[],"results":[],"lookupResult":"found"})json").valid);
+  TEST_ASSERT_FALSE(parseSyncResponseJson(
+      R"json({"protocolVersion":1,"requestId":"sync-16","acceptedEventIds":[],"results":[],"quickLabels":[]})json").valid);
+  TEST_ASSERT_FALSE(parseSyncResponseJson(
+      R"json({"protocolVersion":1,"requestId":"sync-17","acceptedEventIds":[],"results":[],"quickLabelPrintResult":true})json").valid);
+  TEST_ASSERT_FALSE(parseSyncResponseJson(
+      R"json({"protocolVersion":null,"requestId":"sync-18","acceptedEventIds":[],"results":[]})json").valid);
+
   const auto malformedNumber = parseSyncResponseJson(
       R"json({"protocolVersion":1,"requestId":"sync-13","acceptedEventIds":[],"results":[{"resultId":"r1","eventId":"e1","status":"completed","quantity":7tail}]})json");
   TEST_ASSERT_FALSE(malformedNumber.valid);
