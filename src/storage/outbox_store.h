@@ -69,7 +69,6 @@ class OutboxStore {
   std::size_t size() const { return count_; }
   bool empty() const { return count_ == 0; }
   bool full() const { return count_ == kCapacity; }
-  bool storageAvailable() const { return storageReady_; }
   std::size_t freeStorageEntries() { return storageReady_ ? prefs_.freeEntries() : 0U; }
   uint32_t nextSequence() const { return nextSequence_; }
 

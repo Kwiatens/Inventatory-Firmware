@@ -339,14 +339,6 @@ class QuantityComposer {
   bool editingStarted_ = false;
 };
 
-struct ScanRequest {
-  String deviceId;
-  String requestId;
-  uint32_t sequence = 0;
-  String code;
-  int quantity = 1;
-};
-
 inline String buildQuantityRequestJson(const String& deviceId, const String& requestId, const String& code, int delta) {
   String out;
   out.reserve(deviceId.length() + requestId.length() + code.length() + 48U);
@@ -374,39 +366,6 @@ inline String buildScanRequestJson(const String& deviceId, const String& request
   out += escapeJson(trimCopy(code));
   out += "\",\"quantity\":";
   out += String(quantity);
-  out += '}';
-  return out;
-}
-
-inline String buildDebugRequestJson(const String& deviceId, const String& requestId, const String& level,
-                                    const String& message) {
-  String out;
-  out.reserve(deviceId.length() + requestId.length() + level.length() + message.length() + 48U);
-  out += "{\"deviceId\":\"";
-  out += escapeJson(trimCopy(deviceId));
-  out += "\",\"requestId\":\"";
-  out += escapeJson(trimCopy(requestId));
-  out += "\",\"level\":\"";
-  out += escapeJson(trimCopy(level));
-  out += "\",\"message\":\"";
-  out += escapeJson(trimCopy(message));
-  out += "\"}";
-  return out;
-}
-
-inline String buildStatusRequestJson(const String& deviceId, const String& firmwareVersion, int rssi,
-                                     const String& debug = String()) {
-  String out;
-  out.reserve(deviceId.length() + firmwareVersion.length() + debug.length() + 48U);
-  out += "{\"deviceId\":\"";
-  out += escapeJson(trimCopy(deviceId));
-  out += "\",\"firmwareVersion\":\"";
-  out += escapeJson(trimCopy(firmwareVersion));
-  out += "\",\"rssi\":";
-  out += String(rssi);
-  out += ",\"debug\":\"";
-  out += escapeJson(trimCopy(debug));
-  out += "\"";
   out += '}';
   return out;
 }

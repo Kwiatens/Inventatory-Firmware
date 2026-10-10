@@ -14,7 +14,6 @@ enum class DisplayUiMode {
   Boot,
   Ready,
   Quantity,
-  Queued,
   Success,
   Warning,
   Error,

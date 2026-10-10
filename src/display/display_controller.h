@@ -24,7 +24,6 @@ class DisplayController {
                     std::size_t cursor, bool receiveMode, QuantityLookupState lookupState);
   void updateQuantity(const String& quantityText, std::size_t cursor);
   void updateQuantityLookup(const String& itemText, QuantityLookupState lookupState);
-  void showQueued();
   void showSending();
   bool showResult(const SyncResult& result);
   void showLocalFailure(const SyncResult& result);
