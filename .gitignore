@@ -5,3 +5,6 @@
 .vscode/ipch
 src/config/config.h
 .vscode/settings.json
+
+# Host-side unit test build output
+host-tests/build/
