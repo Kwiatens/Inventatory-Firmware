@@ -19,8 +19,9 @@ def read_ota_password():
     match = re.search(r'^\s*const\s+char\s+OTA_PASSWORD\[\]\s*=\s*"([^"]*)"\s*;\s*$', text, re.MULTILINE)
     if not match:
         raise RuntimeError(
-            "OTA_PASSWORD is not set in src/config/config.h. "
-            "Add const char OTA_PASSWORD[] = \"...\"; to your private config."
+            "OTA_PASSWORD is not set in src/config/config.h, or it is not a plain string. "
+            "Add const char OTA_PASSWORD[] = \"...\"; to your private config. "
+            "The password cannot contain quotes or backslashes."
         )
     password = match.group(1)
     if password == OTA_PASSWORD_PLACEHOLDER or len(password) < MIN_OTA_PASSWORD_LENGTH:
