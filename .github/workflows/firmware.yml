@@ -57,14 +57,32 @@ jobs:
 
       - name: Reject scanner payload diagnostics
         run: |
-          ! git grep -n -E 'GM65 rx|GM65 scan:' -- src
-          ! git grep -n -E 'sendDebugMessage\(.*(scannedCode_|trimmed|forwardedCode|manufacturerPartNumber)' -- src
+          # git grep exits 0 on a match, 1 when nothing matches, and >1 on error.
+          # Only exit 1 passes; a match or a git error fails the step.
+          reject_pattern() {
+            local pattern="$1"
+            local status=0
+            git grep -n -E -e "$pattern" -- src || status=$?
+            if [ "$status" -eq 0 ]; then
+              echo "::error::Forbidden pattern matched in src: $pattern"
+              exit 1
+            elif [ "$status" -gt 1 ]; then
+              echo "::error::git grep failed with exit $status for pattern: $pattern"
+              exit "$status"
+            fi
+          }
+          reject_pattern 'GM65 rx|GM65 scan:'
+          reject_pattern 'sendDebugMessage\(.*(scannedCode_|trimmed|forwardedCode|manufacturerPartNumber)'
+          reject_pattern '(Serial\.(print|println|printf)|sendDebugMessage)\(.*(scannedCode_|forwardedCode|wifiPassword|deviceToken|clientConfig_\.token|settings\.deviceToken)'
 
       - name: Build USB firmware
         run: pio run -e tenstar_esp32s3_zero_usb
 
       - name: Build OTA firmware without uploading
-        run: pio run -e tenstar_esp32s3_zero_ota
+        run: |
+          # The OTA build rejects the example placeholder; use a throwaway value.
+          sed -i "s/paste-your-ota-password-here/ci-only-$(openssl rand -hex 8)/" src/config/config.h
+          pio run -e tenstar_esp32s3_zero_ota
 
       - name: Compile embedded Unity image (assertions not run)
         run: pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
