@@ -66,6 +66,9 @@ bool SetupStateStore::save(const ProvisionedSettings& settings) {
 
 bool SetupStateStore::reserveTransportCounter(uint64_t& counter) {
   if (!complete()) return false;
+  // A missing counter on a complete record must fail closed.  Defaulting to 0
+  // would restart counters at 1 and reuse values the desktop has already seen.
+  if (!prefs_.isKey("request_counter")) return false;
   const auto previous = prefs_.getULong64("request_counter", 0);
   if (previous == UINT64_MAX) return false;
   counter = previous + 1U;
