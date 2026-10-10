@@ -12,6 +12,8 @@
 
 using namespace inventatory_scan;
 
+void registerProtocolHardeningTests();
+
 void test_standardized_scanner_codes() {
   TEST_ASSERT_TRUE(isStandardMachineCode("0002"));
   TEST_ASSERT_FALSE(isStandardMachineCode("31"));
@@ -718,6 +720,7 @@ void test_outbox_round_trip_across_wrap_keeps_queue_consistent() {
 
 void setup() {
   UNITY_BEGIN();
+  registerProtocolHardeningTests();
   RUN_TEST(test_standardized_scanner_codes);
   RUN_TEST(test_datamatrix_decoding_fixtures);
   RUN_TEST(test_quantity_composer_defaults_and_limit);
