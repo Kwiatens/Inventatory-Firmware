@@ -404,7 +404,7 @@ void test_sync_response_json_is_strictly_parsed() {
 
 void test_http_response_limits_are_bounded() {
   // Keep this literal synchronized with the desktop protocol contract in
-  // InventatoryScanProtocol.h. The device must accept every valid bounded
+  // include/InventatoryScanHttp.h. The device must accept every valid bounded
   // desktop response before it begins parsing the authenticated body.
   TEST_ASSERT_EQUAL_UINT32(1024U, kMaxHttpHeaderBytes);
   TEST_ASSERT_EQUAL_UINT32(8192U, kMaxHttpBodyBytes);
@@ -536,6 +536,183 @@ void test_brand_intro_policy() {
   TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandIntroDot(kBrandIntroSteps));
 }
 
+// Builds an ISO 15434 DataMatrix whose raw length is exactly totalBytes. The
+// fixed framing is 27 bytes: "[)>" RS "06" GS (7), "1PTPS7A2033PDBVR" (16),
+// GS (1), "N" (1) and RS EOT (2). Padding goes into the free-text N field.
+static String makeSizedComponentDataMatrix(std::size_t totalBytes) {
+  String payload = String("[)>") + static_cast<char>(0x1E) + "06" + static_cast<char>(0x1D) +
+      "1PTPS7A2033PDBVR" + static_cast<char>(0x1D) + "N";
+  const String trailer = String(static_cast<char>(0x1E)) + static_cast<char>(0x04);
+  while (payload.length() + trailer.length() < totalBytes) payload += 'X';
+  payload += trailer;
+  return payload;
+}
+
+void test_datamatrix_size_guard_is_exact_at_512_bytes() {
+  DecodedComponentFields decoded;
+  // 512 bytes: 27 fixed + 485 padding. This is the largest accepted raw payload.
+  const String atLimit = makeSizedComponentDataMatrix(512U);
+  TEST_ASSERT_EQUAL_UINT32(512U, atLimit.length());
+  TEST_ASSERT_TRUE(decodeComponentDataMatrix(atLimit, decoded));
+  TEST_ASSERT_EQUAL_STRING("TPS7A2033PDBVR", decoded.manufacturerPartNumber.c_str());
+  TEST_ASSERT_EQUAL_UINT32(485U, decoded.encodedPartName.length());
+  TEST_ASSERT_EQUAL_INT(1, decoded.quantity);
+
+  // 513 bytes: identical framing with one more padding byte. Only the size guard differs.
+  const String overLimit = makeSizedComponentDataMatrix(513U);
+  TEST_ASSERT_EQUAL_UINT32(513U, overLimit.length());
+  TEST_ASSERT_FALSE(decodeComponentDataMatrix(overLimit, decoded));
+}
+
+void test_manufacturer_part_number_length_bounds() {
+  String sixtyFour;
+  for (int index = 0; index < 64; ++index) sixtyFour += 'A';
+  TEST_ASSERT_TRUE(isStandardManufacturerPartNumber(sixtyFour));
+
+  String sixtyFive = sixtyFour;
+  sixtyFive += 'A';
+  TEST_ASSERT_FALSE(isStandardManufacturerPartNumber(sixtyFive));
+
+  // Allowed punctuation counts toward the 64-character limit.
+  String mixed;
+  for (int index = 0; index < 63; ++index) mixed += 'A';
+  mixed += '#';
+  TEST_ASSERT_TRUE(isStandardManufacturerPartNumber(mixed));
+
+  TEST_ASSERT_FALSE(isStandardManufacturerPartNumber("A"));
+  TEST_ASSERT_TRUE(isStandardManufacturerPartNumber("A1"));
+  // Surrounding whitespace is trimmed before the length check.
+  TEST_ASSERT_FALSE(isStandardManufacturerPartNumber(" A "));
+  TEST_ASSERT_TRUE(isStandardManufacturerPartNumber(" A1 "));
+  // Punctuation alone has no alphanumeric character and is rejected.
+  TEST_ASSERT_FALSE(isStandardManufacturerPartNumber("--"));
+  TEST_ASSERT_FALSE(isStandardManufacturerPartNumber(""));
+}
+
+void test_http_limit_helpers_accept_zero_and_one_below_limit() {
+  TEST_ASSERT_TRUE(httpHeaderWithinLimit(0U));
+  TEST_ASSERT_TRUE(httpHeaderWithinLimit(kMaxHttpHeaderBytes - 1U));
+  TEST_ASSERT_TRUE(httpBodyWithinLimit(0U));
+  TEST_ASSERT_TRUE(httpBodyWithinLimit(kMaxHttpBodyBytes - 1U));
+  // Total response budget as defined in the header: 1024 + 4 + 8192.
+  TEST_ASSERT_EQUAL_UINT32(9220U, kMaxHttpResponseBytes);
+  TEST_ASSERT_TRUE(httpResponseAppendAllowed(0U));
+  TEST_ASSERT_FALSE(httpResponseAppendAllowed(kMaxHttpResponseBytes + 1U));
+}
+
+void test_outbox_pop_keeps_tail_and_sequence_across_wrap() {
+  OutboxQueueState next;
+  // Entries occupy slots 15, 0 and 1; tail is 2, which matches count and head.
+  const auto wrapped = makeOutboxQueueState(15, 3, 2, 7);
+  TEST_ASSERT_TRUE(prepareOutboxPop(wrapped, 16, next));
+  TEST_ASSERT_EQUAL_UINT32(0, next.head);
+  TEST_ASSERT_EQUAL_UINT32(2, next.count);
+  TEST_ASSERT_EQUAL_UINT32(2, next.tail);
+  TEST_ASSERT_EQUAL_UINT32(7, next.nextSequence);
+
+  // Popping the last entry resets head and tail to zero, even when tail was not zero.
+  const auto single = makeOutboxQueueState(7, 1, 8, 5);
+  TEST_ASSERT_TRUE(prepareOutboxPop(single, 16, next));
+  TEST_ASSERT_EQUAL_UINT32(0, next.head);
+  TEST_ASSERT_EQUAL_UINT32(0, next.count);
+  TEST_ASSERT_EQUAL_UINT32(0, next.tail);
+  TEST_ASSERT_EQUAL_UINT32(5, next.nextSequence);
+
+  // Rejected pops (empty, head out of range, count above capacity, tail out of range)
+  // must leave the output untouched.
+  next = makeOutboxQueueState(9, 4, 13, 77);
+  TEST_ASSERT_FALSE(prepareOutboxPop(makeOutboxQueueState(3, 0, 3, 1), 16, next));
+  TEST_ASSERT_FALSE(prepareOutboxPop(makeOutboxQueueState(16, 1, 0, 1), 16, next));
+  TEST_ASSERT_FALSE(prepareOutboxPop(makeOutboxQueueState(0, 17, 0, 1), 16, next));
+  TEST_ASSERT_FALSE(prepareOutboxPop(makeOutboxQueueState(0, 1, 16, 1), 16, next));
+  TEST_ASSERT_EQUAL_UINT32(9, next.head);
+  TEST_ASSERT_EQUAL_UINT32(4, next.count);
+  TEST_ASSERT_EQUAL_UINT32(13, next.tail);
+  TEST_ASSERT_EQUAL_UINT32(77, next.nextSequence);
+}
+
+void test_outbox_enqueue_wraps_tail_and_rejects_full_queue() {
+  OutboxQueueState next;
+  // Empty queue away from slot 0: the write lands at head and tail advances by one.
+  TEST_ASSERT_TRUE(prepareOutboxEnqueue(makeOutboxQueueState(5, 0, 5, 1), 16, next));
+  TEST_ASSERT_EQUAL_UINT32(5, next.head);
+  TEST_ASSERT_EQUAL_UINT32(1, next.count);
+  TEST_ASSERT_EQUAL_UINT32(6, next.tail);
+  TEST_ASSERT_EQUAL_UINT32(2, next.nextSequence);
+
+  // Filling the last free slot wraps tail from 15 to 0.
+  TEST_ASSERT_TRUE(prepareOutboxEnqueue(makeOutboxQueueState(0, 15, 15, 20), 16, next));
+  TEST_ASSERT_EQUAL_UINT32(0, next.head);
+  TEST_ASSERT_EQUAL_UINT32(16, next.count);
+  TEST_ASSERT_EQUAL_UINT32(0, next.tail);
+  TEST_ASSERT_EQUAL_UINT32(21, next.nextSequence);
+
+  // A full wrapped queue is rejected, and the output is not written.
+  next = makeOutboxQueueState(9, 1, 9, 3);
+  TEST_ASSERT_FALSE(prepareOutboxEnqueue(makeOutboxQueueState(15, 16, 15, 5), 16, next));
+  TEST_ASSERT_EQUAL_UINT32(9, next.head);
+  TEST_ASSERT_EQUAL_UINT32(1, next.count);
+  TEST_ASSERT_EQUAL_UINT32(9, next.tail);
+  TEST_ASSERT_EQUAL_UINT32(3, next.nextSequence);
+
+  // A wrapped tail that disagrees with head and count is rejected.
+  // Head 15 with count 1 implies tail 0, not 15.
+  TEST_ASSERT_FALSE(prepareOutboxEnqueue(makeOutboxQueueState(15, 1, 15, 5), 16, next));
+  // Zero capacity never accepts an enqueue.
+  TEST_ASSERT_FALSE(prepareOutboxEnqueue(makeOutboxQueueState(0, 0, 0, 1), 0, next));
+
+  // The last representable sequence is usable; UINT32_MAX and 0 are refused.
+  TEST_ASSERT_TRUE(prepareOutboxEnqueue(makeOutboxQueueState(0, 0, 0, 0xFFFFFFFEU), 16, next));
+  TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFU, next.nextSequence);
+  TEST_ASSERT_FALSE(prepareOutboxEnqueue(makeOutboxQueueState(0, 0, 0, 0xFFFFFFFFU), 16, next));
+  TEST_ASSERT_FALSE(prepareOutboxEnqueue(makeOutboxQueueState(0, 0, 0, 0U), 16, next));
+}
+
+void test_outbox_round_trip_across_wrap_keeps_queue_consistent() {
+  OutboxQueueState state = makeOutboxQueueState(15, 0, 15, 1);
+  OutboxQueueState next;
+
+  // Two enqueues: tail moves 15 -> 0 -> 1 while head stays at 15.
+  TEST_ASSERT_TRUE(prepareOutboxEnqueue(state, 16, next));
+  state = next;
+  TEST_ASSERT_EQUAL_UINT32(15, state.head);
+  TEST_ASSERT_EQUAL_UINT32(1, state.count);
+  TEST_ASSERT_EQUAL_UINT32(0, state.tail);
+  TEST_ASSERT_TRUE(prepareOutboxEnqueue(state, 16, next));
+  state = next;
+  TEST_ASSERT_EQUAL_UINT32(15, state.head);
+  TEST_ASSERT_EQUAL_UINT32(2, state.count);
+  TEST_ASSERT_EQUAL_UINT32(1, state.tail);
+  TEST_ASSERT_EQUAL_UINT32(3, state.nextSequence);
+
+  // Pop wraps head to 0 while tail stays at 1. The next enqueue still lands at the tail.
+  TEST_ASSERT_TRUE(prepareOutboxPop(state, 16, next));
+  state = next;
+  TEST_ASSERT_EQUAL_UINT32(0, state.head);
+  TEST_ASSERT_EQUAL_UINT32(1, state.count);
+  TEST_ASSERT_EQUAL_UINT32(1, state.tail);
+  TEST_ASSERT_TRUE(prepareOutboxEnqueue(state, 16, next));
+  state = next;
+  TEST_ASSERT_EQUAL_UINT32(0, state.head);
+  TEST_ASSERT_EQUAL_UINT32(2, state.count);
+  TEST_ASSERT_EQUAL_UINT32(2, state.tail);
+  TEST_ASSERT_EQUAL_UINT32(4, state.nextSequence);
+
+  // Draining: head walks 0 -> 1 -> 2, then resets to zero when the queue is empty.
+  TEST_ASSERT_TRUE(prepareOutboxPop(state, 16, next));
+  state = next;
+  TEST_ASSERT_EQUAL_UINT32(1, state.head);
+  TEST_ASSERT_EQUAL_UINT32(1, state.count);
+  TEST_ASSERT_EQUAL_UINT32(2, state.tail);
+  TEST_ASSERT_TRUE(prepareOutboxPop(state, 16, next));
+  state = next;
+  TEST_ASSERT_EQUAL_UINT32(0, state.head);
+  TEST_ASSERT_EQUAL_UINT32(0, state.count);
+  TEST_ASSERT_EQUAL_UINT32(0, state.tail);
+  TEST_ASSERT_EQUAL_UINT32(4, state.nextSequence);
+  TEST_ASSERT_FALSE(prepareOutboxPop(state, 16, next));
+}
+
 void setup() {
   UNITY_BEGIN();
   RUN_TEST(test_standardized_scanner_codes);
@@ -563,6 +740,12 @@ void setup() {
   RUN_TEST(test_scan_preemption_policy);
   RUN_TEST(test_brand_dot_policy);
   RUN_TEST(test_brand_intro_policy);
+  RUN_TEST(test_datamatrix_size_guard_is_exact_at_512_bytes);
+  RUN_TEST(test_manufacturer_part_number_length_bounds);
+  RUN_TEST(test_http_limit_helpers_accept_zero_and_one_below_limit);
+  RUN_TEST(test_outbox_pop_keeps_tail_and_sequence_across_wrap);
+  RUN_TEST(test_outbox_enqueue_wraps_tail_and_rejects_full_queue);
+  RUN_TEST(test_outbox_round_trip_across_wrap_keeps_queue_consistent);
   UNITY_END();
 }
 
