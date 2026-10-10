@@ -24,7 +24,7 @@ networks, or data you do not own or have explicit permission to assess.
 The Scan R1 transport authenticates requests and responses and persists replay
 counters. It does not encrypt payloads; deployment therefore assumes a trusted
 private LAN in addition to protocol authentication. BLE provisioning requires
-physical confirmation and stores the provisioned token in ESP32 NVS. Production
+a passkey shown on the device, changed after every attempt, with a lockout that only a keypress on the device lifts, and stores the provisioned token in ESP32 NVS. Production
 device policy for secure boot, flash encryption, JTAG, and eFuses is controlled
 by manufacturing/provisioning and is not established by this source tree.
 
