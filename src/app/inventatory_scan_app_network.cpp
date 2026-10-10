@@ -14,6 +14,7 @@ namespace inventatory_scan {
 namespace {
 
 constexpr unsigned long kNetworkPauseTimeoutMs = 1000UL;
+constexpr unsigned long kQuickLabelPrintRetryWindowMs = 10000UL;
 
 }  // namespace
 
@@ -294,7 +295,12 @@ void InventatoryScanApp::processNetworkResult() {
     // in the shared body budget. Keep the request for the next sync so the
     // cached desktop result can be delivered without printing twice.
     const bool retryableServerFailure = sent && status >= 500 && status <= 599;
-    if (pendingQuickLabelPrintId_.length() > 0 && !retryableServerFailure) {
+    // A lost or late reply does not prove the desktop did not print. Repeating
+    // the same request id is safe (the desktop caches the result), so give up
+    // only after the retry window, not on the first failed exchange.
+    const bool withinPrintRetryWindow =
+        millis() - pendingQuickLabelPrintStartedAt_ < kQuickLabelPrintRetryWindowMs;
+    if (pendingQuickLabelPrintId_.length() > 0 && !retryableServerFailure && !withinPrintRetryWindow) {
       pendingQuickLabelPrintId_.clear();
       pendingQuickLabelPresetIndex_ = 0;
       state_ = State::Idle;

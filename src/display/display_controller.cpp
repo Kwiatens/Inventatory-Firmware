@@ -9,6 +9,27 @@
 
 namespace inventatory_scan {
 
+namespace {
+
+// Rows the list body can show; anything beyond this is never drawn.
+constexpr std::size_t kListRowLimit = style::kListMaxRows;
+// Quick labels are paged four to a screen.
+constexpr std::size_t kQuickLabelsPerPage = 4U;
+
+static_assert(kListRowLimit <= sizeof(DisplayModel::listRows) / sizeof(DisplayModel::listRows[0]),
+              "list row limit exceeds DisplayModel::listRows capacity");
+static_assert(kQuickLabelsPerPage <= kListRowLimit, "a quick-label page must fit the list");
+
+// Appends one list row. Drops the row (returns false) instead of writing past the
+// end of the fixed listRows array or past the rows the renderer can show.
+bool appendListRow(DisplayModel& model, const String& row) {
+  if (model.listRowCount >= kListRowLimit) return false;
+  model.listRows[model.listRowCount++] = row;
+  return true;
+}
+
+}  // namespace
+
 void DisplayController::begin() {
   renderer_.begin();
   dirty_ = true;
@@ -353,8 +374,8 @@ void DisplayController::showMenu() {
   model_.rail = DisplayRailStyle::None;
   model_.showPcStatus = false;
   model_.header = "Menu";
-  model_.listRows[model_.listRowCount++] = "1  Quick labels";
-  model_.listRows[model_.listRowCount++] = "2  Device settings";
+  appendListRow(model_, "1  Quick labels");
+  appendListRow(model_, "2  Device settings");
   model_.actions = "C Back";
   markDirty();
 }
@@ -384,11 +405,11 @@ void DisplayController::showQuickLabels(const String* labels, std::size_t count,
   } else {
     model_.bodyKind = DisplayBodyKind::List;
     model_.rail = DisplayRailStyle::None;
-    const std::size_t pages = (count + 3U) / 4U;
+    const std::size_t pages = (count + kQuickLabelsPerPage - 1U) / kQuickLabelsPerPage;
     model_.pageText = String(page + 1U) + "/" + pages;
-    const auto first = page * 4U;
-    for (std::size_t index = 0; index < 4U && first + index < count; ++index) {
-      model_.listRows[model_.listRowCount++] = String(index + 1U) + "  " + labels[first + index];
+    const auto first = page * kQuickLabelsPerPage;
+    for (std::size_t index = 0; index < kQuickLabelsPerPage && first + index < count; ++index) {
+      appendListRow(model_, String(index + 1U) + "  " + labels[first + index]);
     }
     if (pages > 1U) model_.actions = "D Next C Back";
   }
@@ -402,10 +423,10 @@ void DisplayController::showQuickSettings(uint8_t contrast) {
   model_.rail = DisplayRailStyle::None;
   model_.showPcStatus = false;
   model_.header = "Device settings";
-  model_.listRows[model_.listRowCount++] = "1  Display contrast  " + String(contrast);
-  model_.listRows[model_.listRowCount++] = "2  Standby";
-  model_.listRows[model_.listRowCount++] = "3  Pair with new PC";
-  model_.listRows[model_.listRowCount++] = "4  Software update";
+  appendListRow(model_, "1  Display contrast  " + String(contrast));
+  appendListRow(model_, "2  Standby");
+  appendListRow(model_, "3  Pair with new PC");
+  appendListRow(model_, "4  Software update");
   model_.actions = "C Back";
   markDirty();
 }

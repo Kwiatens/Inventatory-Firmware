@@ -157,6 +157,10 @@ class InventatoryScanApp {
   // Random per boot so request ids that embed a restarting sequence number
   // (quick-label prints) cannot repeat across reboots.
   uint32_t bootNonce_ = 0;
+  // When the current quick-label print request was first issued; transient
+  // failures retry the same request id (the desktop answers repeats from its
+  // cache) until this window passes.
+  unsigned long pendingQuickLabelPrintStartedAt_ = 0;
   uint32_t syncSequence_ = 1;
   uint32_t lookupSequence_ = 1;
   uint8_t lookupMissCount_ = 0;
