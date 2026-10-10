@@ -57,6 +57,19 @@ struct LegacyStateV4 {
   LegacyRecordV4 records[OutboxStore::kCapacity]{};
 };
 
+// Legacy fields are fixed char arrays that may be completely full with no NUL
+// terminator, so the String is built from at most `capacity` bytes instead of
+// letting String(const char*) read past the end of the array.
+String boundedString(const char* data, std::size_t capacity) {
+  if (data == nullptr) return String();
+  std::size_t length = 0;
+  while (length < capacity && data[length] != '\0') ++length;
+  String value;
+  value.reserve(length);
+  for (std::size_t index = 0; index < length; ++index) value += data[index];
+  return value;
+}
+
 }  // namespace
 
 bool OutboxStore::begin(const char* namespaceName, const char* deviceId) {
@@ -213,11 +226,13 @@ OutboxStore::MigrationResult OutboxStore::migrateLegacyState() {
         record.sequence = source.sequence;
         record.value = source.value;
         record.kind = source.kind;
-        copyString(record.code, sizeof(record.code), String(source.code));
-        copyString(record.manufacturer, sizeof(record.manufacturer), String(source.manufacturer));
+        copyString(record.code, sizeof(record.code), boundedString(source.code, sizeof(source.code)));
+        copyString(record.manufacturer, sizeof(record.manufacturer),
+                   boundedString(source.manufacturer, sizeof(source.manufacturer)));
         copyString(record.manufacturerPartNumber, sizeof(record.manufacturerPartNumber),
-                   String(source.manufacturerPartNumber));
-        copyString(record.encodedPartName, sizeof(record.encodedPartName), String(source.encodedPartName));
+                   boundedString(source.manufacturerPartNumber, sizeof(source.manufacturerPartNumber)));
+        copyString(record.encodedPartName, sizeof(record.encodedPartName),
+                   boundedString(source.encodedPartName, sizeof(source.encodedPartName)));
       }
       outcome = adoptMigratedRecords(count, legacy->nextSequence) ? MigrationResult::Migrated
                                                                  : MigrationResult::WriteFailed;
@@ -234,7 +249,7 @@ OutboxStore::MigrationResult OutboxStore::migrateLegacyState() {
         record.sequence = source.sequence;
         record.value = source.delta;
         record.kind = static_cast<uint8_t>(DeviceEventKind::InventoryAdjust);
-        copyString(record.code, sizeof(record.code), String(source.code));
+        copyString(record.code, sizeof(record.code), boundedString(source.code, sizeof(source.code)));
       }
       outcome = adoptMigratedRecords(count, legacy->nextSequence) ? MigrationResult::Migrated
                                                                  : MigrationResult::WriteFailed;

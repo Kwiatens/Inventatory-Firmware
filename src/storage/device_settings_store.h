@@ -14,6 +14,9 @@ class DeviceSettingsStore {
 
  private:
   mutable Preferences prefs_;
+  // Last contrast known to be stored in NVS (or the effective default after begin()).
+  // -1 means unknown, so the next save always writes.
+  int16_t lastContrast_ = -1;
 };
 
 }  // namespace inventatory_scan

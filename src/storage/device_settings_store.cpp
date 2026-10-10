@@ -11,14 +11,22 @@ constexpr char kSettingsNamespace[] = "inv_device";
 constexpr uint8_t kMaxContrast = 63;
 }  // namespace
 
-bool DeviceSettingsStore::begin() { return prefs_.begin(kSettingsNamespace, false); }
+bool DeviceSettingsStore::begin() {
+  if (!prefs_.begin(kSettingsNamespace, false)) return false;
+  lastContrast_ = contrast();
+  return true;
+}
 
 uint8_t DeviceSettingsStore::contrast() const {
   return constrain(prefs_.getUChar("contrast", hardware::kLcdContrast), 0, kMaxContrast);
 }
 
 bool DeviceSettingsStore::saveContrast(uint8_t contrast) {
-  return prefs_.putUChar("contrast", constrain(contrast, 0, kMaxContrast)) == 1;
+  const uint8_t value = constrain(contrast, 0, kMaxContrast);
+  if (lastContrast_ >= 0 && value == lastContrast_) return true;
+  if (prefs_.putUChar("contrast", value) != 1) return false;
+  lastContrast_ = value;
+  return true;
 }
 
 }  // namespace inventatory_scan
