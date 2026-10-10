@@ -15,3 +15,23 @@ This document contains the checklist for cutting a release for the Inventatory S
 - [ ] **Tagging**: Create a git tag for the release in the format `vX.Y.Z`.
 - [ ] **Release Artifacts**: Build `firmware.bin` from a clean checkout of the tagged commit with a placeholder-free private `config.h` that contains no real secrets, and attach it with its SHA-256 sum. CI does not currently upload artifacts, so this step is manual.
 - [ ] **Safety**: Ensure there is no flashing in CI.
+
+## Repository settings checklist (maintainer, on GitHub)
+
+These settings are not stored in the repository and must be set by an owner
+before or right after the repository is made public:
+
+- [ ] Add a repository description and topics (for example `esp32-s3`,
+      `platformio`, `barcode-scanner`, `inventory`, `firmware`).
+- [ ] Enable **Private vulnerability reporting** (Settings, Code security),
+      because `SECURITY.md` points reporters to it.
+- [ ] Enable Dependabot alerts and security updates, secret scanning and push
+      protection.
+- [ ] Protect `main`: require pull requests and the `Firmware CI` build job,
+      disallow force pushes and branch deletion.
+- [ ] Set the default workflow token permission to read-only and require
+      approval for workflows from first-time contributors (Settings, Actions).
+- [ ] Do not register a self-hosted runner for a public repository unless
+      pull request workflows from forks are disabled for it; the optional
+      hardware test job only runs on manual dispatch.
+- [ ] Confirm the community profile (`/community`) shows every item complete.
