@@ -92,9 +92,10 @@ bool BleProvisioning::begin(const String& deviceId) {
       }
     }
   }
-  // The provisioning payload contains the SSID, password, and a 32-byte
-  // token. Negotiate enough ATT payload space to keep it a single write and
-  // avoid ambiguous prepared-write completion on desktop BLE stacks.
+  // The provisioning payload contains the SSID, password, and a 32-byte token
+  // (sent as 64 hex characters). Negotiate enough ATT payload space to keep it
+  // a single write and avoid ambiguous prepared-write completion on desktop BLE
+  // stacks.
   BLEDevice::setMTU(247);
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
   BLEDevice::setSecurityCallbacks(new SecurityCallbacks(*this));
