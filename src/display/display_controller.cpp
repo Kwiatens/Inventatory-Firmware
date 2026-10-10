@@ -61,7 +61,9 @@ void DisplayController::clearContent() {
 void DisplayController::refreshReadyContent() {
   model_.header = "Inventatory";
   model_.primary = "Ready to scan";
-  if (syncBlocked_) {
+  if (queueUnreadable_) {
+    model_.secondary = "Queue unreadable: C, 3";
+  } else if (syncBlocked_) {
     model_.secondary = "Sync blocked: C, 3";
   } else if (displayQueueDepth(model_.queueDepth)) {
     model_.secondary = String(model_.queueDepth) + " scans safely queued";
@@ -80,6 +82,13 @@ void DisplayController::refreshReadyContent() {
 void DisplayController::setSyncBlocked(bool blocked) {
   if (syncBlocked_ == blocked) return;
   syncBlocked_ = blocked;
+  if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
+  markDirty();
+}
+
+void DisplayController::setQueueUnreadable(bool unreadable) {
+  if (queueUnreadable_ == unreadable) return;
+  queueUnreadable_ = unreadable;
   if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
   markDirty();
 }
@@ -361,7 +370,7 @@ void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
   markDirty();
 }
 
-void DisplayController::showMenu(bool blocked) {
+void DisplayController::showMenu(bool blocked, bool unreadable) {
   clearContent();
   model_.mode = DisplayUiMode::Menu;
   model_.bodyKind = DisplayBodyKind::List;
@@ -370,7 +379,9 @@ void DisplayController::showMenu(bool blocked) {
   model_.header = "Menu";
   appendListRow(model_, "1  Quick labels");
   appendListRow(model_, "2  Device settings");
-  if (blocked) {
+  if (unreadable) {
+    appendListRow(model_, "3  Repair scan queue");
+  } else if (blocked) {
     appendListRow(model_, "3  Discard stuck scan");
   }
   model_.actions = "C Back";
@@ -463,6 +474,19 @@ void DisplayController::showDiscardConfirm() {
   model_.primary = "Oldest queued scan";
   model_.secondary = "It is deleted for good";
   model_.actions = "A Discard C Cancel";
+  markDirty();
+}
+
+void DisplayController::showRepairConfirm() {
+  clearContent();
+  model_.mode = DisplayUiMode::ConfirmReset;
+  model_.bodyKind = DisplayBodyKind::Confirm;
+  model_.rail = DisplayRailStyle::None;
+  model_.showPcStatus = false;
+  model_.header = "Repair scan queue?";
+  model_.primary = "Unreadable scans are lost";
+  model_.secondary = "Readable ones are kept";
+  model_.actions = "A Repair C Cancel";
   markDirty();
 }
 

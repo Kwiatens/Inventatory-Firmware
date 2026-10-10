@@ -33,16 +33,18 @@ class DisplayController {
   void setContrast(uint8_t contrast);
   void showOta(const String& text, int percent = 0);
   void showSetup(uint32_t pairingCode, const String& status = "BLE READY");
-  void showMenu(bool blocked = false);
+  void showMenu(bool blocked = false, bool unreadable = false);
   void showQuickLabels(const String* labels, std::size_t count, std::size_t page, bool snapshotReceived,
                        bool pcSupportsQuickLabels);
   void showQuickSettings(uint8_t contrast);
   void showContrast(uint8_t contrast);
   void showResetConfirm();
   void showDiscardConfirm();
+  void showRepairConfirm();
   void showPrinting(const String& label);
   void showQuickLabelPrintResult(bool success, const String& message);
   void setSyncBlocked(bool blocked);
+  void setQueueUnreadable(bool unreadable);
   bool errorVisible() const {
     return model_.mode == DisplayUiMode::Error || model_.mode == DisplayUiMode::Warning;
   }
@@ -65,6 +67,7 @@ class DisplayController {
   unsigned long lastStartLineRecoveryMs_ = 0;
   bool standby_ = false;
   bool syncBlocked_ = false;
+  bool queueUnreadable_ = false;
 };
 
 }  // namespace inventatory_scan
