@@ -22,7 +22,7 @@ is Arduino-ESP32 2.0.17 on ESP-IDF v4.4.7 per `tools/sdk/versions.txt`).
 | ESP-IDF v4.4.7 prebuilt SDK libraries | ESP-IDF v4.4.7 | Mixed, per header (see notes) | Yes (Wi-Fi, BLE, TLS, RTOS archives) | https://github.com/espressif/esp-idf |
 | U8g2 (library code) | 2.35.30 | BSD-2-Clause | Yes | https://github.com/olikraus/u8g2 |
 | U8g2 fonts used by the firmware | bundled with U8g2 | X11-style terms for the Helvetica fonts; ProFont terms not verified | Yes | https://github.com/olikraus/u8g2 |
-| Unity | 2.6.1 | MIT | No (test builds only) | https://github.com/ThrowTheSwitch/Unity |
+| Unity | 2.6.1 | MIT | No (test builds only; source vendored in `host-tests/vendor/unity/`) | https://github.com/ThrowTheSwitch/Unity |
 | espressif32 platform | 7.0.1 | Apache-2.0 | No (build tooling) | https://github.com/platformio/platform-espressif32 |
 | Xtensa GCC toolchain (libc, libgcc, libstdc++ runtime) | 8.4.0+2021r2-patch5 | GPL and LGPL components, with GCC Runtime Library Exception | Runtime libraries only | https://github.com/espressif/crosstool-NG |
 | esptool | 2.41100.260830 | GPL-2.0-or-later | No (upload tool) | https://github.com/espressif/esptool |
@@ -97,10 +97,11 @@ is Arduino-ESP32 2.0.17 on ESP-IDF v4.4.7 per `tools/sdk/versions.txt`).
 
 ### Unity 2.6.1 (MIT, test only)
 
-- `.pio/libdeps/tenstar_esp32s3_zero_usb/Unity/LICENSE.txt` is the MIT text
-  (Copyright (c) 2007-25 Mike Karlesky, Mark VanderVoord, & Greg Williams).
-  `library.json` gives `"license": "MIT"`.
-- Used only by `test/test_inventatory_scan_core.cpp` through `pio test`. Not in
+- `host-tests/vendor/unity/LICENSE.txt` is the MIT text that ships with the vendored
+  `unity.c`, `unity.h` and `unity_internals.h` (Copyright (c) 2007-25 Mike Karlesky,
+  Mark VanderVoord, & Greg Williams). The three sources are byte-identical to the
+  2.6.1 release that PlatformIO installs for `pio test`.
+- Used by `test/` through `pio test` and by the host build in `host-tests/`. Not in
   the shipped firmware.
 
 ### espressif32 platform 7.0.1 (Apache-2.0, build tooling)
