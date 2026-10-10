@@ -403,12 +403,21 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
   }
   updateConnectivityDisplay();
   if (response.hasResult) {
-    pendingResultAck_ = response.result.resultId;
-    lastSyncAttempt_ = 0;
-    if (awaitingResultEventId_.length() == 0 || response.result.eventId == awaitingResultEventId_) {
-      awaitingResultEventId_.clear();
-      state_ = State::Idle;
-      display_.showResult(response.result);
+    const bool relevant =
+        awaitingResultEventId_.length() == 0 || response.result.eventId == awaitingResultEventId_;
+    // A result that could not be shown (a screen needing dismissal is up) is
+    // not acknowledged, so the desktop delivers it again after the dismissal.
+    // Results for other events are acknowledged and dropped as before.
+    const bool shown = relevant ? display_.showResult(response.result) : true;
+    if (shown) {
+      pendingResultAck_ = response.result.resultId;
+      lastSyncAttempt_ = 0;
+      if (relevant) {
+        awaitingResultEventId_.clear();
+        // Only the wait for this result ends here; an unrelated result must
+        // not abort a scan or menu the operator is in the middle of.
+        if (state_ == State::WaitingForResult) state_ = State::Idle;
+      }
     }
   }
 }
