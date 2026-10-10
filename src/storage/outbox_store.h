@@ -128,6 +128,7 @@ class OutboxStore {
   bool persistQueue();
   MigrationResult migrateLegacyState();
   bool adoptMigratedRecords(std::size_t count, uint32_t nextSequence);
+  void resetRecords();
 
   Preferences prefs_;
   String namespaceName_;
