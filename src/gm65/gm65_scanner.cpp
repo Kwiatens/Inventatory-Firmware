@@ -16,6 +16,13 @@ namespace {
 
 constexpr size_t kMaxScanLength = 1024U;
 constexpr unsigned long kStartupSettleMs = 250U;
+// Reply to a zone write: exactly kZoneWriteAckLength bytes, within the timeout.
+constexpr unsigned long kZoneWriteAckTimeoutMs = 150U;
+constexpr unsigned long kZoneWriteAckSettleMs = 20U;
+constexpr size_t kZoneWriteAckLength = 7U;
+constexpr uint8_t kZoneWriteAck[kZoneWriteAckLength] = {0x02, 0x00, 0x00, 0x01, 0x00, 0x33, 0x31};
+// A completed burst with no terminator is accepted after this much silence.
+constexpr unsigned long kBurstIdleGapMs = 30U;
 
 struct ZoneWrite {
   uint16_t address;
@@ -107,9 +114,7 @@ bool Gm65Scanner::resume() {
 }
 
 void Gm65Scanner::flushInput() {
-  while (serial_.available() > 0) {
-    serial_.read();
-  }
+  drainRx();
   buffer_.clear();
   lastByteAt_ = 0;
   discardingOversized_ = false;
@@ -167,10 +172,10 @@ bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value) {
   }
   serial_.flush();
 
-  uint8_t reply[7];
+  uint8_t reply[kZoneWriteAckLength];
   size_t replyLen = 0;
   unsigned long start = millis();
-  while (replyLen < 7 && millis() - start <= 150) {
+  while (replyLen < kZoneWriteAckLength && millis() - start <= kZoneWriteAckTimeoutMs) {
     if (serial_.available() > 0) {
       reply[replyLen++] = serial_.read();
     } else {
@@ -178,15 +183,14 @@ bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value) {
     }
   }
 
-  delay(20);
+  delay(kZoneWriteAckSettleMs);
 
-  if (replyLen != 7) {
+  if (replyLen != kZoneWriteAckLength) {
     return false;
   }
 
-  const uint8_t expected[] = {0x02, 0x00, 0x00, 0x01, 0x00, 0x33, 0x31};
-  for (size_t i = 0; i < 7; ++i) {
-    if (reply[i] != expected[i]) {
+  for (size_t i = 0; i < kZoneWriteAckLength; ++i) {
+    if (reply[i] != kZoneWriteAck[i]) {
       return false;
     }
   }
@@ -270,7 +274,7 @@ bool Gm65Scanner::poll(String& code) {
   // GM65 normally terminates scans with CR/LF. Also accept a completed burst
   // after a short idle gap so a delayed network pass or lost terminator cannot
   // leave a valid barcode stuck in the receive buffer forever.
-  if (buffer_.length() > 0 && lastByteAt_ != 0 && millis() - lastByteAt_ >= 30U) {
+  if (buffer_.length() > 0 && lastByteAt_ != 0 && millis() - lastByteAt_ >= kBurstIdleGapMs) {
     if (frameCorrupt_) {
       buffer_.clear();
       frameCorrupt_ = false;
@@ -282,11 +286,11 @@ bool Gm65Scanner::poll(String& code) {
     lastByteAt_ = 0;
     return true;
   }
-  if (discardingOversized_ && lastByteAt_ != 0 && millis() - lastByteAt_ >= 30U) {
+  if (discardingOversized_ && lastByteAt_ != 0 && millis() - lastByteAt_ >= kBurstIdleGapMs) {
     discardingOversized_ = false;
     lastByteAt_ = 0;
   }
-  if (frameCorrupt_ && lastByteAt_ != 0 && millis() - lastByteAt_ >= 30U) {
+  if (frameCorrupt_ && lastByteAt_ != 0 && millis() - lastByteAt_ >= kBurstIdleGapMs) {
     frameCorrupt_ = false;
     lastByteAt_ = 0;
   }
