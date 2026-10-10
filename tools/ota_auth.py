@@ -3,6 +3,9 @@ import re
 
 Import("env")
 
+OTA_PASSWORD_PLACEHOLDER = "paste-your-ota-password-here"
+MIN_OTA_PASSWORD_LENGTH = 12
+
 
 def read_ota_password():
     config_path = Path(env["PROJECT_DIR"]) / "src" / "config" / "config.h"
@@ -16,7 +19,13 @@ def read_ota_password():
             "OTA_PASSWORD is not set in src/config/config.h. "
             "Add const char OTA_PASSWORD[] = \"...\"; to your private config."
         )
-    return match.group(1)
+    password = match.group(1)
+    if password == OTA_PASSWORD_PLACEHOLDER or len(password) < MIN_OTA_PASSWORD_LENGTH:
+        raise RuntimeError(
+            "OTA_PASSWORD in src/config/config.h must be changed from the example placeholder "
+            f"and be at least {MIN_OTA_PASSWORD_LENGTH} characters long."
+        )
+    return password
 
 
 def add_ota_auth_flags(*args, **kwargs):
