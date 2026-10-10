@@ -37,6 +37,7 @@ bool SetupStateStore::savePending(const ProvisionedSettings& settings) {
     return false;
   }
 
+  counterBlockValid_ = false;
   // Mark incomplete first.  A power loss can therefore only return the R1 to
   // setup mode; it can never make a partial credential set look valid.
   if (!prefs_.putBool("complete", false)) return false;
@@ -69,13 +70,23 @@ bool SetupStateStore::reserveTransportCounter(uint64_t& counter) {
   // A missing counter on a complete record must fail closed.  Defaulting to 0
   // would restart counters at 1 and reuse values the desktop has already seen.
   if (!prefs_.isKey("request_counter")) return false;
-  const auto previous = prefs_.getULong64("request_counter", 0);
-  if (previous == UINT64_MAX) return false;
-  counter = previous + 1U;
-  return prefs_.putULong64("request_counter", counter) == sizeof(counter);
+  if (!counterBlockValid_ || counterNext_ >= counterCeiling_) {
+    // The persisted value is the ceiling of the previous block, so every
+    // counter at or below it may already have been transmitted.
+    const std::uint64_t base = counterBlockValid_ ? counterCeiling_ : prefs_.getULong64("request_counter", 0);
+    if (base > UINT64_MAX - kCounterBlock) return false;
+    const std::uint64_t ceiling = base + kCounterBlock;
+    if (prefs_.putULong64("request_counter", ceiling) != sizeof(ceiling)) return false;
+    counterNext_ = base;
+    counterCeiling_ = ceiling;
+    counterBlockValid_ = true;
+  }
+  counter = ++counterNext_;
+  return true;
 }
 
 bool SetupStateStore::clear() {
+  counterBlockValid_ = false;
   return prefs_.clear();
 }
 

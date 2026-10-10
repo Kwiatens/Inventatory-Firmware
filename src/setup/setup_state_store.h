@@ -30,7 +30,15 @@ class SetupStateStore {
   static constexpr uint32_t kMagic = 0x49534554UL;  // "ISET"
   static constexpr uint16_t kVersion = 1;
 
+  // Counters are reserved in NVS in blocks: the persisted value is a ceiling at or
+  // above every counter handed out, so a reset can only skip counters, never
+  // reuse one, while the NVS write rate drops by the block size.
+  static constexpr std::uint64_t kCounterBlock = 32;
+
   mutable Preferences prefs_;
+  std::uint64_t counterNext_ = 0;     // last counter handed out
+  std::uint64_t counterCeiling_ = 0;  // highest counter covered by the persisted ceiling
+  bool counterBlockValid_ = false;
 };
 
 }  // namespace inventatory_scan
