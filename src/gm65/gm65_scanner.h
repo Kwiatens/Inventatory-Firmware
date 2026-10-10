@@ -22,6 +22,7 @@ class Gm65Scanner {
   bool applyBootProfile();
   bool writeZoneBit(uint16_t address, uint8_t value);
   bool writeZoneByte(uint8_t type, uint16_t address, uint8_t value);
+  void drainRx();
   static uint16_t crcCcitt(const uint8_t* bytes, size_t length);
 
   HardwareSerial serial_{1};

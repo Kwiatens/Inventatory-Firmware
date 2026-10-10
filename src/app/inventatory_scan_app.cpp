@@ -31,7 +31,7 @@ bool InventatoryScanApp::begin() {
     Serial.println("Scanner initialization failed; verify the GM65 connection and profile.");
     display_.showBoot("Scanner error");
     display_.tick();
-    return false;
+    delay(2000);
   }
   scanner_.flushInput();
   display_.showBoot({});
