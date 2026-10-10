@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
+// SPDX-License-Identifier: GPL-3.0-only
+
 #pragma once
 
 // Workbench design system for the 128x64 monochrome Scan R1 LCD.
