@@ -30,9 +30,6 @@ class InventatoryClient {
   bool resolveEndpoint(bool force = false);
   bool postSync(const String& payload, int& httpStatus, String& responseBody);
 
-  String endpointSummary() const;
-  bool endpointResolved() const { return endpointValid_; }
-
  private:
   bool connectToResolved();
   bool sendJson(const char* path, const String& body, int& httpStatus, String& responseBody);
