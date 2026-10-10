@@ -70,6 +70,8 @@ bool BleProvisioning::begin(const String& deviceId) {
   if (requestMutex_ == nullptr) return false;
   locked_ = false;
   failedAttempts_ = 0;
+  authFailed_ = false;
+  clientDisconnected_ = false;
   pairingCode_ = 100000UL + (esp_random() % 900000UL);
   const auto suffix = deviceId.length() > 4 ? deviceId.substring(deviceId.length() - 4) : deviceId;
   BLEDevice::init(("Inventatory Setup " + suffix).c_str());
@@ -156,19 +158,23 @@ void BleProvisioning::lockOut() {
   if (server_ != nullptr && server_->getConnectedCount() > 0) server_->disconnect(server_->getConnId());
 }
 
-void BleProvisioning::onAuthenticationResult(bool success) {
-  if (!active_ || success) return;
-  rotatePasskey();
-  if (++failedAttempts_ >= kMaxFailedPairingAttempts) lockOut();
-}
-
-void BleProvisioning::onClientDisconnected() {
-  if (active_ && !locked_) rotatePasskey();
-}
-
 void BleProvisioning::service() {
-  if (!active_ || locked_) return;
-  if (millis() - advertisingStartedAt_ > kAdvertisingWindowMs) lockOut();
+  if (!active_) return;
+  const bool failed = authFailed_.exchange(false);
+  const bool disconnected = clientDisconnected_.exchange(false);
+  if (locked_) return;
+  if (failed || disconnected) rotatePasskey();
+  if (failed && ++failedAttempts_ >= kMaxFailedPairingAttempts) {
+    lockOut();
+    return;
+  }
+  // The window only closes while nobody is connected, so a pairing in progress
+  // is never cut off.
+  if (server_ != nullptr && server_->getConnectedCount() > 0) {
+    advertisingStartedAt_ = millis();
+  } else if (millis() - advertisingStartedAt_ > kAdvertisingWindowMs) {
+    lockOut();
+  }
 }
 
 void BleProvisioning::rearm() {

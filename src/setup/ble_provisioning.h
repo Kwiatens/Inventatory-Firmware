@@ -30,9 +30,11 @@ class BleProvisioning {
   void rearm();
   // True once after the passkey changed, so Core 1 can redraw the LCD.
   bool takePasskeyChanged() { return passkeyChanged_.exchange(false); }
-  // Called from BLE stack callbacks.
-  void onAuthenticationResult(bool success);
-  void onClientDisconnected();
+  // Called from BLE stack callbacks (Bluetooth task). They only record the event;
+  // service() acts on it from Core 1 so the stack is never touched concurrently
+  // with end().
+  void onAuthenticationResult(bool success) { if (!success) authFailed_ = true; }
+  void onClientDisconnected() { clientDisconnected_ = true; }
   bool takeRequest(ProvisionedSettings& settings);
   void setResult(bool success, const String& publicMessage);
   void handleEncryptedWrite(const std::string& value);
@@ -51,6 +53,8 @@ class BleProvisioning {
   std::atomic<uint32_t> pairingCode_{0};
   std::atomic<bool> locked_{false};
   std::atomic<bool> passkeyChanged_{false};
+  std::atomic<bool> authFailed_{false};
+  std::atomic<bool> clientDisconnected_{false};
   std::atomic<uint8_t> failedAttempts_{0};
   std::atomic<unsigned long> advertisingStartedAt_{0};
   bool requestPending_ = false;
