@@ -125,7 +125,6 @@ dependency. Do not change these to floating ranges without a reviewed update:
 | Package | Version | License / source |
 | --- | ---: | --- |
 | `espressif32` platform | 7.0.1 | [Apache-2.0](https://github.com/platformio/platform-espressif32/blob/develop/LICENSE) |
-| `chris--a/Keypad` | 3.1.1 | [LGPL-2.1](https://github.com/Chris--A/Keypad) per source headers; the bundled `LICENSE` is GPL-3.0 text (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)) |
 | `olikraus/U8g2` | 2.35.30 | [BSD-2-Clause](https://github.com/olikraus/u8g2/blob/master/LICENSE) |
 | `throwtheswitch/Unity` | 2.6.1 | [MIT](https://github.com/ThrowTheSwitch/Unity/blob/master/LICENSE.txt) |
 

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- First-party keypad matrix scanner with two-sample debounce and per-key hold timing; the `Keypad` library dependency is removed.
 - Holding `#` opens the re-pair confirmation (idle only); `C` returns to Ready.
 - CI logging gate fails closed and has real patterns; jobs have timeouts.
 

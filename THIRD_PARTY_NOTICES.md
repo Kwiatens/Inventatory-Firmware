@@ -8,8 +8,9 @@ code is licensed under GPL-3.0-only (see [LICENSE](LICENSE)).
 This is a factual record of license information, not legal advice.
 
 Versions are the pins in [platformio.ini](platformio.ini):
-`espressif32@7.0.1`, `chris--a/Keypad@3.1.1`, `olikraus/U8g2@2.35.30`, and
-`throwtheswitch/Unity@2.6.1`. The Arduino framework is the package the
+`espressif32@7.0.1`, `olikraus/U8g2@2.35.30`, and `throwtheswitch/Unity@2.6.1`.
+The 4x4 keypad matrix is scanned by first-party code (`src/keypad/keypad.cpp`);
+no keypad library is used. The Arduino framework is the package the
 platform resolves to (`framework-arduinoespressif32` 3.20017.241212, which
 is Arduino-ESP32 2.0.17 on ESP-IDF v4.4.7 per `tools/sdk/versions.txt`).
 
@@ -19,7 +20,6 @@ is Arduino-ESP32 2.0.17 on ESP-IDF v4.4.7 per `tools/sdk/versions.txt`).
 | --- | --- | --- | --- | --- |
 | Arduino-ESP32 core and libraries | 3.20017.241212 (Arduino-ESP32 2.0.17) | LGPL-2.1-or-later (core); per-library headers vary | Yes | https://github.com/espressif/arduino-esp32 |
 | ESP-IDF v4.4.7 prebuilt SDK libraries | ESP-IDF v4.4.7 | Mixed, per header (see notes) | Yes (Wi-Fi, BLE, TLS, RTOS archives) | https://github.com/espressif/esp-idf |
-| Keypad | 3.1.1 | LGPL-2.1-only per source headers; bundled `LICENSE` is GPL-3.0 text (conflict, see notes) | Yes | https://github.com/Chris--A/Keypad |
 | U8g2 (library code) | 2.35.30 | BSD-2-Clause | Yes | https://github.com/olikraus/u8g2 |
 | U8g2 fonts used by the firmware | bundled with U8g2 | X11-style terms for the Helvetica fonts; ProFont terms not verified | Yes | https://github.com/olikraus/u8g2 |
 | Unity | 2.6.1 | MIT | No (test builds only) | https://github.com/ThrowTheSwitch/Unity |
@@ -66,23 +66,6 @@ is Arduino-ESP32 2.0.17 on ESP-IDF v4.4.7 per `tools/sdk/versions.txt`).
 - The Wi-Fi, Bluetooth, and PHY binaries (for example `libbtdm_app`,
   `libnet80211`, `libphy`, `libpp`, `libwpa_supplicant`) are vendor-supplied
   binaries. Their license terms are not on disk and were not verified.
-
-### Keypad 3.1.1 (conflicting license data)
-
-- `.pio/libdeps/tenstar_esp32s3_zero_usb/Keypad/LICENSE` is the GNU GPL
-  version 3 text.
-- The `@license` blocks in `Keypad/src/Keypad.h`, `Keypad.cpp`, `Key.h`, and
-  `Key.cpp` state: "GNU Lesser General Public License ... version 2.1 of the
-  License." They do not say "or any later version". The SPDX identifier that
-  follows from the headers is LGPL-2.1-only.
-- `library.properties`, `.piopm`, and `README.md` name no license. No MIT
-  notice or MIT text exists in the library directory.
-- The earlier README value "MIT" is not supported by any file in the library.
-  The README row was corrected to LGPL-2.1 (source headers), with the conflict
-  flagged.
-- Linked: `src/keypad/keypad.cpp` includes `<Keypad.h>`.
-- Open item: the upstream maintainer should resolve whether the library is
-  LGPL-2.1 or GPL-3.0. This file records both.
 
 ### U8g2 2.35.30 (BSD-2-Clause code, mixed font terms)
 
@@ -144,14 +127,12 @@ is Arduino-ESP32 2.0.17 on ESP-IDF v4.4.7 per `tools/sdk/versions.txt`).
 
 ## Open items (not verified)
 
-1. Keypad license conflict: LGPL-2.1 (source headers) versus GPL-3.0 (bundled
-   `LICENSE`). Needs a decision from the upstream maintainer.
-2. ProFont 2.2 terms for `u8g2_font_profont15_tf` are not on disk.
-3. Terms for the vendor-supplied Wi-Fi, Bluetooth, and PHY binaries in
+1. ProFont 2.2 terms for `u8g2_font_profont15_tf` are not on disk.
+2. Terms for the vendor-supplied Wi-Fi, Bluetooth, and PHY binaries in
    `tools/sdk/esp32s3/lib` are not on disk.
-4. The main firmware link map was not generated. The linked set is inferred
+3. The main firmware link map was not generated. The linked set is inferred
    from the example build's map and the sources' `#include` lines.
-5. The framework package has no top-level LICENSE file. The LGPL-2.1 text was
+4. The framework package has no top-level LICENSE file. The LGPL-2.1 text was
    taken from the toolchain package's `share/licenses/gcc/COPYING.LIB`.
-6. Upstream URLs come from package metadata (`library.properties`,
+5. Upstream URLs come from package metadata (`library.properties`,
    `library.json`, `package.json`, `.piopm`). They were not fetched online.
