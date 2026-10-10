@@ -1,19 +1,35 @@
-# Embedded Unity tests
+# Unity tests
 
-The Unity suite in `test_inventatory_scan_core.cpp` is compiled into firmware
-for the Scan R1 ESP32-S3. The hosted CI job builds this test image but does not
-upload it or execute its assertions.
+The Unity suite in `test_inventatory_scan_core.cpp` (and the files beside it) is
+compiled into firmware for the Scan R1 ESP32-S3. The same suite also runs on a
+desktop computer, which is how CI executes the assertions.
 
-Compile the test image without uploading or running assertions:
+## Run on a desktop (no hardware)
+
+From the repository root:
+
+```sh
+make -C host-tests test
+```
+
+The host build is described in `host-tests/README.md`. It also runs
+`host-tests/tests/`, which needs the NVS stand-in for power-loss and write-failure
+tests.
+
+## Build the embedded image (no hardware)
+
+The hosted CI job builds this test image but does not upload it or execute its
+assertions:
 
 ```sh
 pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
 ```
 
-Run the assertions on an attached Scan R1 board (uploads the image first):
+## Run the assertions on a board
+
+This uploads the image to an attached Scan R1 and runs it. It is a manual step that
+needs explicit authorization:
 
 ```sh
 pio test -e tenstar_esp32s3_zero_usb
 ```
-
-The hardware command requires an attached board and explicit authorization.

@@ -390,6 +390,17 @@ attached Scan R1 board:
 pio test -e tenstar_esp32s3_zero_usb
 ```
 
+### Host unit tests (no device required)
+Builds the same Unity suite for the desktop, with stand-ins for the Arduino, NVS and
+mbedtls APIs (`host-tests/shim/`), and runs it. The NVS stand-in injects write failures
+and power loss, so the outbox durability tests run here:
+```bash
+make -C host-tests test
+make -C host-tests SANITIZE=address,undefined test   # what CI runs
+```
+This executes assertions on a 64-bit host. It does not exercise the ESP32 toolchain,
+real NVS partitions or hardware timing.
+
 ### Standalone display smoke test
 ```powershell
 pio run -d examples/gmg12864_spi_test -e tenstar_esp32s3_zero
@@ -410,7 +421,10 @@ When reporting verification results, agents must distinguish between verificatio
 1. **Compilation / Static build**: Proves syntax and link validity. Does **not**
    prove runtime behavior or assertion success.
 2. **Automated Unity compilation**: Proves test harness compiles. Does **not**
-   mean tests ran unless executed on hardware.
+   mean tests ran unless executed on hardware or on the host.
+2a. **Host execution** (`make -C host-tests test`): Executes the shared suite and the
+   host-only durability tests on the desktop. It proves the logic, not the device
+   build, real NVS or hardware timing.
 3. **Embedded hardware execution** (`pio test -e tenstar_esp32s3_zero_usb`):
    Executes assertions on a physical ESP32-S3 over serial.
 4. **End-to-end integration**: Validates live HTTP/HMAC exchange against the
@@ -484,6 +498,6 @@ When concluding any task, the agent must provide a factual summary containing:
 - [ ] Durability: Newly captured scans that fail NVS write show error banner and are not queued.
 - [ ] Security: HMAC mutual auth, directional keys, monotonic counter reservation preserved.
 - [ ] Zero logging: Passed CI grep rules (no raw barcodes, UART buffers, or secrets logged).
-- [ ] Verification: `pio test ... --without-uploading --without-testing` and firmware builds pass.
+- [ ] Verification: `make -C host-tests test` passes, `pio test ... --without-uploading --without-testing` passes, and firmware builds pass.
 - [ ] Working tree: No modified `config.h`, `.pio/`, `.bin` files, or unrelated user edits in diff.
 - [ ] Commit format: Follows `type(scope): description` without AI attribution.

@@ -9,6 +9,7 @@ This document contains the checklist for cutting a release for the Inventatory S
 - [ ] **Builds**: Run all firmware builds to ensure successful compilation:
   - `pio run -e tenstar_esp32s3_zero_usb`
   - `pio run -e tenstar_esp32s3_zero_ota`
+- [ ] **Host Tests**: `make -C host-tests SANITIZE=address,undefined test` passes on a clean checkout (the CI `host-tests` job runs the same command).
 - [ ] **Hardware Testing**: Run Unity assertions on physical hardware to fulfill the open release gates listed in `docs/release-audit-remediation.md`:
   - `pio test -e tenstar_esp32s3_zero_usb`
 - [ ] **Secret Scan**: Perform a secret scan of the commit history to ensure no credentials or tokens were accidentally committed.
