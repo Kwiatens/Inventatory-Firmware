@@ -9,6 +9,7 @@
 #include <BLEServer.h>
 #include <BLESecurity.h>
 
+#include <esp_gap_ble_api.h>
 #include <esp_system.h>
 
 namespace inventatory_scan {
@@ -19,13 +20,19 @@ constexpr char kServiceUuid[] = "d4d4f5b0-4c21-4a7e-a1a1-4b0db2d00001";
 constexpr char kStatusUuid[] = "d4d4f5b0-4c21-4a7e-a1a1-4b0db2d00002";
 constexpr char kRequestUuid[] = "d4d4f5b0-4c21-4a7e-a1a1-4b0db2d00003";
 constexpr uint8_t kProtocolVersion = 1;
+// A failed passkey attempt can leak information about a reused passkey, so the
+// passkey changes after every attempt and repeated failures lock pairing until
+// someone presses a key on the device.
+constexpr uint8_t kMaxFailedPairingAttempts = 3;
+constexpr unsigned long kAdvertisingWindowMs = 5UL * 60UL * 1000UL;
 
 class ServerCallbacks final : public BLEServerCallbacks {
  public:
   explicit ServerCallbacks(BleProvisioning& owner) : owner_(owner) {}
   void onDisconnect(BLEServer* server) override {
     // Keep first-use setup discoverable after a failed/cancelled attempt.
-    if (owner_.active()) server->startAdvertising();
+    owner_.onClientDisconnected();
+    if (owner_.active() && !owner_.locked()) server->startAdvertising();
   }
  private:
   BleProvisioning& owner_;
@@ -38,7 +45,9 @@ class SecurityCallbacks final : public BLESecurityCallbacks {
   void onPassKeyNotify(uint32_t) override {}
   bool onSecurityRequest() override { return true; }
   bool onConfirmPIN(uint32_t pin) override { return pin == owner_.pairingCode(); }
-  void onAuthenticationComplete(esp_ble_auth_cmpl_t) override {}
+  void onAuthenticationComplete(esp_ble_auth_cmpl_t result) override {
+    owner_.onAuthenticationResult(result.success);
+  }
  private:
   BleProvisioning& owner_;
 };
@@ -59,9 +68,25 @@ bool BleProvisioning::begin(const String& deviceId) {
   if (active_) return true;
   if (requestMutex_ == nullptr) requestMutex_ = xSemaphoreCreateMutex();
   if (requestMutex_ == nullptr) return false;
+  locked_ = false;
+  failedAttempts_ = 0;
   pairingCode_ = 100000UL + (esp_random() % 900000UL);
   const auto suffix = deviceId.length() > 4 ? deviceId.substring(deviceId.length() - 4) : deviceId;
   BLEDevice::init(("Inventatory Setup " + suffix).c_str());
+  // Forget peers bonded in earlier setup sessions; a bond would let them
+  // reconnect without the passkey shown on this screen.
+  {
+    int bondCount = esp_ble_get_bond_device_num();
+    if (bondCount > 0) {
+      auto* bonded = static_cast<esp_ble_bond_dev_t*>(malloc(sizeof(esp_ble_bond_dev_t) * bondCount));
+      if (bonded != nullptr) {
+        if (esp_ble_get_bond_device_list(&bondCount, bonded) == ESP_OK) {
+          for (int i = 0; i < bondCount; ++i) esp_ble_remove_bond_device(bonded[i].bd_addr);
+        }
+        free(bonded);
+      }
+    }
+  }
   // The provisioning payload contains the SSID, password, and a 32-byte
   // token. Negotiate enough ATT payload space to keep it a single write and
   // avoid ambiguous prepared-write completion on desktop BLE stacks.
@@ -69,9 +94,10 @@ bool BleProvisioning::begin(const String& deviceId) {
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
   BLEDevice::setSecurityCallbacks(new SecurityCallbacks(*this));
   auto* security = new BLESecurity();
-  security->setStaticPIN(pairingCode_);
+  security_ = security;
+  security->setStaticPIN(pairingCode_.load());
   security->setCapability(ESP_IO_CAP_OUT);
-  security->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
+  security->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM);
   security->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
   security->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
   security->setKeySize(16);
@@ -91,6 +117,7 @@ bool BleProvisioning::begin(const String& deviceId) {
   server_->getAdvertising()->addServiceUUID(kServiceUuid);
   server_->getAdvertising()->setScanResponse(true);
   active_ = true;
+  advertisingStartedAt_ = millis();
   server_->startAdvertising();
   publishStatus("READY");
   return true;
@@ -102,6 +129,7 @@ void BleProvisioning::end() {
   BLEDevice::stopAdvertising();
   BLEDevice::deinit(true);
   server_ = nullptr;
+  security_ = nullptr;
   status_ = nullptr;
   request_ = nullptr;
   if (requestMutex_ != nullptr && xSemaphoreTake(requestMutex_, portMAX_DELAY) == pdTRUE) {
@@ -112,6 +140,45 @@ void BleProvisioning::end() {
     requestPending_ = false;
     pending_ = {};
   }
+}
+
+void BleProvisioning::rotatePasskey() {
+  if (security_ == nullptr) return;
+  pairingCode_ = 100000UL + (esp_random() % 900000UL);
+  security_->setStaticPIN(pairingCode_.load());
+  passkeyChanged_ = true;
+}
+
+void BleProvisioning::lockOut() {
+  locked_ = true;
+  passkeyChanged_ = true;
+  BLEDevice::stopAdvertising();
+  if (server_ != nullptr && server_->getConnectedCount() > 0) server_->disconnect(server_->getConnId());
+}
+
+void BleProvisioning::onAuthenticationResult(bool success) {
+  if (!active_ || success) return;
+  rotatePasskey();
+  if (++failedAttempts_ >= kMaxFailedPairingAttempts) lockOut();
+}
+
+void BleProvisioning::onClientDisconnected() {
+  if (active_ && !locked_) rotatePasskey();
+}
+
+void BleProvisioning::service() {
+  if (!active_ || locked_) return;
+  if (millis() - advertisingStartedAt_ > kAdvertisingWindowMs) lockOut();
+}
+
+void BleProvisioning::rearm() {
+  if (!active_ || !locked_) return;
+  failedAttempts_ = 0;
+  rotatePasskey();
+  locked_ = false;
+  advertisingStartedAt_ = millis();
+  if (server_ != nullptr) server_->startAdvertising();
+  passkeyChanged_ = true;
 }
 
 bool BleProvisioning::takeRequest(ProvisionedSettings& settings) {

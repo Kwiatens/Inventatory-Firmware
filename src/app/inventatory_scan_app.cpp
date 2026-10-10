@@ -126,6 +126,8 @@ void InventatoryScanApp::loop() {
 
 bool InventatoryScanApp::beginNormalRuntime(const ProvisionedSettings& settings) {
   provisionedSettings_ = settings;
+  otaRequested_ = false;
+  otaActive_ = false;
   clientConfig_.token = settings.deviceToken;
   clientConfig_.transportCounterStore = &setupStore_;
 
@@ -207,6 +209,12 @@ void InventatoryScanApp::serviceProvisioning() {
   if (setupRestartPending_) {
     enterSetupAfterRuntimeFailure();
     return;
+  }
+
+  provisioning_.service();
+  if (provisioning_.takePasskeyChanged() && !setupWifiConnecting_) {
+    display_.showSetup(provisioning_.pairingCode(),
+                       provisioning_.locked() ? "PAIRING LOCKED" : "BLE READY");
   }
 
   ProvisionedSettings request;

@@ -17,6 +17,9 @@ void DisplayController::begin() {
 void DisplayController::markDirty() { dirty_ = true; }
 
 void DisplayController::clearContent() {
+  // Every screen change cancels a pending result dwell; the result setters
+  // re-arm it after calling this.
+  resultUntilMs_ = 0;
   model_.animateEllipsis = false;
   model_.brandDot = DisplayBrandDot::Full;
   model_.introStep = kBrandIntroSteps;
@@ -242,10 +245,17 @@ bool DisplayController::showResult(const SyncResult& result) {
     deferredResult_ = true;
     return true;
   }
-  if (model_.mode == DisplayUiMode::Success || model_.mode == DisplayUiMode::Warning ||
-      model_.mode == DisplayUiMode::Error) return false;
+  // Screens that need an explicit dismissal are never replaced by a result.
+  if (model_.mode == DisplayUiMode::Warning || model_.mode == DisplayUiMode::Error) return false;
   applyResult(result);
   return true;
+}
+
+void DisplayController::showLocalFailure(const SyncResult& result) {
+  // A scan that could not be stored must be visible: it preempts any deferred
+  // or displayed result.
+  deferredResult_ = false;
+  applyResult(result);
 }
 
 bool DisplayController::finishInteraction() {
@@ -309,6 +319,12 @@ void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
     model_.header = "Pair this scanner";
     model_.primary = "Open Inventatory on PC";
     model_.secondary = "Settings / Inventatory Scan";
+  } else if (status == "PAIRING LOCKED") {
+    model_.bodyKind = DisplayBodyKind::Result;
+    model_.rail = DisplayRailStyle::Static;
+    model_.header = "Pairing locked";
+    model_.primary = "Press A to try again";
+    model_.secondary = "Only if you started it";
   } else if (status == "CONNECTING WIFI") {
     model_.bodyKind = DisplayBodyKind::Task;
     model_.rail = DisplayRailStyle::Activity;
@@ -474,7 +490,11 @@ void DisplayController::tick() {
   const auto now = millis();
   if (uiDeadlineReached(now, resultUntilMs_)) {
     resultUntilMs_ = 0;
-    showReady();
+    if (uiResultDwellMayExpire(model_.mode == DisplayUiMode::Success ||
+                               model_.mode == DisplayUiMode::Warning ||
+                               model_.mode == DisplayUiMode::Queued)) {
+      showReady();
+    }
   }
   const RenderActivity activity = computeActivity(now);
   if (!activityEquals(activity, lastActivity_)) dirty_ = true;

@@ -17,6 +17,10 @@ void InventatoryScanApp::requestOtaUpdate() {
     Serial.println("OTA update already requested.");
     return;
   }
+  if (setupMode_ || provisionedSettings_.wifiSsid.length() == 0) {
+    Serial.println("OTA update ignored because setup is incomplete.");
+    return;
+  }
 
   resetPending();
   otaRequested_ = true;

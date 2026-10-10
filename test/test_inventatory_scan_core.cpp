@@ -78,12 +78,41 @@ void test_quantity_composer_defaults_and_limit() {
   composer.appendDigit('5');
   composer.appendDigit('7');
   composer.appendDigit('9');
-  TEST_ASSERT_EQUAL_STRING("9257", composer.displayText().c_str());
-  TEST_ASSERT_EQUAL_UINT32(1, composer.cursor());
-  TEST_ASSERT_EQUAL_INT(9257, composer.valueOrOne());
+  // The leading 0 is ignored, so the fifth digit wraps onto the first slot.
+  TEST_ASSERT_EQUAL_STRING("2579", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_UINT32(0, composer.cursor());
+  TEST_ASSERT_EQUAL_INT(2579, composer.valueOrOne());
 
-  TEST_ASSERT_EQUAL_INT(9257, composer.consume(true));
+  TEST_ASSERT_EQUAL_INT(2579, composer.consume(true));
   TEST_ASSERT_TRUE(composer.empty());
+}
+
+void test_quantity_composer_never_submits_a_value_it_does_not_show() {
+  QuantityComposer composer;
+  composer.setDefaultValue(25);
+  composer.appendDigit('0');
+  TEST_ASSERT_EQUAL_STRING("25", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_INT(25, composer.consume(true));
+
+  composer.setDefaultValue(25);
+  composer.appendDigit('0');
+  composer.appendDigit('5');
+  TEST_ASSERT_EQUAL_STRING("5", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_INT(5, composer.consume(true));
+
+  // Overwriting the only non-zero digit with 0 is ignored.
+  composer.setDefaultValue(25);
+  composer.appendDigit('5');
+  composer.cycleCursor();
+  composer.appendDigit('0');
+  TEST_ASSERT_EQUAL_STRING("5", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_INT(5, composer.consume(true));
+
+  // Deleting down to an all-zero value resets to 1, matching the display.
+  composer.setDefaultValue(10);
+  composer.deleteDigit();
+  TEST_ASSERT_EQUAL_STRING("1", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_INT(1, composer.consume(true));
 }
 
 void test_quantity_composer_cursor_replaces_and_appends() {
@@ -379,8 +408,16 @@ void test_ui_header_prefers_full_title_over_pc_status() {
 
 void test_ui_clipping_and_queue_boundaries() {
   const auto monospaceWidth = [](std::size_t length) { return static_cast<int>(length * 5U); };
-  TEST_ASSERT_EQUAL_UINT32(4, displayClippedPrefixLength(5, 25, 3, monospaceWidth));
+  // Full fit: 5 chars = 25 px <= 25 px, so the whole string is kept.
+  TEST_ASSERT_EQUAL_UINT32(5, displayClippedPrefixLength(5, 25, 3, monospaceWidth));
+  // Full fit with room to spare: 3 chars = 15 px <= 100 px.
+  TEST_ASSERT_EQUAL_UINT32(3, displayClippedPrefixLength(3, 100, 3, monospaceWidth));
+  // Clipped: 5 chars = 25 px > 24 px. 4 chars = 20 px, plus 3 px ellipsis = 23 px <= 24 px.
   TEST_ASSERT_EQUAL_UINT32(4, displayClippedPrefixLength(5, 24, 3, monospaceWidth));
+  // Clipped, ellipsis matters: 4 chars = 20 px fits 22 px on its own, but
+  // 20 + 3 px ellipsis = 23 px > 22 px, so only 3 chars (15 + 3 = 18 px) remain.
+  TEST_ASSERT_EQUAL_UINT32(3, displayClippedPrefixLength(5, 22, 3, monospaceWidth));
+  // Nothing fits: 2 px is smaller than even the 3 px ellipsis, so the result is 0.
   TEST_ASSERT_EQUAL_UINT32(0, displayClippedPrefixLength(5, 2, 3, monospaceWidth));
   TEST_ASSERT_FALSE(displayQueueDepth(0));
   TEST_ASSERT_TRUE(displayQueueDepth(1));
@@ -417,6 +454,8 @@ void test_ui_timing_and_activity_policy() {
   TEST_ASSERT_FALSE(uiDeadlineReached(1000, 0));
   TEST_ASSERT_FALSE(uiDeadlineReached(1499, 1500));
   TEST_ASSERT_TRUE(uiDeadlineReached(1500, 1500));
+  TEST_ASSERT_TRUE(uiResultDwellMayExpire(true));
+  TEST_ASSERT_FALSE(uiResultDwellMayExpire(false));
   TEST_ASSERT_TRUE(uiDeadlineReached(10, 0xFFFFFFF0UL));
 }
 
@@ -486,6 +525,7 @@ void setup() {
   RUN_TEST(test_standardized_scanner_codes);
   RUN_TEST(test_datamatrix_decoding_fixtures);
   RUN_TEST(test_quantity_composer_defaults_and_limit);
+  RUN_TEST(test_quantity_composer_never_submits_a_value_it_does_not_show);
   RUN_TEST(test_quantity_composer_cursor_replaces_and_appends);
   RUN_TEST(test_quantity_composer_replaces_default_and_deletes_digits);
   RUN_TEST(test_quantity_composer_subtract_and_invalid_digits);
