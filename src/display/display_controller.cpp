@@ -229,8 +229,13 @@ void DisplayController::applyResult(const SyncResult& result) {
     model_.rail = DisplayRailStyle::Static;
     model_.header = "Done";
     model_.primary = result.itemName.length() > 0 ? result.itemName : String("Inventory updated");
-    model_.secondary = String(result.appliedDelta >= 0 ? "Added " : "Removed ") +
-                       abs(result.appliedDelta) + " / total " + result.quantity;
+    // Negate in unsigned arithmetic: -INT_MIN overflows int (undefined behaviour).
+    const int delta = result.appliedDelta;
+    const unsigned long magnitude = delta < 0
+        ? 0UL - static_cast<unsigned long>(delta)
+        : static_cast<unsigned long>(delta);
+    model_.secondary = String(delta >= 0 ? "Added " : "Removed ") +
+                       String(magnitude) + " / total " + result.quantity;
     model_.tertiary = result.purposeLabel;
     model_.actions = "C Menu";
     resultUntilMs_ = millis() + kUiSuccessDwellMs;

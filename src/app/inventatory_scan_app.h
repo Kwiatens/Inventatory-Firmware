@@ -67,6 +67,7 @@ class InventatoryScanApp {
   bool startOtaService();
   bool ensureWiFiForOta();
   void recoverFromOtaFailure();
+  void abandonOtaWait(const char* reason, bool showFailure);
   void enterStandby();
   void exitStandby();
   void submitCurrent(char action);
@@ -110,8 +111,14 @@ class InventatoryScanApp {
   std::atomic<PowerMode> powerMode_{PowerMode::Normal};
   std::atomic_bool wifiStarted_{false};
   std::atomic_bool wifiConnectedReported_{false};
+  // True when the re-pair confirmation was opened by holding # (C returns to Ready).
+  bool reprovisionFromHold_ = false;
   bool otaRequested_ = false;
   bool otaActive_ = false;
+  // OTA must not wait forever: giving up (timeout or C) restores normal operation
+  // until an uploader actually starts sending.
+  unsigned long otaRequestedAt_ = 0;
+  bool otaUploadStarted_ = false;
   // Last percentage shown on the update screen; ArduinoOTA reports progress
   // per received chunk, far more often than the percentage changes.
   int otaDisplayedPercent_ = -1;
@@ -147,6 +154,9 @@ class InventatoryScanApp {
   String activeLookupCode_;
   std::atomic_ulong lastReconnectAttempt_{0};
   unsigned long lastSyncAttempt_ = 0;
+  // Random per boot so request ids that embed a restarting sequence number
+  // (quick-label prints) cannot repeat across reboots.
+  uint32_t bootNonce_ = 0;
   uint32_t syncSequence_ = 1;
   uint32_t lookupSequence_ = 1;
   uint8_t lookupMissCount_ = 0;

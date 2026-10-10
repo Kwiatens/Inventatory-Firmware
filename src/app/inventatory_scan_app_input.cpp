@@ -87,7 +87,8 @@ void InventatoryScanApp::handleScan(const String& code) {
     Serial.println("Scan ignored while the current operation blocks scanning.");
     return;
   }
-  if (state_ != State::Idle) resetPending();
+  // Pending state is reset only once a scan is accepted below, so a rejected
+  // frame cannot leave the state machine out of step with the screen.
   // Some GM65 profiles prepend an AIM symbology identifier (for example ]C1
   // for Code 128, ]Q3 for QR, or ]d2 for Data Matrix). We use that marker to
   // decode standards-based Data Matrix fields and route QR scans to the
@@ -164,6 +165,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       return;
     }
     state_ = State::ConfirmReprovision;
+    reprovisionFromHold_ = true;
     display_.showResetConfirm();
     return;
   }
@@ -171,6 +173,10 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     // A keypress on the device is the physical confirmation that re-opens
     // BLE pairing after a lockout or an expired advertising window.
     if (provisioning_.locked() && event.type == InventatoryKeyEventType::Add) provisioning_.rearm();
+    return;
+  }
+  if (otaRequested_ && !otaUploadStarted_ && event.type == InventatoryKeyEventType::Cancel) {
+    abandonOtaWait("OTA wait cancelled.", false);
     return;
   }
   if (event.type == InventatoryKeyEventType::OtaUpdate) {
@@ -215,6 +221,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
         enterStandby();
       } else if (event.value == '3') {
         state_ = State::ConfirmReprovision;
+        reprovisionFromHold_ = false;
         display_.showResetConfirm();
       } else if (event.value == '4') {
         state_ = State::Idle;
@@ -282,7 +289,13 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       return;
     }
     if (state_ == State::ConfirmReprovision) {
-      openQuickSettings();
+      if (reprovisionFromHold_) {
+        reprovisionFromHold_ = false;
+        state_ = State::Idle;
+        display_.showReady();
+      } else {
+        openQuickSettings();
+      }
       return;
     }
     resetPending();
