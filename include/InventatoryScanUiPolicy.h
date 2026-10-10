@@ -61,6 +61,9 @@ constexpr int uiRailSweepOffset(unsigned long now, unsigned long stepPeriodMs, i
                                 static_cast<unsigned long>(stepsPerLeg));
 }
 
+// A result dwell may only return to Ready while a result screen is still shown.
+constexpr bool uiResultDwellMayExpire(bool resultScreenVisible) { return resultScreenVisible; }
+
 constexpr bool uiDeadlineReached(unsigned long now, unsigned long deadline) {
   return deadline != 0 && static_cast<long>(now - deadline) >= 0;
 }

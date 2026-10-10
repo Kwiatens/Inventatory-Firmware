@@ -233,6 +233,7 @@ class QuantityComposer {
       return;
     }
     if (!editingStarted_) {
+      if (digit == '0') return;  // a typed value never starts with zero; ignore the key
       digits_ = String(digit);
       cursor_ = 1;
       editingStarted_ = true;
@@ -240,6 +241,8 @@ class QuantityComposer {
     }
     ensureDigits();
     if (cursor_ < digits_.length()) {
+      // Overwriting the only non-zero digit with '0' would leave an all-zero value: ignore the key.
+      if (digit == '0' && allZeroExcept(cursor_)) return;
       digits_.setCharAt(cursor_, digit);
     } else if (digits_.length() < 4) {
       digits_ += digit;
@@ -268,7 +271,7 @@ class QuantityComposer {
     std::size_t deleteAt = cursor_;
     if (deleteAt >= digits_.length() && deleteAt > 0) --deleteAt;
     if (deleteAt < digits_.length()) digits_.remove(deleteAt, 1);
-    if (digits_.length() == 0) digits_ = "1";
+    if (!hasNonZeroDigit()) digits_ = "1";  // an empty or all-zero result is reset to 1
     cursor_ = min(deleteAt, digits_.length());
   }
 
@@ -296,6 +299,20 @@ class QuantityComposer {
   void ensureDigits() {
     if (digits_.length() == 0) digits_ = String(defaultValue_);
     if (cursor_ >= editableSlots()) cursor_ = 0;
+  }
+
+  bool hasNonZeroDigit() const {
+    for (std::size_t i = 0; i < digits_.length(); ++i) {
+      if (digits_[i] != '0') return true;
+    }
+    return false;
+  }
+
+  bool allZeroExcept(std::size_t index) const {
+    for (std::size_t i = 0; i < digits_.length(); ++i) {
+      if (i != index && digits_[i] != '0') return false;
+    }
+    return true;
   }
 
   std::size_t editableSlots() const {

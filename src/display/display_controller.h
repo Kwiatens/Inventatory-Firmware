@@ -24,6 +24,7 @@ class DisplayController {
   void showQueued();
   void showSending();
   bool showResult(const SyncResult& result);
+  void showLocalFailure(const SyncResult& result);
   bool finishInteraction();
   void dismissError();
   void setStandby(bool standby);

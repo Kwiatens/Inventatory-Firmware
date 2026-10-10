@@ -65,11 +65,15 @@ void InventatoryScanApp::pollScanner() {
   }
   String code;
   if (scanner_.poll(code)) {
-    // Preserve one completed scan while an inventory result is pending. Stop
-    // draining after this so subsequent scanner input remains subject to the
-    // UART's fixed bound instead of silently replacing the deferred scan.
+    // Preserve one completed scan while an inventory result is pending. The
+    // scanner is still drained so UART bytes cannot overflow and corrupt later
+    // frames; a further scan cannot be kept and is reported, not silently lost.
     if (state_ == State::WaitingForResult) {
-      if (deferredScan_.length() == 0) deferredScan_ = code;
+      if (deferredScan_.length() == 0) {
+        deferredScan_ = code;
+      } else {
+        Serial.println("Scan ignored: a previous scan is already waiting for the result.");
+      }
       return;
     }
     handleScan(code);
@@ -154,16 +158,19 @@ void InventatoryScanApp::handleScan(const String& code) {
 
 void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
   if (event.type == InventatoryKeyEventType::ProvisioningReset) {
-    if (!pauseNetworkForSetupTransition()) {
-      Serial.println("Provisioning reset deferred because network storage is busy.");
+    // Holding # only opens the confirmation screen; the wipe itself needs A.
+    if (setupMode_ || state_ != State::Idle || powerMode_ == PowerMode::Standby || otaRequested_ ||
+        otaActive_) {
       return;
     }
-    if (setupStore_.clear()) {
-      Serial.println("Provisioning reset requested; restarting into BLE setup.");
-      ESP.restart();
-    }
-    resumeNetworkAfterSetupTransition();
-    Serial.println("Provisioning reset could not clear NVS.");
+    state_ = State::ConfirmReprovision;
+    display_.showResetConfirm();
+    return;
+  }
+  if (setupMode_) {
+    // A keypress on the device is the physical confirmation that re-opens
+    // BLE pairing after a lockout or an expired advertising window.
+    if (provisioning_.locked() && event.type == InventatoryKeyEventType::Add) provisioning_.rearm();
     return;
   }
   if (event.type == InventatoryKeyEventType::OtaUpdate) {
@@ -328,13 +335,10 @@ void InventatoryScanApp::submitCurrent(char action) {
     const auto queued = queueEvent(DeviceEventKind::InventoryReceive, scannedCode_, quantity, &eventId,
                                    scannedManufacturer_, scannedManufacturerPartNumber_,
                                    scannedPartName_);
+    resetPending();
+    if (!queued) return;  // The failure screen is already showing.
     Serial.print("Queued decoded-component quantity ");
     Serial.println(String(quantity).c_str());
-    resetPending();
-    if (!queued) {
-      display_.finishInteraction();
-      return;
-    }
     waitForInventoryResult(eventId);
     return;
   }
@@ -343,10 +347,7 @@ void InventatoryScanApp::submitCurrent(char action) {
   String eventId;
   const auto queued = queueEvent(DeviceEventKind::InventoryAdjust, scannedCode_, delta, &eventId);
   resetPending();
-  if (!queued) {
-    display_.finishInteraction();
-    return;
-  }
+  if (!queued) return;  // The failure screen is already showing.
   waitForInventoryResult(eventId);
 }
 
@@ -375,7 +376,7 @@ bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, in
         result.message = "Scan data cannot be saved";
         break;
     }
-    display_.showResult(result);
+    display_.showLocalFailure(result);
     Serial.println(result.message.c_str());
     return false;
   }
