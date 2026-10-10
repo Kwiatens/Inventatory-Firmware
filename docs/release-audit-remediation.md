@@ -54,11 +54,11 @@ source and compiles; none has been exercised on hardware.
 | Quantity | A typed `0` can no longer produce a hidden default quantity. | Hardware keypad check. |
 | CI | The logging gate fails closed and has real patterns; jobs have timeouts. | First CI run. |
 
-Open items that need hardware or desktop behaviour: unreadable-queue recovery
-at boot (a bad slot blocks scanning until NVS is erased), verifying GM65 replies
-to configuration writes (boot success still derives from UART write counts),
-OTA rollback (implemented with the SDK's app rollback: a new OTA image stays pending until it runs 30 s, but a crash-before-confirm rollback has not been exercised on hardware), and
-the GM65 TX/RX wiring names against the physical board.
+| GM65 scanner | The boot and wake profile verifies the module's 7-byte acknowledgement for every write (retried three times); a missing acknowledgement shows a scanner error but the device keeps running. | Disconnect and fault the GM65 UART on hardware; confirm real modules acknowledge as the manual states. |
+| Outbox recovery | An unreadable queue shows "Queue unreadable" and offers an operator-confirmed repair that keeps readable scans. | NVS fault injection with a corrupted slot, including a power cut during repair (a small loss window is documented in the code). |
+
+Open items: confirm the GM65 TX/RX wiring names against the physical board, and
+the hardware release gates listed below.
 
 ## Build and test evidence
 

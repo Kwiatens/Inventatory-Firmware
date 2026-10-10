@@ -86,7 +86,7 @@ void InventatoryScanApp::pollScanner() {
 void InventatoryScanApp::handleScan(const String& code) {
   if (!scanMayInterruptUi(setupMode_, powerMode_ == PowerMode::Standby,
                           otaRequested_ || otaActive_,
-                          state_ == State::ConfirmReprovision || state_ == State::ConfirmDiscard,
+                          state_ == State::ConfirmReprovision || state_ == State::ConfirmDiscard || state_ == State::ConfirmRepair,
                           state_ == State::PrintingLabel)) {
     Serial.println("Scan ignored while the current operation blocks scanning.");
     return;
@@ -209,13 +209,17 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     if (state_ == State::Menu) {
       if (event.value == '1') openQuickLabels();
       else if (event.value == '2') openQuickSettings();
+      else if (outbox_.unreadable() && event.value == '3') {
+        state_ = State::ConfirmRepair;
+        display_.showRepairConfirm();
+      }
       else if (outboxBlocked_ && event.value == '3') {
         state_ = State::ConfirmDiscard;
         display_.showDiscardConfirm();
       }
       return;
     }
-    if (state_ == State::ConfirmDiscard) return;
+    if (state_ == State::ConfirmDiscard || state_ == State::ConfirmRepair) return;
     if (state_ == State::QuickLabels) {
       const uint8_t selected = static_cast<uint8_t>(event.value - '0');
       if (selected >= 1 && selected <= 4) requestQuickLabelPrint(quickLabelPage_ * 4U + selected);
@@ -280,13 +284,13 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       else {
         Serial.println("Opening device menu.");
         state_ = State::Menu;
-        display_.showMenu(outboxBlocked_);
+        display_.showMenu(outboxBlocked_, outbox_.unreadable());
       }
       return;
     }
-    if (state_ == State::ConfirmDiscard) {
+    if (state_ == State::ConfirmDiscard || state_ == State::ConfirmRepair) {
       state_ = State::Menu;
-      display_.showMenu(outboxBlocked_);
+      display_.showMenu(outboxBlocked_, outbox_.unreadable());
       return;
     }
     if (state_ == State::Menu || state_ == State::QuickLabels || state_ == State::QuickSettings ||
@@ -342,6 +346,34 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       failure.message = "Could not clear pairing";
       display_.showLocalFailure(failure);
       state_ = State::Idle;
+      return;
+    }
+    if (state_ == State::ConfirmRepair) {
+      if (event.type == InventatoryKeyEventType::Add) {
+        std::size_t salvaged = 0;
+        std::size_t dropped = 0;
+        const auto result = outbox_.repair(salvaged, dropped);
+        (void)salvaged;
+        (void)dropped;
+        if (result == OutboxStore::RepairResult::Repaired) {
+          Serial.println("Scan queue repaired.");
+          display_.setQueueUnreadable(false);
+          state_ = State::Idle;
+          display_.showReady();
+        } else if (result == OutboxStore::RepairResult::StorageFailed) {
+          SyncResult sr;
+          sr.resultId = "local-queue";
+          sr.eventId = "local-queue";
+          sr.status = "failed";
+          sr.code = "STORAGE ERROR";
+          sr.message = "Could not repair queue";
+          display_.showLocalFailure(sr);
+          state_ = State::Idle;
+        } else {
+          state_ = State::Idle;
+          display_.showReady();
+        }
+      }
       return;
     }
     if (state_ == State::ConfirmDiscard) {
