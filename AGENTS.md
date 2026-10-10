@@ -280,6 +280,11 @@ Agents must observe the three distinct failure domains:
    - **Requirement**: Committed events must survive Wi-Fi drops, server 4xx/5xx
      errors, authentication rejections, malformed server responses, unexpected
      MCUs resets, and NVS write errors.
+   - **Blocked head**: if the desktop keeps rejecting the oldest event (authenticated
+     4xx, or the head never appears in `acceptedEventIds`, five times in a row), the
+     Ready screen shows "Sync blocked". Only an operator-confirmed Menu action
+     (`3  Discard stuck scan`, then `A`) removes it, through the same staged `pop()`.
+     Events are never dropped automatically.
 4. **Power-loss recovery**:
    - Enqueue writes the record slot **first** and the header **second**. A power cut
      leaves an unreferenced slot that is overwritten later; it never produces a

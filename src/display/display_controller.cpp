@@ -58,7 +58,9 @@ void DisplayController::clearContent() {
 void DisplayController::refreshReadyContent() {
   model_.header = "Inventatory";
   model_.primary = "Ready to scan";
-  if (displayQueueDepth(model_.queueDepth)) {
+  if (syncBlocked_) {
+    model_.secondary = "Sync blocked: C, 3";
+  } else if (displayQueueDepth(model_.queueDepth)) {
     model_.secondary = String(model_.queueDepth) + " scans safely queued";
   } else if (model_.connectivity == DisplayConnectivityState::Syncing) {
     model_.secondary = "Sending saved work";
@@ -70,6 +72,13 @@ void DisplayController::refreshReadyContent() {
   model_.rail = model_.connectivity == DisplayConnectivityState::Syncing
                     ? DisplayRailStyle::Activity
                     : DisplayRailStyle::Static;
+}
+
+void DisplayController::setSyncBlocked(bool blocked) {
+  if (syncBlocked_ == blocked) return;
+  syncBlocked_ = blocked;
+  if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
+  markDirty();
 }
 
 void DisplayController::setConnectivity(DisplayConnectivityState state, bool wifiOnline, bool pcOnline,
@@ -367,7 +376,7 @@ void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
   markDirty();
 }
 
-void DisplayController::showMenu() {
+void DisplayController::showMenu(bool blocked) {
   clearContent();
   model_.mode = DisplayUiMode::Menu;
   model_.bodyKind = DisplayBodyKind::List;
@@ -376,6 +385,9 @@ void DisplayController::showMenu() {
   model_.header = "Menu";
   appendListRow(model_, "1  Quick labels");
   appendListRow(model_, "2  Device settings");
+  if (blocked) {
+    appendListRow(model_, "3  Discard stuck scan");
+  }
   model_.actions = "C Back";
   markDirty();
 }
@@ -453,6 +465,19 @@ void DisplayController::showResetConfirm() {
   model_.primary = "Saved Wi-Fi is erased";
   model_.secondary = "Queued scans are kept";
   model_.actions = "A Confirm C Cancel";
+  markDirty();
+}
+
+void DisplayController::showDiscardConfirm() {
+  clearContent();
+  model_.mode = DisplayUiMode::ConfirmReset;
+  model_.bodyKind = DisplayBodyKind::Confirm;
+  model_.rail = DisplayRailStyle::None;
+  model_.showPcStatus = false;
+  model_.header = "Skip stuck scan?";
+  model_.primary = "Oldest queued scan";
+  model_.secondary = "It is deleted for good";
+  model_.actions = "A Discard C Cancel";
   markDirty();
 }
 

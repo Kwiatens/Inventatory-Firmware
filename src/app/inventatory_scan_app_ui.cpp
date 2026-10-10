@@ -38,7 +38,7 @@ void InventatoryScanApp::exitStandby() {
   }
 
   Serial.println("Waking from standby mode.");
-  scanner_.resume();
+  const bool scannerReady = scanner_.resume();
   networkPowerOffRequested_ = false;
   networkPaused_ = false;
   wifiConnectedReported_ = false;
@@ -46,6 +46,17 @@ void InventatoryScanApp::exitStandby() {
   lastSyncAttempt_ = 0;
   powerMode_ = PowerMode::Normal;
   display_.setStandby(false);
+
+  if (!scannerReady) {
+    Serial.println("Scanner resume failed; verify the GM65 connection and profile.");
+    SyncResult result;
+    result.resultId = "local-scanner";
+    result.eventId = "local-scanner";
+    result.status = "failed";
+    result.code = "SCANNER ERROR";
+    result.message = "Check scanner cable";
+    display_.showLocalFailure(result);
+  }
 
   if (provisionedSettings_.wifiSsid.length() == 0) {
     Serial.println("Standby exit complete; Wi-Fi remains offline.");
