@@ -201,6 +201,8 @@ bool InventatoryClient::sendJson(const char* path, const String& body, int& http
 }
 
 bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint64_t counter) {
+  httpStatus = 0;
+  responseBody.clear();
   String response;
   response.reserve(1024);
   int headerEnd = -1;
@@ -238,12 +240,15 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
   }
   const auto firstLineEnd = response.indexOf("\r\n");
   const auto statusLine = response.substring(0, firstLineEnd > 0 ? firstLineEnd : response.length());
+  // The status line is unauthenticated until the MAC check below succeeds, so it
+  // is kept in a local and only published through httpStatus after verification.
+  int parsedStatus = 0;
   if (statusLine.startsWith("HTTP/")) {
     const auto firstSpace = statusLine.indexOf(' ');
     const auto secondSpace = firstSpace < 0 ? -1 : statusLine.indexOf(' ', firstSpace + 1);
     if (firstSpace > 0) {
       const auto statusText = statusLine.substring(firstSpace + 1, secondSpace > firstSpace ? secondSpace : statusLine.length());
-      httpStatus = statusText.toInt();
+      parsedStatus = statusText.toInt();
     }
   }
   const auto headers = response.substring(0, headerEnd);
@@ -259,12 +264,17 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
   const auto responseMac = headerValue(headers, "X-Inventatory-Mac");
   if (headerValue(headers, "X-Inventatory-Protocol") != String(kInventatoryScanProtocolVersion) ||
       responseCounter != String(counter) ||
-      !transportMacMatches(deviceResponseMac(config_.token, counter, httpStatus, responseBody), responseMac)) {
+      !transportMacMatches(deviceResponseMac(config_.token, counter, parsedStatus, responseBody), responseMac)) {
     httpStatus = 0;
     responseBody.clear();
     return false;
   }
-  return httpStatus >= 100;
+  if (parsedStatus < 100) {
+    responseBody.clear();
+    return false;
+  }
+  httpStatus = parsedStatus;
+  return true;
 }
 
 bool InventatoryClient::postSync(const String& payload, int& httpStatus, String& responseBody) {
