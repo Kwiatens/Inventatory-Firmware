@@ -451,7 +451,13 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
     // A result that could not be shown (a screen needing dismissal is up) is
     // not acknowledged, so the desktop delivers it again after the dismissal.
     // Results for other events are acknowledged and dropped as before.
-    const bool shown = relevant ? display_.showResult(response.result) : true;
+    // A menu or confirmation owns the screen: leave the result unacknowledged so
+    // the desktop delivers it again once the operator is back at the ready screen.
+    const bool screenBusy = state_ == State::Menu || state_ == State::QuickLabels ||
+                            state_ == State::QuickSettings || state_ == State::AdjustContrast ||
+                            state_ == State::ConfirmReprovision || state_ == State::ConfirmDiscard ||
+                            state_ == State::PrintingLabel;
+    const bool shown = relevant ? (!screenBusy && display_.showResult(response.result)) : true;
     if (shown) {
       pendingResultAck_ = response.result.resultId;
       lastSyncAttempt_ = 0;
