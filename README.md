@@ -79,8 +79,8 @@ The production wiring is:
 | LCD RSE / reset | 11 |
 | LCD CS | 12 |
 | LCD SI / data | 13 |
-| GM65 TX | 43 |
-| GM65 RX | 44 |
+| ESP32 TX to GM65 RX (`GM65_TX_PIN`) | 43 |
+| ESP32 RX from GM65 TX (`GM65_RX_PIN`) | 44 |
 | Keypad columns | 0, 1, 7, 6 |
 | Keypad rows | 4, 5, 3, 2 |
 
@@ -119,8 +119,8 @@ printing.
 - `A` confirms, adds inventory, or lowers display contrast.
 - `B` removes inventory or raises display contrast.
 - `D` moves the quantity cursor or opens the next Quick Labels page.
-- A short `#` press deletes the selected quantity digit; holding `#` still
-  starts the provisioning reset gesture.
+- A short `#` press deletes the selected quantity digit; holding `#` on the
+  idle screen opens the re-pair confirmation, where `A` confirms.
 - Number keys enter quantities or select numbered menu and Quick Label entries.
 
 Quick Labels refresh automatically when opened and print immediately after a

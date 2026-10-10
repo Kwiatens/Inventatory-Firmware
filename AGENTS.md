@@ -92,8 +92,8 @@ Authoritative pin assignments are defined in `src/config/hardware.h` and
 | | RESET | `11` | Must share electrical ground with ESP32-S3 |
 | | CS (Chip Select) | `12` | Active low |
 | | SI / MOSI (Data) | `13` | SPI data out |
-| **GM65 Barcode Scanner** | TX | `43` | GM65 serial transmit -> ESP32 RX |
-| | RX | `44` | GM65 serial receive <- ESP32 TX |
+| **GM65 Barcode Scanner** | ESP32 TX (`GM65_TX_PIN`) | `43` | ESP32 transmit -> GM65 RX |
+| | ESP32 RX (`GM65_RX_PIN`) | `44` | ESP32 receive <- GM65 TX |
 | **4x4 Keypad Matrix** | Columns 1-4 | `0, 1, 7, 6` | Managed by `Keypad` library |
 | | Rows 1-4 | `4, 5, 3, 2` | Scanned and debounced on Core 1 |
 
@@ -293,7 +293,7 @@ preserved:
 
 ### Mutual authentication & key derivation
 - **Root pairing secret**: A 32-byte cryptographic random secret (represented as
-  64 hexadecimal characters) provisioned via BLE with physical button confirmation.
+  64 hexadecimal characters) provisioned via BLE. Pairing uses a passkey shown on the device LCD that changes after every attempt; three failed attempts or a five-minute advertising window lock pairing until `A` is pressed on the device.
 - **Directional keys**:
   - Request key: `HMAC-SHA256(rootToken, "Inventatory Scan R1 transport v1 client-to-server")`
   - Response key: `HMAC-SHA256(rootToken, "Inventatory Scan R1 transport v1 server-to-client")`
@@ -336,8 +336,8 @@ preserved:
   - `B`: Remove stock (-qty), or raise display contrast.
   - `C`: Menu toggle from Ready; Back, Cancel, or Dismiss elsewhere.
   - `D`: Move quantity cursor; advance to next Quick Labels page.
-  - `#`: Short press deletes selected quantity digit; holding `#` triggers the
-    provisioning reset confirmation gesture.
+  - `#`: Short press deletes selected quantity digit; holding `#` (from the idle screen only) opens
+    the "Pair with new PC?" confirmation; `A` confirms the reset.
   - `0`-`9`: Numeric digit entry or direct menu selection.
 - **Scan responsiveness**: The scanner remains active while ordinary menus are open;
   scanning immediately aborts menu navigation and returns to the inventory workflow.
