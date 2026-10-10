@@ -331,7 +331,13 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
         ESP.restart();
       }
       if (paused) resumeNetworkAfterSetupTransition();
-      display_.showQuickLabelPrintResult(false, "RESET FAILED");
+      SyncResult failure;
+      failure.resultId = "local-reset";
+      failure.eventId = "local-reset";
+      failure.status = "failed";
+      failure.code = "RESET FAILED";
+      failure.message = "Could not clear pairing";
+      display_.showLocalFailure(failure);
       state_ = State::Idle;
       return;
     }
