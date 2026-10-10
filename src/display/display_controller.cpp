@@ -202,24 +202,6 @@ void DisplayController::updateQuantityLookup(const String& itemText,
   }
 }
 
-void DisplayController::showQueued() {
-  clearContent();
-  model_.mode = DisplayUiMode::Queued;
-  model_.bodyKind = DisplayBodyKind::Task;
-  model_.rail = DisplayRailStyle::Static;
-  model_.showPcStatus = true;
-  model_.header = model_.connectivity == DisplayConnectivityState::Online ? "Sent to PC" : "Saved on device";
-  model_.primary = "Quantity change queued";
-  model_.secondary = model_.connectivity == DisplayConnectivityState::Online
-                         ? "Processing inventory"
-                         : "Will send when linked";
-  // While this transient page is shown the app is idle, so C retains the
-  // same Menu behavior advertised by the ready screen.
-  model_.actions = "C Menu";
-  resultUntilMs_ = millis() + kUiQueuedDwellMs;
-  markDirty();
-}
-
 void DisplayController::showSending() {
   clearContent();
   model_.mode = DisplayUiMode::Sending;
@@ -545,8 +527,7 @@ void DisplayController::tick() {
   if (uiDeadlineReached(now, resultUntilMs_)) {
     resultUntilMs_ = 0;
     if (uiResultDwellMayExpire(model_.mode == DisplayUiMode::Success ||
-                               model_.mode == DisplayUiMode::Warning ||
-                               model_.mode == DisplayUiMode::Queued)) {
+                               model_.mode == DisplayUiMode::Warning)) {
       showReady();
     }
   }

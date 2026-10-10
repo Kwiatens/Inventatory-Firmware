@@ -11,7 +11,6 @@ namespace inventatory_scan {
 constexpr unsigned long kUiActivityPeriodMs = 600UL;
 constexpr unsigned long kUiSuccessDwellMs = 3500UL;
 constexpr unsigned long kUiWarningDwellMs = 3000UL;
-constexpr unsigned long kUiQueuedDwellMs = 3500UL;
 
 constexpr bool displayHeaderCanShowStatus(int titleWidth, int statusWidth,
                                           int availableWidth, int gap) {
