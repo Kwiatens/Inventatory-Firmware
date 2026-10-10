@@ -12,6 +12,11 @@
 
 namespace inventatory_scan {
 
+namespace {
+// How long an OTA request waits for Wi-Fi and an uploader before giving up.
+constexpr unsigned long kOtaWaitTimeoutMs = 120000UL;
+}  // namespace
+
 void InventatoryScanApp::requestOtaUpdate() {
   if (otaRequested_) {
     Serial.println("OTA update already requested.");
@@ -25,6 +30,8 @@ void InventatoryScanApp::requestOtaUpdate() {
   resetPending();
   otaRequested_ = true;
   otaActive_ = false;
+  otaUploadStarted_ = false;
+  otaRequestedAt_ = millis();
   networkPowerOffRequested_ = false;
   networkPaused_ = true;
   scanner_.flushInput();
@@ -44,6 +51,11 @@ bool InventatoryScanApp::serviceOta() {
   if (provisionedSettings_.wifiSsid.length() == 0) {
     Serial.println("OTA request ignored because setup is incomplete.");
     recoverFromOtaFailure();
+    return false;
+  }
+
+  if (!otaUploadStarted_ && millis() - otaRequestedAt_ > kOtaWaitTimeoutMs) {
+    abandonOtaWait("OTA wait timed out; resuming normal operation.", true);
     return false;
   }
 
@@ -98,6 +110,7 @@ bool InventatoryScanApp::startOtaService() {
   ArduinoOTA.setPassword(OTA_PASSWORD);
   ArduinoOTA.onStart([this]() {
     otaActive_ = true;
+    otaUploadStarted_ = true;
     Serial.println("OTA start: flashing new firmware.");
     otaDisplayedPercent_ = 0;
     display_.showOta("UPDATING", 0);
@@ -170,9 +183,29 @@ bool InventatoryScanApp::startOtaService() {
   return true;
 }
 
+void InventatoryScanApp::abandonOtaWait(const char* reason, bool showFailure) {
+  Serial.println(reason);
+  // The service was started but never received an upload, so it can be stopped
+  // safely here (unlike from inside an ArduinoOTA callback).
+  if (otaActive_) ArduinoOTA.end();
+  recoverFromOtaFailure();
+  if (showFailure) {
+    SyncResult result;
+    result.status = "failed";
+    result.code = "OTA TIMEOUT";
+    result.message = "No update received";
+    result.resultId = "local-ota";
+    result.eventId = "local-ota";
+    display_.showLocalFailure(result);
+  } else {
+    display_.showReady();
+  }
+}
+
 void InventatoryScanApp::recoverFromOtaFailure() {
   otaRequested_ = false;
   otaActive_ = false;
+  otaUploadStarted_ = false;
   networkPowerOffRequested_ = false;
   networkPaused_ = false;
   WiFi.setSleep(true);

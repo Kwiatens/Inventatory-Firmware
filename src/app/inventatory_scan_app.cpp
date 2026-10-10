@@ -37,6 +37,7 @@ bool InventatoryScanApp::begin() {
   otaRequested_ = false;
   otaActive_ = false;
   lastSyncAttempt_ = 0;
+  bootNonce_ = esp_random() & 0xFFFFFFUL;
   syncSequence_ = 1;
   lookupSequence_ = 1;
 
