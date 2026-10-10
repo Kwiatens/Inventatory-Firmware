@@ -38,6 +38,7 @@ jobs:
   build:
     name: Build firmware and compile Unity image
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -95,6 +96,10 @@ jobs:
     name: Run embedded Unity assertions on hardware
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_hardware_tests }}
     runs-on: [self-hosted, windows, inventatory-scan-r1]
+    timeout-minutes: 20
+    concurrency:
+      group: scan-r1-hardware
+      cancel-in-progress: false
     steps:
       - name: Check out source
         uses: actions/checkout@v4
