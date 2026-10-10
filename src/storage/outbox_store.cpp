@@ -221,7 +221,7 @@ OutboxStore::MigrationResult OutboxStore::migrateLegacyState() {
   if (read && storedLength == sizeof(LegacyStateV4)) {
     const auto* legacy = reinterpret_cast<const LegacyStateV4*>(buffer);
     if (legacy->magic == kMagic && legacy->version == 4) {
-      memset(records_, 0, sizeof(records_));
+      resetRecords();
       const auto count = std::min<std::size_t>(legacy->count, kCapacity);
       const auto legacyHead = std::min<std::size_t>(legacy->head, kCapacity - 1U);
       for (std::size_t offset = 0; offset < count; ++offset) {
@@ -244,7 +244,7 @@ OutboxStore::MigrationResult OutboxStore::migrateLegacyState() {
   } else if (read) {
     const auto* legacy = reinterpret_cast<const LegacyState*>(buffer);
     if (legacy->magic == kMagic && legacy->version == 2) {
-      memset(records_, 0, sizeof(records_));
+      resetRecords();
       const auto count = std::min<std::size_t>(legacy->count, kCapacity);
       const auto legacyHead = std::min<std::size_t>(legacy->head, kCapacity - 1U);
       for (std::size_t offset = 0; offset < count; ++offset) {
@@ -370,9 +370,16 @@ bool OutboxStore::pop(DeviceEventRecord* event) {
 }
 
 void OutboxStore::clear() {
-  memset(records_, 0, sizeof(records_));
+  resetRecords();
   count_ = head_ = tail_ = 0;
   nextSequence_ = 1;
+}
+
+void OutboxStore::resetRecords() {
+  // Assigning a default Record states the intent directly. memset would give the
+  // same bytes, but GCC's -Wclass-memaccess rejects clearing a type that has
+  // default member initialisers.
+  for (auto& record : records_) record = Record();
 }
 
 OutboxStore::RepairResult OutboxStore::repair(std::size_t& salvaged, std::size_t& dropped) {
