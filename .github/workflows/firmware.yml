@@ -10,6 +10,7 @@ on:
       - 'partitions.csv'
       - 'platformio.ini'
       - 'src/**'
+      - 'host-tests/**'
       - 'test/**'
       - 'tools/**'
   pull_request:
@@ -21,6 +22,7 @@ on:
       - 'partitions.csv'
       - 'platformio.ini'
       - 'src/**'
+      - 'host-tests/**'
       - 'test/**'
       - 'tools/**'
   workflow_dispatch:
@@ -91,6 +93,22 @@ jobs:
       - name: Build display smoke-test example
         working-directory: examples/gmg12864_spi_test
         run: pio run -e tenstar_esp32s3_zero
+
+  host-tests:
+    name: Run the Unity suite on the host with sanitizers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Install OpenSSL development headers
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev
+
+      - name: Build and run the suite with AddressSanitizer and UndefinedBehaviorSanitizer
+        run: make -C host-tests SANITIZE=address,undefined test
 
   hardware-tests:
     name: Run embedded Unity assertions on hardware
