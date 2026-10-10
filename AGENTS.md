@@ -94,7 +94,7 @@ Authoritative pin assignments are defined in `src/config/hardware.h` and
 | | SI / MOSI (Data) | `13` | SPI data out |
 | **GM65 Barcode Scanner** | ESP32 TX (`GM65_TX_PIN`) | `43` | ESP32 transmit -> GM65 RX |
 | | ESP32 RX (`GM65_RX_PIN`) | `44` | ESP32 receive <- GM65 TX |
-| **4x4 Keypad Matrix** | Columns 1-4 | `0, 1, 7, 6` | Managed by `Keypad` library |
+| **4x4 Keypad Matrix** | Columns 1-4 | `0, 1, 7, 6` | Scanned by first-party code in `src/keypad/keypad.cpp` |
 | | Rows 1-4 | `4, 5, 3, 2` | Scanned and debounced on Core 1 |
 
 ---
