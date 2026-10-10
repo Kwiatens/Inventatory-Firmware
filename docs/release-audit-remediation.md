@@ -18,7 +18,7 @@ hardware or production provisioning evidence.
 | ID | Severity | Disposition | Implementation and regression evidence | Remaining verification |
 | --- | --- | --- | --- | --- |
 | FW-001 | P1 | Implemented | Outbox slot/header mutations are staged and committed without destructive namespace clearing; failed pop retains the event. `prepareOutboxPop` regression coverage and test-image compilation pass. | Execute NVS write/read/power-loss fault matrix on hardware. |
-| FW-002 | P1 | Implemented | One scan completed during `WaitingForResult` is retained in `deferredScan_` and processed after the result; it is no longer consumed and discarded. | Hardware UART test with result delay, repeated scans, and buffer saturation. |
+| FW-002 | P1 | Implemented | One scan completed during `WaitingForResult` is retained in `deferredScan_` and processed after the result. Only one scan is kept: further scans during the wait are drained from the UART and ignored with a serial note. | Hardware UART test with result delay, repeated scans, and buffer saturation. |
 | FW-003 | P1 | Implemented | Every handled OTA failure clears OTA state, restores Wi-Fi sleep, resumes the network worker, and returns UI state to idle. | Inject each ArduinoOTA error on hardware and verify scanning/reconnection. |
 | FW-004 | P1 | Verified statically | Tests now assert protocol v1 paths/vectors and current display clipping behavior; firmware and embedded test images compile. | Run Unity assertions on a connected ESP32-S3. |
 | FW-005 | P1 | Implemented | Root GPL-3.0-only license, clean-checkout configuration bootstrap, and build/upload documentation added. | Repeat on a fresh public clone in CI. |

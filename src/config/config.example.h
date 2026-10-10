@@ -21,7 +21,8 @@ const int KEYPAD_ROW_2_PIN = 5;
 const int KEYPAD_ROW_3_PIN = 3;
 const int KEYPAD_ROW_4_PIN = 2;
 
-// GM65 barcode scanner wiring.
+// GM65 barcode scanner wiring, named from the ESP32's side:
+// GM65_TX_PIN is the ESP32 transmit pin (to GM65 RX), GM65_RX_PIN the ESP32 receive pin (from GM65 TX).
 const int GM65_TX_PIN = 43;
 const int GM65_RX_PIN = 44;
 
