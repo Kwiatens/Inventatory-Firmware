@@ -35,6 +35,7 @@ class InventatoryScanApp {
     QuickSettings,
     AdjustContrast,
     ConfirmReprovision,
+    ConfirmDiscard,
     PrintingLabel,
   };
 
@@ -174,6 +175,9 @@ class InventatoryScanApp {
   String pendingQuickLabelPrintId_;
   uint8_t pendingQuickLabelPresetIndex_ = 0;
   uint32_t pendingQuickLabelRevision_ = 0;
+  String lastSyncHeadEventId_;
+  uint8_t outboxBlockedStreak_ = 0;
+  bool outboxBlocked_ = false;
 };
 
 }  // namespace inventatory_scan
