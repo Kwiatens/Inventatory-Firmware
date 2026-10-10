@@ -250,6 +250,11 @@ void InventatoryScanApp::maybeSync() {
   DeviceEventRecord events[kSyncBatchSize];
   std::size_t eventCount = 0;
   while (eventCount < kSyncBatchSize && outbox_.peek(eventCount, events[eventCount])) ++eventCount;
+  if (eventCount > 0) {
+    lastSyncHeadEventId_ = events[0].eventId;
+  } else {
+    lastSyncHeadEventId_.clear();
+  }
   String acknowledgements[1];
   const std::size_t ackCount = pendingResultAck_.length() > 0 ? 1U : 0U;
   if (ackCount > 0) acknowledgements[0] = pendingResultAck_;
@@ -315,6 +320,16 @@ void InventatoryScanApp::processNetworkResult() {
       result.message = status == 426 ? "Protocol v1 required" : "Check device token";
       display_.showResult(result);
     }
+    if (sent && status >= 400 && status <= 499 && status != 401 && status != 426) {
+      DeviceEventRecord front;
+      if (!outbox_.empty() && outbox_.peek(0, front) && front.eventId == lastSyncHeadEventId_) {
+        outboxBlockedStreak_++;
+        if (outboxBlockedStreak_ == 5) {
+          outboxBlocked_ = true;
+          display_.setSyncBlocked(outboxBlocked_);
+        }
+      }
+    }
     return;
   }
 
@@ -362,6 +377,8 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
     state_ = State::Idle;
     display_.showQuickLabelPrintResult(success, message.length() > 0 ? message : "PRINT RESULT UNKNOWN");
   }
+  bool poppedAny = false;
+  bool headAccepted = false;
   while (!outbox_.empty()) {
     DeviceEventRecord front;
     if (!outbox_.peek(0, front)) break;
@@ -373,11 +390,31 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
       }
     }
     if (!accepted) break;
+    headAccepted = true;
     if (!outbox_.pop()) {
       // Keep the event queued when its acknowledgement could not be made
       // durable; the next sync attempt can retry it without data loss.
       Serial.println("Outbox acknowledgement was not persisted; retaining event.");
       break;
+    }
+    poppedAny = true;
+  }
+  if (poppedAny || outbox_.empty() || headAccepted) {
+    if (outboxBlockedStreak_ > 0 || outboxBlocked_) {
+      outboxBlockedStreak_ = 0;
+      if (outboxBlocked_) {
+        outboxBlocked_ = false;
+        display_.setSyncBlocked(outboxBlocked_);
+      }
+    }
+  } else {
+    DeviceEventRecord front;
+    if (!outbox_.empty() && outbox_.peek(0, front) && front.eventId == lastSyncHeadEventId_) {
+      outboxBlockedStreak_++;
+      if (outboxBlockedStreak_ == 5) {
+        outboxBlocked_ = true;
+        display_.setSyncBlocked(outboxBlocked_);
+      }
     }
   }
   if (isCurrentLookupResult(response, activeLookupId_)) {
