@@ -37,6 +37,28 @@ hardware or production provisioning evidence.
 The desktop and firmware contract is documented in the [shared transport v1
 protocol specification](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/scanner-transport-security.md).
 
+## Code-review remediation (branch `fix/review-remediation`)
+
+A second, model-assisted review found the items below. Each is implemented in
+source and compiles; none has been exercised on hardware.
+
+| Area | Change | Remaining verification |
+| --- | --- | --- |
+| Display | Result dwell timer is cancelled by every screen change; local save failures preempt stale results. | Scan twice within 3.5 s on hardware; fill the queue while a result is deferred. |
+| Keypad | Holding `#` opens the re-pair confirmation (idle only); `C` returns to Ready. | Keypad walkthrough. |
+| BLE setup | Passkey rotates after every attempt, three failures or five minutes lock pairing until `A`, bonds removed, stack calls stay on Core 1. | Pair with a real central; repeated wrong passkeys; lockout and re-arm. |
+| OTA | Ignored in setup, two minute wait timeout, `C` cancels, placeholder password rejected at build time. | Time out and cancel on hardware. |
+| Transport | HTTP status is published only after the response MAC verifies; counters are reserved in blocks of 32; a missing counter key fails closed; `null` optional sync objects are accepted as absent. | Live exchange with the desktop; reboot mid-block. |
+| Outbox | Operator-confirmed discard of a stuck head event; legacy migration only without a current header; bounded legacy string copies. | NVS fault injection (also FW-001, FW-010). |
+| Quantity | A typed `0` can no longer produce a hidden default quantity. | Hardware keypad check. |
+| CI | The logging gate fails closed and has real patterns; jobs have timeouts. | First CI run. |
+
+Open items that need hardware or desktop behaviour: unreadable-queue recovery
+at boot (a bad slot blocks scanning until NVS is erased), verifying GM65 replies
+to configuration writes (boot success still derives from UART write counts),
+OTA rollback (the Arduino bootloader has no app rollback; recovery is USB), and
+the GM65 TX/RX wiring names against the physical board.
+
 ## Build and test evidence
 
 - USB firmware: `pio run -e tenstar_esp32s3_zero_usb` — passed.
