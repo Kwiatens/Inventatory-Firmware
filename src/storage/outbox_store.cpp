@@ -255,7 +255,9 @@ bool OutboxStore::load() {
     loaded_ = true;
     return true;
   }
-  const bool legacyPresent = prefs_.isKey(kLegacyStateKey);
+  // Migration only runs while no current-layout header exists. If a header is
+  // present but unreadable, adopting the old blob would overwrite a live queue.
+  const bool legacyPresent = prefs_.isKey(kLegacyStateKey) && !prefs_.isKey(kHeaderKey);
   if (legacyPresent) {
     const auto migration = migrateLegacyState();
     if (migration == MigrationResult::Migrated) {

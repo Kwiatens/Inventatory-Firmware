@@ -93,6 +93,7 @@ void InventatoryScanApp::requestQuickLabelPrint(uint8_t presetIndex) {
   }
   pendingQuickLabelPrintId_ = clientConfig_.deviceId + String("-label-") + String(bootNonce_, HEX) + String("-") +
                                 String(syncSequence_++);
+  pendingQuickLabelPrintStartedAt_ = millis();
   pendingQuickLabelPresetIndex_ = presetIndex;
   pendingQuickLabelRevision_ = quickLabelRevision_;
   state_ = State::PrintingLabel;
