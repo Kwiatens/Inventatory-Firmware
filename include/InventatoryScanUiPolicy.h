@@ -8,9 +8,12 @@
 
 namespace inventatory_scan {
 
-constexpr unsigned long kUiActivityPeriodMs = 600UL;
-constexpr unsigned long kUiSuccessDwellMs = 3500UL;
-constexpr unsigned long kUiWarningDwellMs = 3000UL;
+// Timestamps are millis() values. They are 32-bit on the ESP32 and wrap every
+// 49.7 days, so the helpers below use fixed-width types. Their results then
+// match on the device and on a 64-bit host, which the tests rely on.
+constexpr uint32_t kUiActivityPeriodMs = 600U;
+constexpr uint32_t kUiSuccessDwellMs = 3500U;
+constexpr uint32_t kUiWarningDwellMs = 3000U;
 
 constexpr bool displayHeaderCanShowStatus(int titleWidth, int statusWidth,
                                           int availableWidth, int gap) {
@@ -36,38 +39,39 @@ constexpr bool scanMayInterruptUi(bool setupMode, bool standby, bool otaActive,
   return !setupMode && !standby && !otaActive && !destructiveConfirmation && !printing;
 }
 
-constexpr bool uiActivityAlternate(unsigned long now) {
-  return ((now / kUiActivityPeriodMs) % 2UL) != 0UL;
+constexpr bool uiActivityAlternate(uint32_t now) {
+  return ((now / kUiActivityPeriodMs) % 2U) != 0U;
 }
 
 constexpr bool uiActivityEnabled(bool standby, bool activityOwnedByState) {
   return !standby && activityOwnedByState;
 }
 
-constexpr unsigned long uiRailSweepLegStep(unsigned long now, unsigned long stepPeriodMs,
-                                           int stepsPerLeg) {
-  return ((now / stepPeriodMs) % (static_cast<unsigned long>(stepsPerLeg) * 2UL)) <=
-                 static_cast<unsigned long>(stepsPerLeg)
-             ? (now / stepPeriodMs) % (static_cast<unsigned long>(stepsPerLeg) * 2UL)
-             : static_cast<unsigned long>(stepsPerLeg) * 2UL -
-                   ((now / stepPeriodMs) % (static_cast<unsigned long>(stepsPerLeg) * 2UL));
+// Triangle wave over one sweep: 0, 1, ..., stepsPerLeg, ..., 1, then repeats.
+constexpr uint32_t uiRailSweepLegStep(uint32_t now, uint32_t stepPeriodMs, int stepsPerLeg) {
+  return ((now / stepPeriodMs) % (static_cast<uint32_t>(stepsPerLeg) * 2U)) <=
+                 static_cast<uint32_t>(stepsPerLeg)
+             ? (now / stepPeriodMs) % (static_cast<uint32_t>(stepsPerLeg) * 2U)
+             : static_cast<uint32_t>(stepsPerLeg) * 2U -
+                   ((now / stepPeriodMs) % (static_cast<uint32_t>(stepsPerLeg) * 2U));
 }
 
-constexpr int uiRailSweepOffset(unsigned long now, unsigned long stepPeriodMs, int travel,
-                                int stepsPerLeg) {
+constexpr int uiRailSweepOffset(uint32_t now, uint32_t stepPeriodMs, int travel, int stepsPerLeg) {
   return stepPeriodMs == 0 || travel <= 0 || stepsPerLeg <= 0
              ? 0
              : static_cast<int>((uiRailSweepLegStep(now, stepPeriodMs, stepsPerLeg) *
-                                 static_cast<unsigned long>(travel) +
-                                 static_cast<unsigned long>(stepsPerLeg / 2)) /
-                                static_cast<unsigned long>(stepsPerLeg));
+                                     static_cast<uint32_t>(travel) +
+                                 static_cast<uint32_t>(stepsPerLeg / 2)) /
+                                static_cast<uint32_t>(stepsPerLeg));
 }
 
 // A result dwell may only return to Ready while a result screen is still shown.
 constexpr bool uiResultDwellMayExpire(bool resultScreenVisible) { return resultScreenVisible; }
 
-constexpr bool uiDeadlineReached(unsigned long now, unsigned long deadline) {
-  return deadline != 0 && static_cast<long>(now - deadline) >= 0;
+// True once now has reached deadline. A deadline of 0 means "none". The signed
+// difference keeps the comparison correct across millis() wrap-around.
+constexpr bool uiDeadlineReached(uint32_t now, uint32_t deadline) {
+  return deadline != 0 && static_cast<int32_t>(now - deadline) >= 0;
 }
 
 // The dot of the ›i mark is split into four slots, one bit each in reading
