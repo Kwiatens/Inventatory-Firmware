@@ -597,6 +597,12 @@ inline bool parseSyncResult(const SyncJsonParser& parser, const JsonValueView& o
          isInventoryResultStatus(result.status);
 }
 
+// An optional member serialised as JSON null is treated exactly as absent. Any other
+// present kind is still passed to the caller's kind check and rejected there.
+inline bool isPresentOptionalMember(const JsonValueView& member, bool found) {
+  return found && member.kind != JsonValueKind::Null;
+}
+
 inline SyncResponse parseSyncResponseJson(const String& body) {
   SyncResponse response;
   if (body.length() > kMaxHttpBodyBytes) return response;
@@ -646,7 +652,7 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
   response.hasResult = resultCount > 0;
 
   if (!parser.objectMember(root, "lookupResult", field, found)) return response;
-  if (found) {
+  if (isPresentOptionalMember(field, found)) {
     if (field.kind != JsonValueKind::Object ||
         !jsonStringField(parser, field, "lookupId", response.lookupId, true) ||
         !jsonStringField(parser, field, "status", response.lookupStatus, true) ||
@@ -660,7 +666,7 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
 
   JsonValueView quickLabelsObject;
   if (!parser.objectMember(root, "quickLabels", quickLabelsObject, found)) return response;
-  if (found) {
+  if (isPresentOptionalMember(quickLabelsObject, found)) {
     int revision = 0;
     JsonValueView presetsArray;
     JsonValueView presetValues[kQuickLabelPresetLimit];
@@ -685,7 +691,7 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
 
   JsonValueView quickLabelPrint;
   if (!parser.objectMember(root, "quickLabelPrintResult", quickLabelPrint, found)) return response;
-  if (found) {
+  if (isPresentOptionalMember(quickLabelPrint, found)) {
     if (quickLabelPrint.kind != JsonValueKind::Object ||
         !jsonStringField(parser, quickLabelPrint, "requestId", response.quickLabelPrintRequestId, true) ||
         !jsonStringField(parser, quickLabelPrint, "status", response.quickLabelPrintStatus, true) ||
