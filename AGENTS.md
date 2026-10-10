@@ -124,7 +124,7 @@ agents must distinguish between immutable invariants and mutable implementation 
    is confirmed and the queue index update is durably committed to NVS.
 7. **Concurrency boundaries**: No U8g2 display rendering or keypad polling may
    occur from Core 0 (Network worker). No blocking network calls may occur from
-   Core 1 (UI loop).
+   Core 1 (UI loop), except the ArduinoOTA upload exception in section 6.
 8. **NVS namespace safety**: NVS namespace identifiers must not exceed 15
    characters (plus null terminator). Calling `clear()` on the outbox namespace
    is prohibited.
@@ -170,7 +170,7 @@ agents must distinguish between immutable invariants and mutable implementation 
 │   ├── config/                 # Pinned pins, versioning, and configuration
 │   │   ├── config.example.h    # Tracked template for private settings
 │   │   ├── config.h            # Private, uncommitted build configuration (ignored)
-│   │   ├── hardware.h          # LCD, GM65, and Keypad GPIO definitions
+│   │   ├── hardware.h          # LCD GPIO, contrast, and recovery constants
 │   │   └── version.h           # Firmware version strings
 │   ├── display/                # Graphic LCD driver subsystem (U8g2)
 │   │   ├── display_controller.h/.cpp # Contrast persistence & frame scheduling
@@ -207,6 +207,10 @@ The firmware utilizes both ESP32-S3 cores using FreeRTOS:
 - Polls GM65 UART and parses barcode symbologies.
 - Scans and debounces the 4x4 keypad matrix.
 - Drives U8g2 display rendering and contrast updates.
+- Runs the ArduinoOTA upload (`ArduinoOTA.handle()` in `serviceOta()`) to completion
+  inside `loop()`. This is the only blocking network exception on Core 1. It runs only
+  when an OTA was requested with setup complete and saved Wi-Fi, `networkPauseAcknowledged_`
+  is true, and Wi-Fi is connected. Progress is drawn from the `onProgress` callback.
 
 ### Core 0: Background network worker task
 - Runs `networkTaskEntry` pinned to Core 0 with dedicated stack (8,192 bytes).
@@ -219,8 +223,9 @@ The firmware utilizes both ESP32-S3 cores using FreeRTOS:
 1. **Display isolation**: Core 0 (Network worker) must **never** call `display_`,
    U8g2 methods, or keypad polling. All visual updates and hardware input remain
    on Core 1.
-2. **Non-blocking UI**: Core 1 must **never** initiate blocking network calls.
-   Jobs are passed to Core 0 via `queueSyncJob()`.
+2. **Non-blocking UI**: Core 1 must **never** initiate blocking network calls,
+   except the ArduinoOTA upload under Core 1 above. Jobs are passed to Core 0 via
+   `queueSyncJob()`.
 3. **Shared state protection**: Multi-field structures between Core 0 and Core 1
    are protected by `networkMutex_`. Lock contention must be minimal; do not hold
    `networkMutex_` during network I/O or display rendering.
@@ -242,7 +247,7 @@ Storage (NVS) partition (`0x5000` / 20 KiB).
 - **Namespaces**:
   - `inv_outbox`: Offline scan queue.
   - `inv_setup`: Provisioned Wi-Fi credentials and 32-byte pairing token.
-  - `inv_settings`: Persisted display contrast and device preferences.
+  - `inv_device`: Persisted display contrast and device preferences.
 - **15-character namespace limit**: NVS namespace strings must not exceed 15
   characters plus null terminator. Longer strings fail silently with `KEY_TOO_LONG`.
 - **Per-record keys**: To avoid multi-page NVS chunk churn that rapidly exhausts
@@ -338,6 +343,8 @@ preserved:
   - `D`: Move quantity cursor; advance to next Quick Labels page.
   - `#`: Short press deletes selected quantity digit; holding `#` (from the idle screen only) opens
     the "Pair with new PC?" confirmation; `A` confirms the reset.
+  - `D` hold (about 1.8 s, `*` not pressed): toggles standby; ignored unless on the idle screen.
+  - `*` + `D` hold (about 1.8 s): requests an OTA update; ignored if setup is incomplete.
   - `0`-`9`: Numeric digit entry or direct menu selection.
 - **Scan responsiveness**: The scanner remains active while ordinary menus are open;
   scanning immediately aborts menu navigation and returns to the inventory workflow.
