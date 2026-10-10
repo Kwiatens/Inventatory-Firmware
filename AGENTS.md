@@ -311,8 +311,10 @@ preserved:
 
 ### Replay protection & request counters
 - Request counters are unsigned 64-bit integers (`uint64_t`).
-- The device reserves the next counter in NVS (`SetupStateStore::reserveTransportCounter`)
-  before transmission. Failed requests are retried with newly incremented counters.
+- The device reserves counters in NVS (`SetupStateStore::reserveTransportCounter`)
+  before transmission, in blocks of 32: the persisted value is a ceiling at or above
+  every counter handed out, so a reset skips counters but never reuses one. Failed
+  requests are retried with newly incremented counters.
 - The desktop rejects any request with a counter less than or equal to the highest
   accepted counter.
 
