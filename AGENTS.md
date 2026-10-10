@@ -184,7 +184,7 @@ agents must distinguish between immutable invariants and mutable implementation 
 │   ├── net/                    # HTTP client and transport
 │   │   └── inventatory_client.h/.cpp # Endpoint discovery, HMAC signing, HTTP transport
 │   ├── setup/                  # BLE provisioning
-│   │   ├── ble_provisioning.h/.cpp   # NimBLE service, physical pairing handshake
+│   │   ├── ble_provisioning.h/.cpp   # Arduino BLE (Bluedroid) service, passkey pairing
 │   │   └── setup_state_store.h/.cpp  # NVS store for Wi-Fi and pairing secrets
 │   └── storage/                # Persistent NVS storage engines
 │       ├── device_settings_store.h/.cpp # Contrast, display options, counters
