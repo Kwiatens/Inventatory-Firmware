@@ -284,11 +284,4 @@ bool InventatoryClient::postSync(const String& payload, int& httpStatus, String&
   return sendJson("/api/v1/device/sync", payload, httpStatus, responseBody);
 }
 
-String InventatoryClient::endpointSummary() const {
-  if (!endpointValid_) {
-    return String("offline");
-  }
-  return endpointIp_.toString() + ":" + String(endpointPort_);
-}
-
 }  // namespace inventatory_scan
