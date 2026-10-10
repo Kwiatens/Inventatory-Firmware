@@ -39,6 +39,7 @@ class InventatoryScanApp {
     AdjustContrast,
     ConfirmReprovision,
     ConfirmDiscard,
+    ConfirmRepair,
     PrintingLabel,
   };
 
