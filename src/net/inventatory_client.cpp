@@ -207,7 +207,8 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
   httpStatus = 0;
   responseBody.clear();
   String response;
-  response.reserve(1024);
+  // Reserve the largest permitted response once, rather than growing it while the body arrives.
+  response.reserve(kMaxHttpResponseBytes);
   int headerEnd = -1;
   const auto started = millis();
   while (millis() - started < kHttpResponseTimeoutMs) {
