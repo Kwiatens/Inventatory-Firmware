@@ -1,16 +1,44 @@
 # Inventatory Scan R1 firmware
 
+[![Firmware CI](https://github.com/Kwiatens/Inventatory-Firmware/actions/workflows/firmware.yml/badge.svg)](https://github.com/Kwiatens/Inventatory-Firmware/actions/workflows/firmware.yml)
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
+
 This repository contains the public firmware for the Inventatory Scan R1
-scanner. It targets the Tenstar ESP32-S3-Zero board and uses PlatformIO with
-the Arduino framework.
+scanner, a handheld barcode scanner that records stock changes and syncs them
+to the [Inventatory](https://github.com/Kwiatens/Inventatory-Software) desktop
+application. It targets the Tenstar ESP32-S3-Zero board and uses PlatformIO
+with the Arduino framework.
+
+What it does: reads 1D/2D labels through a GM65 scanner, lets the operator
+enter a quantity on a 4x4 keypad and a 128x64 LCD, keeps every scan in a
+durable offline queue, pairs with the desktop over BLE, and syncs over Wi-Fi
+with a mutually authenticated protocol (HMAC-SHA-256 with directional keys and
+replay counters).
+
+> **Status:** pre-release (`0.1.0`, see [CHANGELOG.md](CHANGELOG.md)). The code
+> builds in CI, but the on-hardware release gates in
+> [docs/release-audit-remediation.md](docs/release-audit-remediation.md) are
+> still open. Do not rely on it for production use before they are closed.
+
+## Documentation map
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): how to contribute.
+- [SECURITY.md](SECURITY.md): private vulnerability reporting and the transport security boundary.
+- [AGENTS.md](AGENTS.md): architecture, invariants and verification rules (also the guide for coding agents).
+- [docs/RELEASING.md](docs/RELEASING.md): release and repository-settings checklist.
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): licenses of the dependencies.
 
 ## Clean-checkout setup
 
 Install PlatformIO Core 6.1.19 (the CI workflow uses this exact version), then
 create the private build configuration from the tracked, non-secret example:
 
+```bash
+cp src/config/config.example.h src/config/config.h                  # Linux / macOS
+```
+
 ```powershell
-Copy-Item src/config/config.example.h src/config/config.h
+Copy-Item src/config/config.example.h src/config/config.h           # Windows
 ```
 
 Edit `src/config/config.h` for the board being built. This file is ignored by
@@ -97,14 +125,15 @@ dependency. Do not change these to floating ranges without a reviewed update:
 | Package | Version | License / source |
 | --- | ---: | --- |
 | `espressif32` platform | 7.0.1 | [Apache-2.0](https://github.com/platformio/platform-espressif32/blob/develop/LICENSE) |
-| `chris--a/Keypad` | 3.1.1 | [MIT](https://github.com/Chris--A/Keypad/blob/master/LICENSE) |
+| `chris--a/Keypad` | 3.1.1 | [LGPL-2.1](https://github.com/Chris--A/Keypad) per source headers; the bundled `LICENSE` is GPL-3.0 text (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)) |
 | `olikraus/U8g2` | 2.35.30 | [BSD-2-Clause](https://github.com/olikraus/u8g2/blob/master/LICENSE) |
 | `throwtheswitch/Unity` | 2.6.1 | [MIT](https://github.com/ThrowTheSwitch/Unity/blob/master/LICENSE.txt) |
 
 Inventatory firmware code is distributed under GPL-3.0-only; see the tracked
-root `LICENSE`. Upstream dependency notices and license terms remain the
-responsibility of any binary or source distribution that includes those
-dependencies.
+root `LICENSE`. Dependency licenses, including the LGPL components, are
+recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Upstream notices
+and license terms remain the responsibility of any binary or source
+distribution that includes those dependencies.
 
 Report suspected vulnerabilities privately as described in `SECURITY.md`.
 
