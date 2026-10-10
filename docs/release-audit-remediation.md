@@ -49,6 +49,7 @@ source and compiles; none has been exercised on hardware.
 | BLE setup | Passkey rotates after every attempt, three failures or five minutes lock pairing until `A`, bonds removed, stack calls stay on Core 1. | Pair with a real central; repeated wrong passkeys; lockout and re-arm. |
 | OTA | Ignored in setup, two minute wait timeout, `C` cancels, placeholder password rejected at build time. | Time out and cancel on hardware. |
 | Transport | HTTP status is published only after the response MAC verifies; counters are reserved in blocks of 32; a missing counter key fails closed; `null` optional sync objects are accepted as absent. | Live exchange with the desktop; reboot mid-block. |
+| OTA rollback | A new OTA image stays pending-verify until the app has run for 30 s; a reset before that returns to the previous image (the Arduino core's automatic confirmation is disabled). | Flash a deliberately crashing OTA image and confirm the previous image returns. |
 | Outbox | Operator-confirmed discard of a stuck head event; legacy migration only without a current header; bounded legacy string copies. | NVS fault injection (also FW-001, FW-010). |
 | Quantity | A typed `0` can no longer produce a hidden default quantity. | Hardware keypad check. |
 | CI | The logging gate fails closed and has real patterns; jobs have timeouts. | First CI run. |
@@ -56,7 +57,7 @@ source and compiles; none has been exercised on hardware.
 Open items that need hardware or desktop behaviour: unreadable-queue recovery
 at boot (a bad slot blocks scanning until NVS is erased), verifying GM65 replies
 to configuration writes (boot success still derives from UART write counts),
-OTA rollback (the Arduino bootloader has no app rollback; recovery is USB), and
+OTA rollback (implemented with the SDK's app rollback: a new OTA image stays pending until it runs 30 s, but a crash-before-confirm rollback has not been exercised on hardware), and
 the GM65 TX/RX wiring names against the physical board.
 
 ## Build and test evidence
