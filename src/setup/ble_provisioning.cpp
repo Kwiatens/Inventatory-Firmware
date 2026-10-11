@@ -32,6 +32,11 @@ constexpr unsigned long kAdvertisingWindowMs = 5UL * 60UL * 1000UL;
 class ServerCallbacks final : public BLEServerCallbacks {
  public:
   explicit ServerCallbacks(BleProvisioning& owner) : owner_(owner) {}
+  // Connection events carry no secrets; logging them shows where a pairing attempt ends.
+  void onConnect(BLEServer*, esp_ble_gatts_cb_param_t*) override { Serial.println("BLE: client connected"); }
+  void onDisconnect(BLEServer*, esp_ble_gatts_cb_param_t* param) override {
+    Serial.printf("BLE: client disconnected, reason 0x%02x\r\n", static_cast<unsigned>(param->disconnect.reason));
+  }
   void onDisconnect(BLEServer* server) override {
     // Keep first-use setup discoverable after a failed/cancelled attempt.
     owner_.onClientDisconnected();
@@ -49,6 +54,11 @@ class SecurityCallbacks final : public BLESecurityCallbacks {
   bool onSecurityRequest() override { return true; }
   bool onConfirmPIN(uint32_t pin) override { return pin == owner_.pairingCode(); }
   void onAuthenticationComplete(esp_ble_auth_cmpl_t result) override {
+    if (result.success) {
+      Serial.println("BLE: pairing succeeded");
+    } else {
+      Serial.printf("BLE: pairing failed, reason 0x%02x\r\n", static_cast<unsigned>(result.fail_reason));
+    }
     owner_.onAuthenticationResult(result.success);
   }
  private:
@@ -77,7 +87,8 @@ bool BleProvisioning::begin(const String& deviceId) {
   clientDisconnected_ = false;
   pairingCode_ = 100000UL + (esp_random() % 900000UL);
   const auto suffix = deviceId.length() > 4 ? deviceId.substring(deviceId.length() - 4) : deviceId;
-  BLEDevice::init(("Inventatory Setup " + suffix).c_str());
+  const String advertisedName = String("Inventatory Setup ") + suffix;
+  BLEDevice::init(advertisedName.c_str());
   // Forget peers bonded in earlier setup sessions; a bond would let them
   // reconnect without the passkey shown on this screen.
   {
@@ -121,6 +132,14 @@ bool BleProvisioning::begin(const String& deviceId) {
   request_->setCallbacks(new RequestCallbacks(*this));
   service->start();
   server_->getAdvertising()->addServiceUUID(kServiceUuid);
+  // The advertisement carries flags and the setup service UUID (21 of 31 bytes).
+  // The library's default scan response repeats that UUID next to the name and
+  // TX power, which overflows the 31-byte limit and makes Bluedroid write only
+  // part of it ("Partial data write into ADV"). The scan response therefore
+  // carries only the name.
+  BLEAdvertisementData scanResponse;
+  scanResponse.setName(advertisedName.c_str());
+  server_->getAdvertising()->setScanResponseData(scanResponse);
   server_->getAdvertising()->setScanResponse(true);
   active_ = true;
   advertisingStartedAt_ = millis();
@@ -151,7 +170,11 @@ void BleProvisioning::end() {
 void BleProvisioning::rotatePasskey() {
   if (security_ == nullptr) return;
   pairingCode_ = 100000UL + (esp_random() % 900000UL);
-  security_->setStaticPIN(pairingCode_.load());
+  // Update only the passkey. BLESecurity::setStaticPIN() would also reset the IO
+  // capability, key size and authentication mode (to SC without MITM), so every
+  // attempt after the first would pair with weaker settings than begin() set up.
+  uint32_t passkey = pairingCode_.load();
+  esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(passkey));
   passkeyChanged_ = true;
 }
 

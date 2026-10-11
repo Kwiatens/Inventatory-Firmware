@@ -14,6 +14,7 @@ enum class InventatoryKeyEventType {
   CycleCursor,
   DeleteDigit,
   PowerToggle,
+  PowerOff,
   OtaUpdate,
   ProvisioningReset,
   Other,
@@ -26,3 +27,10 @@ struct InventatoryKeyEvent {
 
 void keypadInit();
 bool keypadPoll(InventatoryKeyEvent& event);
+
+// Power key: '*' (row 4, column 1) is the only key that can wake the chip from deep sleep.
+// True while '*' is closed, as of the last scan.
+bool keypadPowerKeyDown();
+// Prepares the matrix for deep sleep. Returns false, with the matrix restored for scanning,
+// if '*' is still closed. On true the next deep sleep wakes on '*' only.
+bool keypadArmPowerKeyWake();
