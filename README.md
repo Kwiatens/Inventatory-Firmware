@@ -8,8 +8,8 @@
 
 **Open-source firmware for the Inventatory Scanner R1 device.**
 
-Purpose made scanning device for my [Inventatory](https://github.com/Kwiatens/Inventatory-Software) system.
-It allows you to interact with your inventory, without having to constantly go back and forth to your computer, during PCB work.
+Purpose made scanner for my [Inventatory](https://github.com/Kwiatens/Inventatory-Software) system.
+It allows you to interact with your inventory, without having to constantly go back and forth to your computer during PCB work.
 
 ![Release](https://img.shields.io/badge/release-v0.1.0-58B9B0?style=flat-square&labelColor=0D1010)
 [![License](https://img.shields.io/badge/license-GPL--3.0-58B9B0?style=flat-square&labelColor=0D1010)](LICENSE)
