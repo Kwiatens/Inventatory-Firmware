@@ -50,6 +50,7 @@ specifications in the tree:
   through FW-014), verification status, and hardware release gates.
 - [Shared transport v1 protocol specification](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/scanner-transport-security.md): replay counter
   mechanics and 8 KiB response-body bounds.
+- [Shared project standards](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/project-standards.md): commit, changelog, licensing, secrets and verification rules that both repositories follow.
 
 Do not guess protocol or hardware requirements when an authoritative document exists.
 
@@ -460,17 +461,20 @@ success or static analysis.
 
 ## 12. Change and commit standards
 
-Follow conventional commit formatting:
-`type(scope): subject`
+The commit format, changelog rules and AI co-author trailers are in the
+[shared project standards](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/project-standards.md).
+The firmware-specific rules are:
 
 - **Allowed types**: `feat`, `fix`, `refactor`, `perf`, `style`, `test`, `docs`,
   `build`, `ci`, `chore`, `revert`.
-- **Allowed scopes**: `app`, `net`, `scan`, `display`, `keypad`, `storage`,
-  `setup`, `security`, `ota`, `build`, `ci`, `docs`.
+- **Allowed scopes**: the shared scopes `build`, `docs`, `project` and `release`,
+  and the firmware scopes `app`, `display`, `keypad`, `net`, `ota`, `scan`,
+  `security`, `setup` and `storage`.
 - **Formatting**: Imperative present tense, lowercase start, no trailing period,
   72 characters or fewer.
-- **Content**: Never mention AI tools, prompts, or conversation IDs. Do not commit
-  credentials, local paths, or build artifacts (`.pio/`, `src/config/config.h`).
+- **Content**: Describe the change. Never include prompts, conversation IDs,
+  credentials, device identifiers, or local paths. Do not commit build artifacts
+  (`.pio/`, `src/config/config.h`).
 
 ---
 
@@ -500,4 +504,4 @@ When concluding any task, the agent must provide a factual summary containing:
 - [ ] Zero logging: Passed CI grep rules (no raw barcodes, UART buffers, or secrets logged).
 - [ ] Verification: `make -C host-tests test` passes, `pio test ... --without-uploading --without-testing` passes, and firmware builds pass.
 - [ ] Working tree: No modified `config.h`, `.pio/`, `.bin` files, or unrelated user edits in diff.
-- [ ] Commit format: Follows `type(scope): description` without AI attribution.
+- [ ] Commit format: Follows section 12 and the shared standards. New source files carry the SPDX header.
