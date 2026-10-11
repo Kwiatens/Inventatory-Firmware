@@ -28,7 +28,7 @@ It allows you to interact with your inventory, without having to constantly go b
 
 ## Build the scanner
 
-Visit [**Website**](https://kwiatens.github.io/Inventatory-Site/) &nbsp;·&nbsp; for documentation and guides on how to build the scanner.
+Visit [**Website**](https://kwiatens.github.io/Inventatory-Site/) for documentation and guides on how to build the scanner.
 
 All the information that's below is only useful, when you want to manually compile the firmware.
 
