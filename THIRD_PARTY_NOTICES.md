@@ -56,7 +56,7 @@ is Arduino-ESP32 2.0.17 on ESP-IDF v4.4.7 per `tools/sdk/versions.txt`).
   headers), BSD-2-Clause (libcoap), BSD-3-Clause (argtable3 and one lwIP
   port header), and ISC (two headers).
 - Linked: the example build's link map
-  (`examples/gmg12864_spi_test/.pio/build/tenstar_esp32s3_zero/firmware.map`)
+  (`examples/gmg12864_spi_test/.pio/build/waveshare_esp32s3_nano/firmware.map`)
   pulls in archives including `libbt`, `libbtdm_app`, `libwpa_supplicant`,
   `libnet80211`, `libesp_wifi`, `liblwip`, `libmbedcrypto`, `libmbedtls_2`,
   `libfreertos`, and `libmesh`. The main firmware uses Wi-Fi, BLE, and mbedTLS
@@ -69,7 +69,7 @@ is Arduino-ESP32 2.0.17 on ESP-IDF v4.4.7 per `tools/sdk/versions.txt`).
 
 ### U8g2 2.35.30 (BSD-2-Clause code, mixed font terms)
 
-- `.pio/libdeps/tenstar_esp32s3_zero_usb/U8g2/LICENSE` and
+- `.pio/libdeps/waveshare_esp32s3_nano_usb/U8g2/LICENSE` and
   `library.properties` (`license=BSD-2-Clause`) state the library code is under
   the two-clause BSD license (Copyright (c) 2016, olikraus@gmail.com). Binary
   redistribution must reproduce the copyright notice, the conditions, and the

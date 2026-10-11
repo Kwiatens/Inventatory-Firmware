@@ -25,7 +25,7 @@ coding agents must operate within explicit operational boundaries:
 
 ### Prohibited without explicit authorization
 - **Never flash firmware to connected hardware** (`pio run -t upload` or `esptool.py`).
-- **Never trigger over-the-air updates** (`pio run -e tenstar_esp32s3_zero_ota -t upload`).
+- **Never trigger over-the-air updates** (`pio run -e waveshare_esp32s3_nano_ota -t upload`).
 - **Never erase NVS partitions or trigger provisioning resets** (`SetupStateStore::clear()`).
 - **Never perform destructive electrical or hardware testing**.
 - **Never push git branches, open public PRs, create git tags, or publish releases**.
@@ -59,13 +59,14 @@ Do not guess protocol or hardware requirements when an authoritative document ex
 ## 3. Project overview and hardware specifications
 
 Inventatory Scan R1 is an embedded C++17 firmware application running on the
-Tenstar ESP32-S3-Zero microcontroller board.
+Waveshare ESP32-S3-Nano microcontroller board.
 
 ### Target microcontroller
 - **MCU**: Espressif ESP32-S3 (dual-core Xtensa LX7, 240 MHz).
 - **Internal RAM**: ~320 KB internal SRAM.
-- **External PSRAM**: None (0 MB). Dynamic heap memory is strictly constrained.
-- **Flash**: 4 MB SPI flash on Quad I/O (`qio`, 80 MHz).
+- **External PSRAM**: 8 MB in the ESP32-S3R8 package, not enabled in the build. Dynamic heap memory is
+  still strictly constrained to internal SRAM.
+- **Flash**: 16 MB SPI flash (W25Q128) on Quad I/O (`qio`, 80 MHz). `partitions.csv` still uses the 4 MB layout.
 - **USB**: Native USB CDC enabled at boot (`ARDUINO_USB_CDC_ON_BOOT=1`).
 - **Wireless**: Wi-Fi 4 (802.11 b/g/n, 2.4 GHz) and Bluetooth Low Energy (BLE 5.0).
 
@@ -88,15 +89,20 @@ Authoritative pin assignments are defined in `src/config/hardware.h` and
 
 | Peripheral | Signal | GPIO | Notes |
 | --- | --- | ---: | --- |
-| **GMG12864-06D SPI LCD** | SCL (Clock) | `9` | 128x64 ST7565/UC1608 controller, 3.3V |
-| | RS / DC (Command) | `10` | Driven via U8g2 4-wire SPI |
-| | RESET | `11` | Must share electrical ground with ESP32-S3 |
-| | CS (Chip Select) | `12` | Active low |
-| | SI / MOSI (Data) | `13` | SPI data out |
-| **GM65 Barcode Scanner** | ESP32 TX (`GM65_TX_PIN`) | `43` | ESP32 transmit -> GM65 RX |
-| | ESP32 RX (`GM65_RX_PIN`) | `44` | ESP32 receive <- GM65 TX |
-| **4x4 Keypad Matrix** | Columns 1-4 | `0, 1, 7, 6` | Scanned by first-party code in `src/keypad/keypad.cpp` |
-| | Rows 1-4 | `4, 5, 3, 2` | Scanned and debounced on Core 1 |
+| **GMG12864-06D SPI LCD** | SCL (Clock) | `13` (A6) | ST7565R, 3.3V, software SPI via U8g2 |
+| | RS / DC (Command) | `11` (A4) | Command/data select |
+| | RESET | `12` (A5) | Must share electrical ground with ESP32-S3 |
+| | CS (Chip Select) | `21` (D10) | Active low |
+| | SI / MOSI (Data) | `14` (A7) | SPI data out |
+| **GM65 Barcode Scanner** | ESP32 TX (`GM65_TX_PIN`) | `43` (D1/TXD) | ESP32 transmit -> GM65 RX; confirm GM65 TX is 3.3V logic |
+| | ESP32 RX (`GM65_RX_PIN`) | `44` (D0/RXD) | ESP32 receive <- GM65 TX |
+| **4x4 Keypad Matrix** | Columns 1-4 | `5, 6, 7, 8` (D2-D5) | Scanned by first-party code in `src/keypad/keypad.cpp`; all RTC GPIOs |
+| | Rows 1-4 | `9, 10, 17, 18` (D6-D9) | Scanned and debounced on Core 1; all RTC GPIOs |
+| **Power key (`*`)** | Wake column (column 1) / drive row (row 4) | `5` / `18` | Deep sleep: row 4 held low, other rows held high, column 1 wakes on low (ext1 ANY_LOW) |
+| **LiPo sense** | Divider midpoint (`BATTERY_ADC_PIN`) | `1` (A0, ADC1) | BAT+ -> 100 kOhm -> pin -> 100 kOhm -> GND, 100 nF to GND; ADC2 cannot be used with Wi-Fi |
+
+GPIO0, GPIO3, GPIO45 and GPIO46 are boot straps or the RGB LED, and GPIO48 drives the board's SCK LED.
+Do not assign them. GPIO19/20 are USB, and GPIO26-37 are flash and in-package PSRAM.
 
 ---
 
@@ -146,7 +152,7 @@ agents must distinguish between immutable invariants and mutable implementation 
 
 ```text
 ├── boards/                     # Custom PlatformIO board definitions
-│   └── tenstar_esp32s3_zero.json
+│   └── waveshare_esp32s3_nano.json
 ├── docs/                       # Architectural documentation and audit ledgers
 │   └── release-audit-remediation.md
 ├── examples/                   # Standalone smoke-test examples
@@ -187,6 +193,7 @@ agents must distinguish between immutable invariants and mutable implementation 
 │   ├── setup/                  # BLE provisioning
 │   │   ├── ble_provisioning.h/.cpp   # Arduino BLE (Bluedroid) service, passkey pairing
 │   │   └── setup_state_store.h/.cpp  # NVS store for Wi-Fi and pairing secrets
+│   ├── power/                  # LiPo voltage sense (battery_monitor)
 │   └── storage/                # Persistent NVS storage engines
 │       ├── device_settings_store.h/.cpp # Contrast, display options, counters
 │       └── outbox_store.h/.cpp # 16-slot durable FIFO outbox queue (FW-001)
@@ -352,6 +359,9 @@ preserved:
   - `#`: Short press deletes selected quantity digit; holding `#` (from the idle screen only) opens
     the "Pair with new PC?" confirmation; `A` confirms the reset.
   - `D` hold (about 1.8 s, `*` not pressed): toggles standby; ignored unless on the idle screen.
+  - `*` hold (about 1.8 s, `D` not pressed): powers off into deep sleep once `*` is released; ignored unless
+    on the idle screen, during setup, or during an OTA request. `*` is armed only after it has been seen
+    released since boot. A press of `*` wakes the chip, which restarts the firmware.
   - `*` + `D` hold (about 1.8 s): requests an OTA update; ignored if setup is incomplete.
   - `0`-`9`: Numeric digit entry or direct menu selection.
 - **Scan responsiveness**: The scanner remains active while ordinary menus are open;
@@ -372,23 +382,23 @@ Copy-Item src/config/config.example.h src/config/config.h
 ### Build firmware targets
 ```powershell
 # Build standard USB firmware (default environment)
-pio run -e tenstar_esp32s3_zero_usb
+pio run -e waveshare_esp32s3_nano_usb
 
 # Build isolated OTA firmware
-pio run -e tenstar_esp32s3_zero_ota
+pio run -e waveshare_esp32s3_nano_ota
 ```
 
 ### Unity test image compile-only check (no device required)
 Compiles the embedded Unity test image to verify types, syntax, and links without
 requiring connected hardware:
 ```powershell
-pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
+pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
 ```
 
 Hardware assertion execution uploads and runs the Unity assertions on an
 attached Scan R1 board:
 ```powershell
-pio test -e tenstar_esp32s3_zero_usb
+pio test -e waveshare_esp32s3_nano_usb
 ```
 
 ### Host unit tests (no device required)
@@ -404,7 +414,7 @@ real NVS partitions or hardware timing.
 
 ### Standalone display smoke test
 ```powershell
-pio run -d examples/gmg12864_spi_test -e tenstar_esp32s3_zero
+pio run -d examples/gmg12864_spi_test -e waveshare_esp32s3_nano
 ```
 
 ### CI security audit checks
@@ -426,7 +436,7 @@ When reporting verification results, agents must distinguish between verificatio
 2a. **Host execution** (`make -C host-tests test`): Executes the shared suite and the
    host-only durability tests on the desktop. It proves the logic, not the device
    build, real NVS or hardware timing.
-3. **Embedded hardware execution** (`pio test -e tenstar_esp32s3_zero_usb`):
+3. **Embedded hardware execution** (`pio test -e waveshare_esp32s3_nano_usb`):
    Executes assertions on a physical ESP32-S3 over serial.
 4. **End-to-end integration**: Validates live HTTP/HMAC exchange against the
    Inventatory desktop application.

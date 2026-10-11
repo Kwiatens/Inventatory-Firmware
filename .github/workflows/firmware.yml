@@ -79,20 +79,20 @@ jobs:
           reject_pattern '(Serial\.(print|println|printf)|sendDebugMessage)\(.*(scannedCode_|forwardedCode|wifiPassword|deviceToken|clientConfig_\.token|settings\.deviceToken)'
 
       - name: Build USB firmware
-        run: pio run -e tenstar_esp32s3_zero_usb
+        run: pio run -e waveshare_esp32s3_nano_usb
 
       - name: Build OTA firmware without uploading
         run: |
           # The OTA build rejects the example placeholder; use a throwaway value.
           sed -i "s/paste-your-ota-password-here/ci-only-$(openssl rand -hex 8)/" src/config/config.h
-          pio run -e tenstar_esp32s3_zero_ota
+          pio run -e waveshare_esp32s3_nano_ota
 
       - name: Compile embedded Unity image (assertions not run)
-        run: pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
+        run: pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
 
       - name: Build display smoke-test example
         working-directory: examples/gmg12864_spi_test
-        run: pio run -e tenstar_esp32s3_zero
+        run: pio run -e waveshare_esp32s3_nano
 
   host-tests:
     name: Run the Unity suite on the host with sanitizers
@@ -137,4 +137,4 @@ jobs:
         run: Copy-Item src/config/config.example.h src/config/config.h
 
       - name: Upload image and run Unity assertions
-        run: pio test -e tenstar_esp32s3_zero_usb
+        run: pio test -e waveshare_esp32s3_nano_usb

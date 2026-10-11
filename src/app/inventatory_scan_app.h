@@ -9,6 +9,7 @@
 #include "gm65/gm65_scanner.h"
 #include "keypad/keypad.h"
 #include "net/inventatory_client.h"
+#include "power/battery_monitor.h"
 #include "InventatoryScanOutbox.h"
 #include "storage/outbox_store.h"
 #include "storage/device_settings_store.h"
@@ -75,6 +76,7 @@ class InventatoryScanApp {
   void abandonOtaWait(const char* reason, bool showFailure);
   void enterStandby();
   void exitStandby();
+  void enterPowerOff();
   void submitCurrent(char action);
   void maybeSync();
   void handleSyncResponse(const SyncResponse& response);
@@ -103,6 +105,7 @@ class InventatoryScanApp {
   BleProvisioning provisioning_;
   ProvisionedSettings provisionedSettings_;
   DisplayController display_;
+  BatteryMonitor battery_;
   InventatoryClient client_;
   InventatoryClientConfig clientConfig_;
   QuantityComposer quantity_;

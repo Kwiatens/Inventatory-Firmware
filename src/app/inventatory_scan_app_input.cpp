@@ -198,6 +198,12 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     return;
   }
 
+  if (event.type == InventatoryKeyEventType::PowerOff) {
+    if (state_ != State::Idle || otaRequested_ || otaActive_) return;
+    enterPowerOff();
+    return;
+  }
+
   if (state_ == State::WaitingForResult) {
     if (event.type == InventatoryKeyEventType::Cancel) {
       Serial.println("Waiting for Inventatory to confirm the submitted change.");

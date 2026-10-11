@@ -39,14 +39,14 @@
     "arduino",
     "espidf"
   ],
-  "name": "Tenstar ESP32-S3-Zero (4MB Flash, No PSRAM)",
+  "name": "Waveshare ESP32-S3-Nano (16MB Flash, 8MB PSRAM not used)",
   "upload": {
-    "flash_size": "4MB",
+    "flash_size": "16MB",
     "maximum_ram_size": 327680,
-    "maximum_size": 4194304,
+    "maximum_size": 16777216,
     "require_upload_port": true,
     "speed": 460800
   },
-  "url": "https://pl.aliexpress.com/item/1005009890203011.html",
-  "vendor": "Tenstar"
+  "url": "https://docs.waveshare.com/ESP32-S3-Nano",
+  "vendor": "Waveshare"
 }
