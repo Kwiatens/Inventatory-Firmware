@@ -135,7 +135,7 @@ ESP32-S3. Its standalone SPI smoke test is in
 `examples/gmg12864_spi_test`; that example is independent of the production
 firmware and uses the same pinned board/platform and U8g2 version.
 
-## Pinned dependencies and licenses
+## Pinned dependencies
 
 The root `platformio.ini` pins the PlatformIO platform and every direct library
 dependency. Do not change these to floating ranges without a reviewed update:
@@ -146,13 +146,6 @@ dependency. Do not change these to floating ranges without a reviewed update:
 | `olikraus/U8g2` | 2.35.30 | [BSD-2-Clause](https://github.com/olikraus/u8g2/blob/master/LICENSE) |
 | `throwtheswitch/Unity` | 2.6.1 | [MIT](https://github.com/ThrowTheSwitch/Unity/blob/master/LICENSE.txt) |
 
-Inventatory firmware code is distributed under GPL-3.0-only; see the tracked
-root `LICENSE`. Dependency licenses, including the LGPL components, are
-recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Upstream notices
-and license terms remain the responsibility of any binary or source
-distribution that includes those dependencies.
-
-Report suspected vulnerabilities privately as described in `SECURITY.md`.
 
 ## Scan R1 controls
 
@@ -172,3 +165,11 @@ printing.
 Quick Labels refresh automatically when opened and print immediately after a
 preset is selected. Offline inventory scans remain available and are identified
 on the LCD as safely queued work.
+
+## License
+
+Inventatory firmware is licensed under GPL-3.0-only; see [LICENSE](LICENSE).
+Dependency licenses, including the LGPL components, are recorded in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Upstream notices and license
+terms remain the responsibility of any binary or source distribution that
+includes those dependencies.
