@@ -1,7 +1,20 @@
-# Inventatory Scan R1 firmware
+<div align="center">
+
+<a href="https://kwiatens.github.io/Inventatory-Site/">
+  <img src="branding/inventatory-lockup.svg" alt="Inventatory" width="560">
+</a>
+
+<sub>Scanner Firmware</sub>
 
 [![Firmware CI](https://github.com/Kwiatens/Inventatory-Firmware/actions/workflows/firmware.yml/badge.svg)](https://github.com/Kwiatens/Inventatory-Firmware/actions/workflows/firmware.yml)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
+
+[**Website**](https://kwiatens.github.io/Inventatory-Site/) &nbsp;·&nbsp;
+[Report an issue](https://github.com/Kwiatens/Inventatory-Firmware/issues)
+
+</div>
+
+---
 
 This repository contains the public firmware for the Inventatory Scan R1
 scanner, a handheld barcode scanner that records stock changes and syncs them
