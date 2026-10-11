@@ -59,5 +59,5 @@ defect is fixed. Do not weaken an assertion to make a defect pass.
 - The shims are stand-ins, not the real libraries. They do not reproduce NVS
   partition layout, flash wear, or the ESP32's 32-bit `unsigned long`. Timing helpers
   therefore use fixed-width types, so they behave the same on both targets.
-- The suite does not replace the on-board run (`pio test -e tenstar_esp32s3_zero_usb`),
+- The suite does not replace the on-board run (`pio test -e waveshare_esp32s3_nano_usb`),
   which is still required before a hardware release.

@@ -4,12 +4,12 @@
 #include <Arduino.h>
 #include <U8g2lib.h>
 
-// GMG12864-06D -> ESP32-S3 GPIO wiring.
-constexpr uint8_t kLcdClockPin = 9;   // SCL
-constexpr uint8_t kLcdDcPin = 10;     // RS
-constexpr uint8_t kLcdResetPin = 11;  // RSE
-constexpr uint8_t kLcdCsPin = 12;     // CS
-constexpr uint8_t kLcdDataPin = 13;   // SI
+// GMG12864-06D -> ESP32-S3-Nano GPIO wiring (Waveshare header labels in the comments).
+constexpr uint8_t kLcdClockPin = 13;  // SCL, A6
+constexpr uint8_t kLcdDcPin = 11;     // RS, A4
+constexpr uint8_t kLcdResetPin = 12;  // RSE, A5
+constexpr uint8_t kLcdCsPin = 21;     // CS, D10
+constexpr uint8_t kLcdDataPin = 14;   // SI, A7
 
 // The ALT variant uses the GMG12864-safe LCD bias and low contrast settings;
 // the standard ST7565 configuration can turn the entire panel dark.

@@ -145,6 +145,14 @@ void DisplayController::showBoot(const String& stage) {
   model_.brandDot = DisplayBrandDot::Fault;
 }
 
+void DisplayController::showPowerOff() {
+  showSplash();
+  model_.mode = DisplayUiMode::Boot;
+  model_.primary = "Powering off";
+  model_.secondary = "Press * to wake";
+  model_.brandDot = DisplayBrandDot::Busy;
+}
+
 void DisplayController::showReady() {
   clearContent();
   model_.mode = DisplayUiMode::Ready;

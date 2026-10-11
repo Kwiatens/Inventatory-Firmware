@@ -8,12 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Holding `*` on the Ready screen powers the device off into deep sleep. Pressing `*` wakes it and the firmware restarts.
+- The LiPo voltage is read on GPIO1 through a resistor divider and logged at boot.
 - Operator-confirmed repair of an unreadable offline queue. Readable scans are kept.
 - A faulty barcode scanner no longer stops the device from starting.
 - New firmware is confirmed only after 30 seconds of healthy running. A crash or reset before that, including powering the device off straight after an update, returns it to the previous firmware.
 - Holding `#` opens the re-pair confirmation (idle only); `C` returns to Ready.
 
 ### Changed
+- The firmware targets the Waveshare ESP32-S3-Nano (16 MB flash) instead of the Tenstar ESP32-S3-Zero. The LCD, keypad and scanner pins moved to match.
 - A result message no longer closes a screen that you have moved on to.
 - The pairing passkey changes after every attempt. Three failed attempts, or five minutes of advertising, lock pairing until `A` is pressed on the device.
 - OTA updates are ignored during setup. A request that waits longer than two minutes is abandoned, and `C` cancels it.
