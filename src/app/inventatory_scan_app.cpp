@@ -27,6 +27,8 @@ bool InventatoryScanApp::begin() {
   display_.begin();
   display_.playBootIntro();
   keypadInit();
+  battery_.begin();
+  Serial.printf("Battery %lu mV\r\n", static_cast<unsigned long>(battery_.readMillivolts()));
   if (!scanner_.begin(9600)) {
     Serial.println("Scanner initialization failed; verify the GM65 connection and profile.");
     display_.showBoot("Scanner error");

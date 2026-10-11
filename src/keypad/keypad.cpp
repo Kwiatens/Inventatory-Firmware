@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include <Arduino.h>
+#include <driver/rtc_io.h>
+#include <esp_sleep.h>
 
 #include "config/config.h"
 #include "keypad.h"
@@ -15,11 +17,14 @@ enum class HoldGesture {
   Power,
   Ota,
   ProvisioningReset,
+  PowerOff,
 };
 
 HoldGesture holdGesture_ = HoldGesture::None;
 bool dShortPressPending_ = false;
 bool hashShortPressPending_ = false;
+// '*' holds power the device off only after it has been seen released since boot.
+bool starPowerArmed_ = false;
 
 enum KeyState { IDLE, PRESSED, HOLD, RELEASED };
 
@@ -28,7 +33,7 @@ constexpr byte kColumns = 4;
 constexpr byte kKeyCount = kRows * kColumns;
 constexpr unsigned long kScanIntervalMs = 20UL;
 
-const char kKeyTable[kRows][kColumns] = {
+constexpr char kKeyTable[kRows][kColumns] = {
     {'1', '2', '3', 'A'},
     {'4', '5', '6', 'B'},
     {'7', '8', '9', 'C'},
@@ -37,6 +42,21 @@ const char kKeyTable[kRows][kColumns] = {
 const byte kRowPins[kRows] = {KEYPAD_ROW_1_PIN, KEYPAD_ROW_2_PIN, KEYPAD_ROW_3_PIN, KEYPAD_ROW_4_PIN};
 const byte kColumnPins[kColumns] = {KEYPAD_COLUMN_1_PIN, KEYPAD_COLUMN_2_PIN, KEYPAD_COLUMN_3_PIN,
                                     KEYPAD_COLUMN_4_PIN};
+
+// The '*' key is row 4, column 1 of kKeyTable: the only key that can wake the chip from deep sleep.
+constexpr int kStarRow = 3;
+constexpr int kStarColumn = 0;
+static_assert(kKeyTable[kStarRow][kStarColumn] == '*', "kStarRow and kStarColumn must address the * key");
+
+// ESP32-S3 RTC GPIOs are 0-21. Deep sleep keeps levels and pulls only on these pins, and only they can wake the chip.
+constexpr bool isRtcGpio(int pin) {
+  return pin >= 0 && pin <= 21;
+}
+static_assert(isRtcGpio(KEYPAD_ROW_1_PIN) && isRtcGpio(KEYPAD_ROW_2_PIN) && isRtcGpio(KEYPAD_ROW_3_PIN) &&
+                  isRtcGpio(KEYPAD_ROW_4_PIN) && isRtcGpio(KEYPAD_COLUMN_1_PIN) &&
+                  isRtcGpio(KEYPAD_COLUMN_2_PIN) && isRtcGpio(KEYPAD_COLUMN_3_PIN) &&
+                  isRtcGpio(KEYPAD_COLUMN_4_PIN),
+              "Every keypad line must be an RTC GPIO (0-21) so the * key can wake the chip from deep sleep");
 
 struct Key {
   char kchar = 0;
@@ -140,11 +160,26 @@ int findKeyIndexForChar(MatrixKeypad& keypadRef, char keyChar) {
   return -1;
 }
 
+// Deep sleep leaves RTC holds on the matrix pins. Release them and return the pins to normal GPIO use.
+void releaseMatrixRtcPins() {
+  for (byte r = 0; r < kRows; ++r) {
+    const auto pin = static_cast<gpio_num_t>(kRowPins[r]);
+    rtc_gpio_hold_dis(pin);
+    rtc_gpio_deinit(pin);
+  }
+  for (byte c = 0; c < kColumns; ++c) {
+    const auto pin = static_cast<gpio_num_t>(kColumnPins[c]);
+    rtc_gpio_hold_dis(pin);
+    rtc_gpio_deinit(pin);
+  }
+}
+
 MatrixKeypad keypad;
 
 }  // namespace
 
 void keypadInit() {
+  releaseMatrixRtcPins();
   Serial.print("Keypad rows: ");
   for (byte i = 0; i < kRows; i++) {
     if (i > 0) {
@@ -164,18 +199,23 @@ void keypadInit() {
 
 bool keypadPoll(InventatoryKeyEvent& event) {
   event = {};
-  if (!keypad.getKeys()) {
+  const bool changed = keypad.getKeys();
+  const int starIndex = findKeyIndexForChar(keypad, '*');
+  if (starIndex >= 0 && !keypad.key[starIndex].lastClosed) {
+    starPowerArmed_ = true;
+  }
+  if (!changed) {
     return false;
   }
 
   const auto keyCount = keypad.numKeys();
-  const int starIndex = findKeyIndexForChar(keypad, '*');
   const int dIndex = findKeyIndexForChar(keypad, 'D');
   const int hashIndex = findKeyIndexForChar(keypad, '#');
   const bool starActive = starIndex >= 0 && isActiveState(keypad.key[starIndex].kstate);
   const bool dActive = dIndex >= 0 && isActiveState(keypad.key[dIndex].kstate);
   const bool starHeld = starIndex >= 0 && isHeldState(keypad.key[starIndex].kstate);
   const bool dHeld = dIndex >= 0 && isHeldState(keypad.key[dIndex].kstate);
+  const bool hashActive = hashIndex >= 0 && isActiveState(keypad.key[hashIndex].kstate);
   const bool hashHeld = hashIndex >= 0 && isHeldState(keypad.key[hashIndex].kstate);
 
   if (holdGesture_ == HoldGesture::Ota) {
@@ -193,6 +233,10 @@ bool keypadPoll(InventatoryKeyEvent& event) {
   }
   if (holdGesture_ == HoldGesture::ProvisioningReset) {
     if (hashIndex < 0 || !isActiveState(keypad.key[hashIndex].kstate)) holdGesture_ = HoldGesture::None;
+    return false;
+  }
+  if (holdGesture_ == HoldGesture::PowerOff) {
+    if (!starActive) holdGesture_ = HoldGesture::None;
     return false;
   }
 
@@ -238,6 +282,15 @@ bool keypadPoll(InventatoryKeyEvent& event) {
     return true;
   }
 
+  // Holding '*' alone powers the device off. The event fires while the key is still held;
+  // enterPowerOff() waits for the release before the chip sleeps.
+  if (starHeld && starPowerArmed_ && !dActive && !hashActive) {
+    holdGesture_ = HoldGesture::PowerOff;
+    event.type = InventatoryKeyEventType::PowerOff;
+    event.value = '*';
+    return true;
+  }
+
   if (hashHeld && !starActive && !dActive) {
     hashShortPressPending_ = false;
     holdGesture_ = HoldGesture::ProvisioningReset;
@@ -271,4 +324,35 @@ bool keypadPoll(InventatoryKeyEvent& event) {
   }
 
   return false;
+}
+
+bool keypadPowerKeyDown() {
+  return keypad.key[kStarRow * kColumns + kStarColumn].lastClosed;
+}
+
+bool keypadArmPowerKeyWake() {
+  // Rows: the '*' row is held low; the other rows are held high so no key can pull the wake column down.
+  for (byte r = 0; r < kRows; ++r) {
+    const auto pin = static_cast<gpio_num_t>(kRowPins[r]);
+    rtc_gpio_init(pin);
+    rtc_gpio_set_direction(pin, RTC_GPIO_MODE_OUTPUT_ONLY);
+    rtc_gpio_set_level(pin, r == kStarRow ? 0U : 1U);
+    rtc_gpio_hold_en(pin);
+  }
+  // Columns: RTC inputs with pull-ups. Only the '*' column is a wake source.
+  for (byte c = 0; c < kColumns; ++c) {
+    const auto pin = static_cast<gpio_num_t>(kColumnPins[c]);
+    rtc_gpio_init(pin);
+    rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pulldown_dis(pin);
+    rtc_gpio_pullup_en(pin);
+  }
+
+  // A closed '*' would wake the chip at once, so do not sleep.
+  if (rtc_gpio_get_level(static_cast<gpio_num_t>(kColumnPins[kStarColumn])) == 0U) {
+    releaseMatrixRtcPins();
+    return false;
+  }
+  esp_sleep_enable_ext1_wakeup(1ULL << kColumnPins[kStarColumn], ESP_EXT1_WAKEUP_ANY_LOW);
+  return true;
 }

@@ -14,7 +14,7 @@ Security problems never go in issues. Report them as described in [SECURITY.md](
 
 ## Build and test
 
-This project targets the Tenstar ESP32-S3-Zero and uses PlatformIO. To set up your environment, copy the
+This project targets the Waveshare ESP32-S3-Nano and uses PlatformIO. To set up your environment, copy the
 example configuration (this must never be committed):
 ```bash
 cp src/config/config.example.h src/config/config.h                   # Linux / macOS
@@ -26,10 +26,10 @@ Copy-Item src/config/config.example.h src/config/config.h            # Windows
 Use these commands to build the firmware targets:
 ```powershell
 # Build standard USB firmware (default environment)
-pio run -e tenstar_esp32s3_zero_usb
+pio run -e waveshare_esp32s3_nano_usb
 
 # Build isolated OTA firmware
-pio run -e tenstar_esp32s3_zero_ota
+pio run -e waveshare_esp32s3_nano_ota
 ```
 
 Run the host suite first. It needs no hardware, and it runs the same Unity assertions the device runs, with
@@ -43,7 +43,7 @@ make -C host-tests SANITIZE=address,undefined test   # the same, with sanitizers
 The embedded Unity suite in `test/` also runs on the board. CI compiles that image but does not upload it or
 run its assertions:
 ```powershell
-pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
+pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
 ```
 Running the assertions on a board is a manual step, which needs an attached Scan R1 and is recorded in the
 pull request.

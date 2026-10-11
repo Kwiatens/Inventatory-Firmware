@@ -19,6 +19,7 @@ class DisplayController {
   // Builds the splash lockup step by step; blocks for about 1.5 s.
   void playBootIntro();
   void showBoot(const String& stage);
+  void showPowerOff();
   void showReady();
   void showQuantity(const String& itemText, const String& itemCode, const String& quantityText,
                     std::size_t cursor, bool receiveMode, QuantityLookupState lookupState);

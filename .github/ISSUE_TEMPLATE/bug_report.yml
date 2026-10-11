@@ -18,7 +18,7 @@ body:
     id: hardware_revision
     attributes:
       label: Board / Hardware Revision
-      description: Are you using the Tenstar ESP32-S3-Zero? Any custom wiring?
+      description: Are you using the Waveshare ESP32-S3-Nano? Any custom wiring?
     validations:
       required: true
   - type: input
