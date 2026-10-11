@@ -30,7 +30,7 @@ hardware or production provisioning evidence.
 | FW-011 | P2 | Implemented | GM65 boot-profile write failures now propagate from `begin()` and stop startup with an explicit scanner error. | Disconnect/fault GM65 UART on hardware and verify recovery behavior. |
 | FW-012 | P2 | Implemented | Raw-byte, assembled barcode, code-bearing debug, and event-identifier serial logs were removed while scan/outbox/sync data flows remain intact. | Capture USB/UART during valid, invalid, and oversized scans. |
 | FW-013 | P2 | Implemented | PlatformIO platform and direct libraries are exact-version pinned; USB is the default; OTA is isolated and reads its password from ignored configuration. | Reproduce USB and OTA image builds on clean Linux and Windows hosts. |
-| FW-014 | P2 | Implemented | CI builds USB/OTA firmware, the test image, and display example; an opt-in self-hosted job executes hardware tests. README documents hardware, dependencies, licenses, and workflows. | First CI run and configured self-hosted hardware runner. |
+| FW-014 | P2 | Implemented | CI builds USB/OTA firmware, the test image, and display example; an opt-in self-hosted job executes hardware tests. README documents build, test, documentation, and license; the hardware pinout and dependency pins are in AGENTS.md and platformio.ini. | First CI run and configured self-hosted hardware runner. |
 
 ## Shared protocol reference
 
