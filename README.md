@@ -8,8 +8,10 @@
 
 **Open-source firmware for the Inventatory Scan R1 barcode scanner.**
 
-[![Firmware CI](https://github.com/Kwiatens/Inventatory-Firmware/actions/workflows/firmware.yml/badge.svg)](https://github.com/Kwiatens/Inventatory-Firmware/actions/workflows/firmware.yml)
-[![License](https://img.shields.io/github/license/Kwiatens/Inventatory-Firmware?style=flat-square&color=58B9B0&labelColor=0D1010)](LICENSE)
+Reads 1D and 2D labels, queues every stock change while the scanner is offline, and syncs it over Wi-Fi to the [Inventatory](https://github.com/Kwiatens/Inventatory-Software) desktop app, authenticated with HMAC-SHA-256. It targets the Tenstar ESP32-S3-Zero.
+
+![Release](https://img.shields.io/badge/release-v0.1.0-58B9B0?style=flat-square&labelColor=0D1010)
+[![License](https://img.shields.io/badge/license-GPL--3.0-58B9B0?style=flat-square&labelColor=0D1010)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-ESP32--S3-58B9B0?style=flat-square&labelColor=0D1010)
 ![C++17](https://img.shields.io/badge/C%2B%2B-17-58B9B0?style=flat-square&labelColor=0D1010)
 
