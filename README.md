@@ -6,9 +6,10 @@
 
 <img src="branding/scanner-firmware.svg" alt="Scanner Firmware" width="560" height="22">
 
-**Open-source firmware for the Inventatory Scan R1 barcode scanner.**
+**Open-source firmware for the Inventatory Scanner R1 device.**
 
-Reads 1D and 2D labels, queues every stock change while the scanner is offline, and syncs it over Wi-Fi to the [Inventatory](https://github.com/Kwiatens/Inventatory-Software) desktop app, authenticated with HMAC-SHA-256. It targets the Tenstar ESP32-S3-Zero.
+Purpose made scanning device for my [Inventatory](https://github.com/Kwiatens/Inventatory-Software) system.
+It allows you to interact with your inventory, without having to constantly go back and forth to your computer, during PCB work.
 
 ![Release](https://img.shields.io/badge/release-v0.1.0-58B9B0?style=flat-square&labelColor=0D1010)
 [![License](https://img.shields.io/badge/license-GPL--3.0-58B9B0?style=flat-square&labelColor=0D1010)](LICENSE)
@@ -23,9 +24,7 @@ Reads 1D and 2D labels, queues every stock change while the scanner is offline, 
 
 ---
 
-> **Status:** pre-release (`0.1.0`, see [CHANGELOG.md](CHANGELOG.md)). Do not use it in production until the hardware gates in [docs/release-audit-remediation.md](docs/release-audit-remediation.md) are closed.
-
-The scanner reads 1D and 2D labels, queues every stock change durably while it is offline, and syncs the queue over Wi-Fi to the [Inventatory](https://github.com/Kwiatens/Inventatory-Software) desktop app. The link is authenticated with HMAC-SHA-256. It runs on the Tenstar ESP32-S3-Zero and is built with PlatformIO and the Arduino framework.
+> **Status:** pre-release (`0.1.0`, see [CHANGELOG.md](CHANGELOG.md)).
 
 ## Build
 
