@@ -33,12 +33,15 @@ replay counters).
 > [docs/release-audit-remediation.md](docs/release-audit-remediation.md) are
 > still open. Do not rely on it for production use before they are closed.
 
-## Documentation map
+## Documentation
 
 - [CONTRIBUTING.md](CONTRIBUTING.md): how to contribute.
-- [SECURITY.md](SECURITY.md): private vulnerability reporting and the transport security boundary.
-- [AGENTS.md](AGENTS.md): architecture, invariants and verification rules (also the guide for coding agents).
-- [docs/RELEASING.md](docs/RELEASING.md): release and repository-settings checklist.
+- [SECURITY.md](SECURITY.md): private vulnerability reporting and the security scope.
+- [AGENTS.md](AGENTS.md): architecture, invariants and verification rules, also the guide for coding agents.
+- [docs/project-standards.md](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/project-standards.md): rules shared with the Inventatory application.
+- [docs/releasing.md](docs/releasing.md): release steps and repository settings.
+- [CHANGELOG.md](CHANGELOG.md): what changed in each version.
+- [docs/scanner-transport-security.md](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/scanner-transport-security.md): the transport protocol, kept in the application repository.
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): licenses of the dependencies.
 
 ## Clean-checkout setup
