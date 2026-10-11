@@ -26,21 +26,19 @@ It allows you to interact with your inventory, without having to constantly go b
 
 > **Status:** pre-release (`0.1.0`, see [CHANGELOG.md](CHANGELOG.md)).
 
+## Build the scanner
+
+Visit [**Website**](https://kwiatens.github.io/Inventatory-Site/) &nbsp;·&nbsp; for documentation and guides on how to build the scanner.
+
+All the information that's below is only useful, when you want to manually compile the firmware.
+
 ## Build
 
-Use PlatformIO Core 6.1.19, the version CI uses. Create the private configuration from the tracked example, then build. On Windows, use `Copy-Item` instead of `cp`.
+Use PlatformIO. Create the private configuration from the tracked example, then build. On Windows, use `Copy-Item` instead of `cp`.
 
 ```bash
 cp src/config/config.example.h src/config/config.h
 pio run -e tenstar_esp32s3_zero_usb
-```
-
-`src/config/config.h` is git-ignored and must never be committed. Wi-Fi credentials and the device token are provisioned on the device, not stored here.
-
-To flash over USB, replace `<port>` with the serial port:
-
-```bash
-pio run -e tenstar_esp32s3_zero_usb -t upload --upload-port <port>
 ```
 
 ## Test
@@ -49,8 +47,6 @@ pio run -e tenstar_esp32s3_zero_usb -t upload --upload-port <port>
 make -C host-tests test
 pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
 ```
-
-The last command compiles the on-device tests without running them. Running them needs an attached Scan R1, so drop the two flags.
 
 ## Documentation
 
@@ -62,4 +58,4 @@ The last command compiles the on-device tests without running them. Running them
 
 ## License
 
-GPL-3.0-only. See [LICENSE](LICENSE). Dependency licenses are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+GPL-3.0-only. See [LICENSE](LICENSE). Dependency licenses are here [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
