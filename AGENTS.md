@@ -44,7 +44,7 @@ coding agents must operate within explicit operational boundaries:
 Before proposing or modifying firmware behavior, consult the authoritative
 specifications in the tree:
 
-- `README.md`: Hardware wiring pinout, platform dependencies, and clean-checkout setup.
+- `README.md`: overview, build and test commands, and the documentation map. The hardware pinout is in section 3 of this file.
 - `SECURITY.md`: Vulnerability reporting process and transport security boundaries.
 - `docs/release-audit-remediation.md`: Authoritative remediation ledger (FW-001
   through FW-014), verification status, and hardware release gates.
