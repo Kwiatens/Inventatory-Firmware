@@ -180,6 +180,11 @@ MatrixKeypad keypad;
 
 void keypadInit() {
   releaseMatrixRtcPins();
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1) {
+    // Diagnostic: the '*' column level as the chip wakes. Low with '*' released means the line was pulled low.
+    pinMode(kColumnPins[kStarColumn], INPUT_PULLUP);
+    Serial.printf("Woke from deep sleep on the * column; level %d\r\n", digitalRead(kColumnPins[kStarColumn]));
+  }
   Serial.print("Keypad rows: ");
   for (byte i = 0; i < kRows; i++) {
     if (i > 0) {
@@ -346,6 +351,8 @@ bool keypadArmPowerKeyWake() {
     rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
     rtc_gpio_pulldown_dis(pin);
     rtc_gpio_pullup_en(pin);
+    // The hold latches this pad's RTC input setup through deep sleep. Without it the wake line can float low and wake the chip.
+    rtc_gpio_hold_en(pin);
   }
 
   // A closed '*' would wake the chip at once, so do not sleep.
