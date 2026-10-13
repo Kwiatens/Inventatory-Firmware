@@ -7,22 +7,18 @@
 
 #include "config/config.h"
 
-#include <cctype>
 #include <cstddef>
 
 namespace inventatory_scan {
 
 namespace {
 
-constexpr size_t kMaxScanLength = 1024U;
 constexpr unsigned long kStartupSettleMs = 250U;
 // Reply to a zone write: exactly kZoneWriteAckLength bytes, within the timeout.
 constexpr unsigned long kZoneWriteAckTimeoutMs = 150U;
 constexpr unsigned long kZoneWriteAckSettleMs = 20U;
 constexpr size_t kZoneWriteAckLength = 7U;
 constexpr uint8_t kZoneWriteAck[kZoneWriteAckLength] = {0x02, 0x00, 0x00, 0x01, 0x00, 0x33, 0x31};
-// A completed burst with no terminator is accepted after this much silence.
-constexpr unsigned long kBurstIdleGapMs = 30U;
 
 struct ZoneWrite {
   uint16_t address;
@@ -56,19 +52,11 @@ constexpr ZoneWrite kBootProfile[] = {
     {0x0060, 0x20},  // Raw serial output with CRLF terminator
 };
 
-bool isPayloadCharacter(char ch) {
-  const auto byte = static_cast<unsigned char>(ch);
-  return std::isprint(byte) != 0 || byte == 0x1DU || byte == 0x1EU || byte == 0x04U;
-}
-
 }  // namespace
 
 bool Gm65Scanner::begin(uint32_t baudRate) {
   baudRate_ = baudRate;
-  buffer_.clear();
-  lastByteAt_ = 0;
-  discardingOversized_ = false;
-  frameCorrupt_ = false;
+  frames_.reset();
   serial_.setRxBufferSize(1024);
   serial_.begin(baudRate_, SERIAL_8N1, GM65_RX_PIN, GM65_TX_PIN);
   serial_.setTimeout(5);
@@ -83,10 +71,7 @@ bool Gm65Scanner::begin(uint32_t baudRate) {
 void Gm65Scanner::end() {
   serial_.end();
   active_ = false;
-  buffer_.clear();
-  lastByteAt_ = 0;
-  discardingOversized_ = false;
-  frameCorrupt_ = false;
+  frames_.reset();
   acceptAfterMs_ = 0;
 }
 
@@ -115,10 +100,7 @@ bool Gm65Scanner::resume() {
 
 void Gm65Scanner::flushInput() {
   drainRx();
-  buffer_.clear();
-  lastByteAt_ = 0;
-  discardingOversized_ = false;
-  frameCorrupt_ = false;
+  frames_.reset();
 }
 
 bool Gm65Scanner::active() const {
@@ -129,21 +111,6 @@ void Gm65Scanner::drainRx() {
   while (serial_.available() > 0) {
     serial_.read();
   }
-}
-
-uint16_t Gm65Scanner::crcCcitt(const uint8_t* bytes, size_t length) {
-  uint16_t crc = 0x0000;
-  for (size_t i = 0; i < length; ++i) {
-    crc ^= static_cast<uint16_t>(bytes[i]) << 8U;
-    for (uint8_t bit = 0; bit < 8U; ++bit) {
-      if ((crc & 0x8000U) != 0U) {
-        crc = static_cast<uint16_t>((crc << 1U) ^ 0x1021U);
-      } else {
-        crc <<= 1U;
-      }
-    }
-  }
-  return crc;
 }
 
 bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value) {
@@ -158,7 +125,7 @@ bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value) {
       static_cast<uint8_t>(address & 0xFFU),
       value,
   };
-  const uint16_t crc = crcCcitt(frame + 2, sizeof(frame) - 2U);
+  const uint16_t crc = gm65Crc16(frame + 2, sizeof(frame) - 2U);
   const uint8_t trailer[] = {
       static_cast<uint8_t>((crc >> 8U) & 0xFFU),
       static_cast<uint8_t>(crc & 0xFFU),
@@ -229,71 +196,22 @@ bool Gm65Scanner::poll(String& code) {
     if (raw < 0) {
       break;
     }
-    const char ch = static_cast<char>(raw);
-    if (static_cast<long>(millis() - acceptAfterMs_) < 0) {
-      buffer_.clear();
-      frameCorrupt_ = false;
-      lastByteAt_ = 0;
+    const unsigned long now = millis();
+    if (static_cast<long>(now - acceptAfterMs_) < 0) {
+      frames_.reset();
       continue;
     }
-    if (ch == '\r' || ch == '\n') {
-      if (discardingOversized_ || frameCorrupt_) {
-        discardingOversized_ = false;
-        frameCorrupt_ = false;
-        buffer_.clear();
-        lastByteAt_ = 0;
-        continue;
-      }
-      if (buffer_.length() > 0) {
-        code = buffer_;
-        buffer_.clear();
-        lastByteAt_ = 0;
-        return true;
-      }
-      continue;
-    }
-    if (discardingOversized_) {
-      lastByteAt_ = millis();
-      continue;
-    }
-    if (isPayloadCharacter(ch)) {
-      buffer_ += ch;
-      lastByteAt_ = millis();
-    } else {
-      buffer_.clear();
-      frameCorrupt_ = true;
-      lastByteAt_ = millis();
-    }
-    if (buffer_.length() > kMaxScanLength) {
-      buffer_.clear();
-      lastByteAt_ = millis();
-      discardingOversized_ = true;
+    // A frame is reported only when its CR or LF terminator arrives. Partial, corrupt
+    // and oversized frames are dropped, and nothing is ever reported as a scan
+    // without its terminator (see InventatoryScanGm65Frame.h).
+    if (frames_.feed(static_cast<uint8_t>(raw), now) == Gm65FrameAssembler::Event::Frame) {
+      code.reserve(frames_.frameLength());
+      for (std::size_t index = 0; index < frames_.frameLength(); ++index) code += frames_.frame()[index];
+      return true;
     }
   }
-
-  // GM65 normally terminates scans with CR/LF. Also accept a completed burst
-  // after a short idle gap so a delayed network pass or lost terminator cannot
-  // leave a valid barcode stuck in the receive buffer forever.
-  if (buffer_.length() > 0 && lastByteAt_ != 0 && millis() - lastByteAt_ >= kBurstIdleGapMs) {
-    if (frameCorrupt_) {
-      buffer_.clear();
-      frameCorrupt_ = false;
-      lastByteAt_ = 0;
-      return false;
-    }
-    code = buffer_;
-    buffer_.clear();
-    lastByteAt_ = 0;
-    return true;
-  }
-  if (discardingOversized_ && lastByteAt_ != 0 && millis() - lastByteAt_ >= kBurstIdleGapMs) {
-    discardingOversized_ = false;
-    lastByteAt_ = 0;
-  }
-  if (frameCorrupt_ && lastByteAt_ != 0 && millis() - lastByteAt_ >= kBurstIdleGapMs) {
-    frameCorrupt_ = false;
-    lastByteAt_ = 0;
-  }
+  // A frame that stopped mid-way is dropped even when no further byte arrives.
+  frames_.expire(millis());
   return false;
 }
 

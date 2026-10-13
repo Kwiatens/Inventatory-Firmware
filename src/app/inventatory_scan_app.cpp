@@ -102,7 +102,9 @@ bool InventatoryScanApp::begin() {
   clientConfig_.fallbackHost = FALLBACK_HOST;
   clientConfig_.fallbackPort = FALLBACK_PORT;
 
-  if (!outbox_.begin(kOutboxNamespace, DEVICE_ID)) {
+  // A new or erased outbox starts its event sequence at a random point, so event ids
+  // cannot repeat ids the desktop already holds for this device.
+  if (!outbox_.begin(kOutboxNamespace, DEVICE_ID, freshOutboxSequenceStart(esp_random()))) {
     Serial.println("Outbox storage unavailable; scans cannot be queued until NVS recovers.");
   } else {
     if (!outbox_.load()) {

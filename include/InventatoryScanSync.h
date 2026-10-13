@@ -326,6 +326,7 @@ class SyncJsonParser {
   }
 
   bool parseObject(std::size_t& position, unsigned childDepth) const {
+    const std::size_t objectStart = position;
     ++position;
     skipWhitespace(position);
     if (position < input_.length() && input_[position] == '}') {
@@ -334,7 +335,11 @@ class SyncJsonParser {
     }
 
     while (position < input_.length()) {
+      const std::size_t keyStart = position;
       if (!parseString(position, nullptr)) return false;
+      // A repeated name is refused whether or not its value is read, so a document is
+      // never accepted or refused depending on which fields the parser happens to look at.
+      if (keyRepeatsEarlierMember(objectStart, keyStart, position)) return false;
       skipWhitespace(position);
       if (position >= input_.length() || input_[position++] != ':') return false;
       skipWhitespace(position);
@@ -348,6 +353,67 @@ class SyncJsonParser {
         return true;
       }
       if (input_[position++] != ',') return false;
+      skipWhitespace(position);
+    }
+    return false;
+  }
+
+  // Returns the position just past a value that has already been validated. It only
+  // tracks strings and brackets, so checking names stays linear in the body size.
+  std::size_t skipValidatedValue(std::size_t position) const {
+    unsigned nesting = 0;
+    bool inString = false;
+    bool escaped = false;
+    for (; position < input_.length(); ++position) {
+      const char ch = input_[position];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch == '\\') {
+          escaped = true;
+        } else if (ch == '"') {
+          inString = false;
+          if (nesting == 0) return position + 1U;
+        }
+        continue;
+      }
+      if (ch == '"') {
+        inString = true;
+      } else if (ch == '{' || ch == '[') {
+        ++nesting;
+      } else if (ch == '}' || ch == ']') {
+        if (nesting == 0) return position;
+        if (--nesting == 0) return position + 1U;
+      } else if (nesting == 0 && (ch == ',' || ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n')) {
+        return position;
+      }
+    }
+    return position;
+  }
+
+  // True when an earlier member of the same object has the same name. Names are
+  // compared as written in the body, without decoding escapes.
+  bool keyRepeatsEarlierMember(std::size_t objectStart, std::size_t keyStart, std::size_t keyEnd) const {
+    const std::size_t keyLength = keyEnd - keyStart;
+    std::size_t position = objectStart + 1U;
+    skipWhitespace(position);
+    while (position < keyStart) {
+      const std::size_t earlierStart = position;
+      if (!parseString(position, nullptr)) return true;
+      if (position - earlierStart == keyLength) {
+        bool same = true;
+        for (std::size_t index = 0; same && index < keyLength; ++index) {
+          same = input_[earlierStart + index] == input_[keyStart + index];
+        }
+        if (same) return true;
+      }
+      skipWhitespace(position);
+      if (position >= input_.length() || input_[position] != ':') return true;
+      ++position;
+      skipWhitespace(position);
+      position = skipValidatedValue(position);
+      skipWhitespace(position);
+      if (position < input_.length() && input_[position] == ',') ++position;
       skipWhitespace(position);
     }
     return false;
@@ -418,6 +484,10 @@ class SyncJsonParser {
           } else if (codePoint >= 0xDC00U && codePoint <= 0xDFFFU) {
             return false;
           }
+          // A NUL escape is rejected whether or not the value is read, so the same
+          // document is never accepted by one path and refused by another. The desktop
+          // parser rejects it too.
+          if (codePoint == 0) return false;
           if (decoded != nullptr && !appendCodePoint(*decoded, codePoint)) return false;
           break;
         }

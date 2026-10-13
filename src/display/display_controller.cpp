@@ -544,15 +544,15 @@ void DisplayController::showDiscardConfirm() {
   markDirty();
 }
 
-void DisplayController::showRepairConfirm() {
+void DisplayController::showRepairConfirm(bool everyScanLost) {
   clearContent();
   model_.mode = DisplayUiMode::ConfirmReset;
   model_.bodyKind = DisplayBodyKind::Confirm;
   model_.rail = DisplayRailStyle::None;
   model_.showPcStatus = false;
   model_.header = "Repair scan queue?";
-  model_.primary = "Unreadable scans are lost";
-  model_.secondary = "Readable ones are kept";
+  model_.primary = everyScanLost ? "Queued scans cannot be read" : "Unreadable scans are lost";
+  model_.secondary = everyScanLost ? "Repair deletes them for good" : "Readable ones are kept";
   model_.actions = "A Repair C Cancel";
   markDirty();
 }

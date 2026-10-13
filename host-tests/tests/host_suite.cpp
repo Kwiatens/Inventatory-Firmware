@@ -17,6 +17,7 @@ void runHostOutboxDurabilityTests();
 void runHostOutboxRecoveryTests();
 void runHostOutboxMigrationTests();
 void runHostSetupStateTests();
+void runHostClientFramingTests();
 
 void runHostSuite() {
   UNITY_BEGIN();
@@ -32,5 +33,6 @@ void runHostSuite() {
   runHostOutboxRecoveryTests();
   runHostOutboxMigrationTests();
   runHostSetupStateTests();
+  runHostClientFramingTests();
   UNITY_END();
 }

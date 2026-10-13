@@ -4,6 +4,7 @@
 #pragma once
 
 #include "InventatoryScanBattery.h"
+#include "InventatoryScanBlockedHead.h"
 #include "InventatoryScanCore.h"
 #include "InventatoryScanSync.h"
 #include "InventatoryScanUiPolicy.h"
@@ -179,7 +180,8 @@ class InventatoryScanApp {
   std::atomic_bool networkPowerOffRequested_{false};
   std::atomic<TaskHandle_t> networkTask_{nullptr};
   std::atomic_bool networkTaskStartReleased_{false};
-  SemaphoreHandle_t networkMutex_ = nullptr;
+  // Read by Core 1 at any time, so it is atomic. Once created it is never freed while the app runs.
+  std::atomic<SemaphoreHandle_t> networkMutex_{nullptr};
   bool syncJobPending_ = false;
   String syncJobRequestId_;
   String syncJobPayload_;
@@ -196,7 +198,8 @@ class InventatoryScanApp {
   String activeLookupId_;
   String activeLookupCode_;
   std::atomic_ulong lastReconnectAttempt_{0};
-  unsigned long lastSyncAttempt_ = 0;
+  // Written by Core 0 (reconnect) and Core 1 (sync and result handling).
+  std::atomic_ulong lastSyncAttempt_{0};
   // Random per boot so request ids that embed a restarting sequence number
   // (quick-label prints) cannot repeat across reboots.
   uint32_t bootNonce_ = 0;
@@ -218,8 +221,7 @@ class InventatoryScanApp {
   uint8_t pendingQuickLabelPresetIndex_ = 0;
   uint32_t pendingQuickLabelRevision_ = 0;
   String lastSyncHeadEventId_;
-  uint8_t outboxBlockedStreak_ = 0;
-  bool outboxBlocked_ = false;
+  BlockedHeadTracker outboxBlockedHead_;
 };
 
 }  // namespace inventatory_scan
