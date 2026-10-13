@@ -36,6 +36,9 @@ void InventatoryScanApp::requestOtaUpdate() {
   otaUploadStarted_ = false;
   otaRequestedAt_ = millis();
   networkPowerOffRequested_ = false;
+  // The worker acknowledges each pause. An acknowledgement left over from an earlier
+  // pause must not satisfy this request, so it is cleared before the pause is requested.
+  networkPauseAcknowledged_ = false;
   networkPaused_ = true;
   scanner_.flushInput();
   if (powerMode_ == PowerMode::Standby) {

@@ -18,22 +18,28 @@ namespace inventatory_scan {
 namespace {
 
 constexpr unsigned long kHttpResponseTimeoutMs = 600U;
-String headerValue(const String& headers, const char* name) {
+// Reads a header that must appear at most once. A repeated header is refused, so two
+// conflicting values can never be read as though there were one. An absent header
+// leaves the value empty and is still reported as success.
+bool uniqueHeaderValue(const String& headers, const char* name, String& value) {
   const auto wanted = String(name);
+  bool found = false;
+  value = String();
   int lineStart = 0;
   while (lineStart < static_cast<int>(headers.length())) {
     const auto lineEnd = headers.indexOf("\r\n", lineStart);
     const auto line = headers.substring(lineStart, lineEnd < 0 ? headers.length() : lineEnd);
     const auto separator = line.indexOf(':');
     if (separator > 0 && line.substring(0, separator).equalsIgnoreCase(wanted)) {
-      auto value = line.substring(separator + 1);
+      if (found) return false;
+      found = true;
+      value = line.substring(separator + 1);
       value.trim();
-      return value;
     }
     if (lineEnd < 0) break;
     lineStart = lineEnd + 2;
   }
-  return {};
+  return true;
 }
 
 bool parseContentLength(const String& value, std::size_t& length) {
@@ -238,7 +244,6 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
 
   client_.stop();
 
-  const auto text = response.c_str();
   if (headerEnd < 0 || !httpHeaderWithinLimit(static_cast<std::size_t>(headerEnd))) {
     return false;
   }
@@ -256,17 +261,31 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
     }
   }
   const auto headers = response.substring(0, headerEnd);
-  if (headerValue(headers, "Transfer-Encoding").length() > 0) return false;
+  String transferEncoding;
+  String contentLengthText;
+  String responseCounter;
+  String responseMac;
+  String protocolVersion;
+  if (!uniqueHeaderValue(headers, "Transfer-Encoding", transferEncoding) || transferEncoding.length() > 0 ||
+      !uniqueHeaderValue(headers, "Content-Length", contentLengthText) ||
+      !uniqueHeaderValue(headers, "X-Inventatory-Counter", responseCounter) ||
+      !uniqueHeaderValue(headers, "X-Inventatory-Mac", responseMac) ||
+      !uniqueHeaderValue(headers, "X-Inventatory-Protocol", protocolVersion)) {
+    return false;
+  }
   std::size_t contentLength = 0;
-  if (!parseContentLength(headerValue(headers, "Content-Length"), contentLength) ||
+  if (!parseContentLength(contentLengthText, contentLength) ||
       !httpBodyWithinLimit(contentLength) ||
       response.length() != static_cast<std::size_t>(headerEnd + 4) + contentLength) {
     return false;
   }
-  responseBody = text + headerEnd + 4;
-  const auto responseCounter = headerValue(headers, "X-Inventatory-Counter");
-  const auto responseMac = headerValue(headers, "X-Inventatory-Mac");
-  if (headerValue(headers, "X-Inventatory-Protocol") != String(kInventatoryScanProtocolVersion) ||
+  // The body is copied by its declared length. A C-string copy would stop at a NUL byte
+  // and then authenticate a truncated body.
+  responseBody.reserve(contentLength);
+  for (std::size_t index = 0; index < contentLength; ++index) {
+    responseBody += response[static_cast<unsigned int>(headerEnd + 4) + static_cast<unsigned int>(index)];
+  }
+  if (protocolVersion != String(kInventatoryScanProtocolVersion) ||
       responseCounter != String(counter) ||
       !transportMacMatches(deviceResponseMac(config_.token, counter, parsedStatus, responseBody), responseMac)) {
     httpStatus = 0;

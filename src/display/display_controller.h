@@ -47,7 +47,7 @@ class DisplayController {
   void showContrast(uint8_t contrast);
   void showResetConfirm();
   void showDiscardConfirm();
-  void showRepairConfirm();
+  void showRepairConfirm(bool everyScanLost = false);
   void showPrinting(const String& label);
   void showQuickLabelPrintResult(bool success, const String& message);
   void setSyncBlocked(bool blocked);
