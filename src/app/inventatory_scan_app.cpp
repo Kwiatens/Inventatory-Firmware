@@ -52,7 +52,8 @@ static_assert(hardware::kBacklightPin != hardware::kChargerSensePin, "backlight 
 constexpr char kOutboxNamespace[] = "inv_outbox";
 static_assert(sizeof(kOutboxNamespace) <= 16, "NVS namespace exceeds ESP32's 15-character limit");
 
-// The static boot splash stays up this long before the normal screens take over.
+// The boot splash stays up this long, the mark blooming in over its first part, before the normal
+// screens take over.
 constexpr unsigned long kBootSplashHoldMs = 1200UL;
 
 }  // namespace
@@ -136,6 +137,7 @@ bool InventatoryScanApp::begin() {
 
 void InventatoryScanApp::loop() {
   serviceBattery();
+  updatePowerOffWarning();
   serviceBacklight();
   if (setupMode_) {
     InventatoryKeyEvent event;

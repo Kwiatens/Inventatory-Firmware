@@ -49,6 +49,11 @@ class DisplayRenderer {
   void drawUpdate(const DisplayModel& model, const RenderActivity& activity);
   void drawBatteryCard(const DisplayModel& model, const RenderActivity& activity);
   void drawLowBattery(const DisplayModel& model);
+  void drawPowerWarning(const DisplayModel& model);
+  void drawPowerOff(const DisplayModel& model, const RenderActivity& activity);
+  void drawMarkBloom(int x, int y, int unit, int stage);
+  void drawMarkBehindGlass(int x, int y, int unit);
+  void drawBoxAboveGlass(int x, int y, int w, int h);
   void drawClipped(int x, int y, int maxWidth, const String& text);
   void drawWrapped(int x, int firstBaselineY, int maxWidth, const String& text,
                    std::size_t maxLines, int lineStep);

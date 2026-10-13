@@ -31,6 +31,9 @@ enum class DisplayUiMode {
   Backlight,
   BatteryCard,
   LowBattery,
+  PowerWarning,
+  PowerOff,
+  Blank,
 };
 
 enum class DisplayConnectivityState {
@@ -84,6 +87,10 @@ struct RenderActivity {
   uint8_t headerPage = 0;
   // Battery card fill, 0 .. kBatteryCardFillSteps.
   uint8_t cardFillStep = 0;
+  // Boot mark bloom stage, 0 .. kBootBloomStages. The full mark is kBootBloomStages.
+  int bloomStage = kBootBloomStages;
+  // Rows the mark has dropped behind the glass during the power-off sink.
+  int markOffsetY = 0;
 };
 
 struct DisplayModel {
