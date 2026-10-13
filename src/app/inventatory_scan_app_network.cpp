@@ -61,10 +61,14 @@ void InventatoryScanApp::sendDebugMessage(const String& message, const String& l
 
 bool InventatoryScanApp::startNetworkWorker() {
   if (networkTask_.load() != nullptr) return true;
-  networkMutex_ = xSemaphoreCreateMutex();
-  if (networkMutex_ == nullptr) {
-    Serial.println("Network worker: mutex allocation failed");
-    return false;
+  // The mutex is created once and kept for the life of the app. Core 1 may read the
+  // handle at any time, so the worker never frees it, not even when its own start-up fails.
+  if (networkMutex_.load() == nullptr) {
+    networkMutex_ = xSemaphoreCreateMutex();
+    if (networkMutex_.load() == nullptr) {
+      Serial.println("Network worker: mutex allocation failed");
+      return false;
+    }
   }
 
   networkTaskStartReleased_ = false;
@@ -72,8 +76,9 @@ bool InventatoryScanApp::startNetworkWorker() {
   const auto created = xTaskCreatePinnedToCore(networkTaskEntry, "inventatory-net", 8192, this, 1,
                                                 &createdTask, 0);
   if (created != pdPASS) {
+    // Core 1 creates the worker and no worker is running, so this is safe here.
     Serial.println("Network worker: task allocation failed");
-    vSemaphoreDelete(networkMutex_);
+    vSemaphoreDelete(networkMutex_.load());
     networkMutex_ = nullptr;
     return false;
   }
@@ -97,9 +102,6 @@ void InventatoryScanApp::networkTaskLoop() {
   if (!clientReady) {
     Serial.println("Network worker: client initialization failed");
     networkStarted_ = false;
-    auto* failedMutex = networkMutex_;
-    networkMutex_ = nullptr;
-    if (failedMutex != nullptr) vSemaphoreDelete(failedMutex);
     networkTask_ = nullptr;
     vTaskDelete(nullptr);
     return;
@@ -323,14 +325,13 @@ void InventatoryScanApp::processNetworkResult() {
       result.message = status == 426 ? "Protocol v1 required" : "Check device token";
       display_.showResult(result);
     }
-    if (sent && status >= 400 && status <= 499 && status != 401 && status != 426) {
+    // An authenticated 4xx or 5xx refuses the head event. Both count toward "Sync
+    // blocked", so a server that keeps failing on the same event is visible to the
+    // operator instead of retrying silently forever.
+    if (sent && status >= 400 && status <= 599 && status != 401 && status != 426) {
       DeviceEventRecord front;
       if (!outbox_.empty() && outbox_.peek(0, front) && front.eventId == lastSyncHeadEventId_) {
-        outboxBlockedStreak_++;
-        if (outboxBlockedStreak_ == 5) {
-          outboxBlocked_ = true;
-          display_.setSyncBlocked(outboxBlocked_);
-        }
+        if (outboxBlockedHead_.recordRefusal()) display_.setSyncBlocked(true);
       }
     }
     return;
@@ -403,21 +404,11 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
     poppedAny = true;
   }
   if (poppedAny || outbox_.empty() || headAccepted) {
-    if (outboxBlockedStreak_ > 0 || outboxBlocked_) {
-      outboxBlockedStreak_ = 0;
-      if (outboxBlocked_) {
-        outboxBlocked_ = false;
-        display_.setSyncBlocked(outboxBlocked_);
-      }
-    }
+    if (outboxBlockedHead_.recordProgress()) display_.setSyncBlocked(false);
   } else {
     DeviceEventRecord front;
     if (!outbox_.empty() && outbox_.peek(0, front) && front.eventId == lastSyncHeadEventId_) {
-      outboxBlockedStreak_++;
-      if (outboxBlockedStreak_ == 5) {
-        outboxBlocked_ = true;
-        display_.setSyncBlocked(outboxBlocked_);
-      }
+      if (outboxBlockedHead_.recordRefusal()) display_.setSyncBlocked(true);
     }
   }
   if (isCurrentLookupResult(response, activeLookupId_)) {
