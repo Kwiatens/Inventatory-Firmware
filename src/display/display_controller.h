@@ -19,8 +19,8 @@ class DisplayController {
   // Shows the splash for holdMs, with the mark blooming in first, and keeps the LCD refreshed meanwhile.
   void playBootSplash(unsigned long holdMs);
   void showBoot(const String& stage);
-  // The soft power-off warning: a countdown bar overlay. The app sets its fill as each second passes.
-  void showPowerWarning(int countdownPercent);
+  // The soft power-off warning: a countdown bar overlay. The bar drains by itself from the moment it appears.
+  void showPowerWarning();
   // Runs the power-off ending to its end: the mark sinks behind the glass, the text rests, and the
   // panel goes dark. Returns with the panel blank, before the chip sleeps.
   void playPowerOffSink();
