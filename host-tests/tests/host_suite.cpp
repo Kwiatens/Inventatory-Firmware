@@ -14,6 +14,9 @@ void test_nvs_shim_reboot_keeps_stored_values();
 void test_nvs_shim_namespaces_are_isolated();
 void test_nvs_shim_free_entries_track_writes();
 void runHostOutboxDurabilityTests();
+void runHostOutboxRecoveryTests();
+void runHostOutboxMigrationTests();
+void runHostSetupStateTests();
 
 void runHostSuite() {
   UNITY_BEGIN();
@@ -26,5 +29,8 @@ void runHostSuite() {
   RUN_TEST(test_nvs_shim_namespaces_are_isolated);
   RUN_TEST(test_nvs_shim_free_entries_track_writes);
   runHostOutboxDurabilityTests();
+  runHostOutboxRecoveryTests();
+  runHostOutboxMigrationTests();
+  runHostSetupStateTests();
   UNITY_END();
 }
