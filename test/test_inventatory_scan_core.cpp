@@ -3,6 +3,7 @@
 
 #include <unity.h>
 
+#include "InventatoryScanBattery.h"
 #include "InventatoryScanCore.h"
 #include "InventatoryScanHttp.h"
 #include "InventatoryScanOutbox.h"
@@ -518,27 +519,150 @@ void test_brand_dot_policy() {
   TEST_ASSERT_TRUE(style::kMarkRows * style::kBootMarkUnit < style::kScreenH);
 }
 
-void test_brand_intro_policy() {
-  // Chevron pixels from 150 ms, stem rows from 700 ms, dot slots from 1100 ms,
-  // the name at 1450 ms.
-  TEST_ASSERT_EQUAL_INT(0, brandIntroStep(0));
-  TEST_ASSERT_EQUAL_INT(0, brandIntroStep(149));
-  TEST_ASSERT_EQUAL_INT(1, brandIntroStep(150));
-  TEST_ASSERT_EQUAL_INT(5, brandIntroStep(699));
-  TEST_ASSERT_EQUAL_INT(6, brandIntroStep(700));
-  TEST_ASSERT_EQUAL_INT(10, brandIntroStep(1099));
-  TEST_ASSERT_EQUAL_INT(11, brandIntroStep(1100));
-  TEST_ASSERT_EQUAL_INT(14, brandIntroStep(1449));
-  TEST_ASSERT_EQUAL_INT(kBrandIntroSteps, brandIntroStep(1450));
-  TEST_ASSERT_EQUAL_INT(kBrandIntroSteps, brandIntroStep(60000));
-  for (int step = 1; step < kBrandIntroSteps; ++step) {
-    TEST_ASSERT_TRUE(brandIntroStepAt(step) < brandIntroStepAt(step + 1));
+void test_header_page_cycle_policy() {
+  // Status for 4 s, the battery for 1.5 s, then the estimate for 2 s when it is known.
+  TEST_ASSERT_TRUE(headerPageAt(0, true) == HeaderPage::Status);
+  TEST_ASSERT_TRUE(headerPageAt(3999, true) == HeaderPage::Status);
+  TEST_ASSERT_TRUE(headerPageAt(4000, true) == HeaderPage::Battery);
+  TEST_ASSERT_TRUE(headerPageAt(5499, true) == HeaderPage::Battery);
+  TEST_ASSERT_TRUE(headerPageAt(5500, true) == HeaderPage::Estimate);
+  TEST_ASSERT_TRUE(headerPageAt(7499, true) == HeaderPage::Estimate);
+  TEST_ASSERT_TRUE(headerPageAt(7500, true) == HeaderPage::Status);
+  // Without an estimate the cycle is status and battery only.
+  TEST_ASSERT_TRUE(headerPageAt(5499, false) == HeaderPage::Battery);
+  TEST_ASSERT_TRUE(headerPageAt(5500, false) == HeaderPage::Status);
+  TEST_ASSERT_TRUE(headerPageAt(9500, false) == HeaderPage::Battery);
+}
+
+void test_battery_card_fill_steps() {
+  TEST_ASSERT_EQUAL_UINT8(0, batteryCardFillStep(0));
+  TEST_ASSERT_EQUAL_UINT8(0, batteryCardFillStep(99));
+  TEST_ASSERT_EQUAL_UINT8(1, batteryCardFillStep(100));
+  TEST_ASSERT_EQUAL_UINT8(6, batteryCardFillStep(650));
+  TEST_ASSERT_EQUAL_UINT8(kBatteryCardFillSteps, batteryCardFillStep(700));
+  TEST_ASSERT_EQUAL_UINT8(kBatteryCardFillSteps, batteryCardFillStep(60000));
+}
+
+void test_backlight_policy() {
+  // Stored values outside the enum fall back to the default, which keeps the screen lit.
+  TEST_ASSERT_TRUE(backlightModeFromStored(3) == BacklightMode::Auto3Min);
+  TEST_ASSERT_TRUE(backlightModeFromStored(9) == BacklightMode::On);
+  TEST_ASSERT_EQUAL_UINT32(60000, backlightIdleTimeoutMs(BacklightMode::Auto1Min));
+  TEST_ASSERT_EQUAL_UINT32(600000, backlightIdleTimeoutMs(BacklightMode::Auto10Min));
+  TEST_ASSERT_EQUAL_UINT32(0, backlightIdleTimeoutMs(BacklightMode::Off));
+  TEST_ASSERT_TRUE(backlightLit(BacklightMode::On, false, 0, 0));
+  TEST_ASSERT_FALSE(backlightLit(BacklightMode::Off, false, 0, 0));
+  // Warnings and pairing keep the backlight on whatever the setting.
+  TEST_ASSERT_TRUE(backlightLit(BacklightMode::Off, true, 0, 0));
+  TEST_ASSERT_TRUE(backlightLit(BacklightMode::Auto1Min, true, 900000, 0));
+  TEST_ASSERT_TRUE(backlightLit(BacklightMode::Auto3Min, false, 179999, 0));
+  TEST_ASSERT_FALSE(backlightLit(BacklightMode::Auto3Min, false, 180000, 0));
+  TEST_ASSERT_TRUE(backlightLit(BacklightMode::Auto1Min, false, 1000, 500));
+  // Idle time survives the millis() wrap: activity 1000 ms before the wrap, 3000 ms idle.
+  TEST_ASSERT_TRUE(backlightLit(BacklightMode::Auto1Min, false, 2000U, 0xFFFFFC18UL));
+  TEST_ASSERT_EQUAL_STRING("Auto 3 min", backlightModeLabel(BacklightMode::Auto3Min));
+  TEST_ASSERT_EQUAL_STRING("Auto 3m", backlightModeShortLabel(BacklightMode::Auto3Min));
+}
+
+void test_battery_curve_policy() {
+  TEST_ASSERT_EQUAL_UINT8(100, batteryPercentFromMillivolts(4300));
+  TEST_ASSERT_EQUAL_UINT8(100, batteryPercentFromMillivolts(4200));
+  TEST_ASSERT_EQUAL_UINT8(90, batteryPercentFromMillivolts(4100));
+  // Halfway between 3.7 V (28%) and 3.8 V (45%): 36.5% rounds to 37.
+  TEST_ASSERT_EQUAL_UINT8(37, batteryPercentFromMillivolts(3750));
+  TEST_ASSERT_EQUAL_UINT8(0, batteryPercentFromMillivolts(3300));
+  TEST_ASSERT_EQUAL_UINT8(0, batteryPercentFromMillivolts(2000));
+  uint8_t previous = 0;
+  for (uint32_t millivolts = 3300; millivolts <= 4300; millivolts += 5) {
+    const uint8_t percent = batteryPercentFromMillivolts(millivolts);
+    TEST_ASSERT_TRUE(percent >= previous);
+    previous = percent;
   }
-  TEST_ASSERT_EQUAL_HEX8(0x00, brandIntroDot(10));
-  TEST_ASSERT_EQUAL_HEX8(0x01, brandIntroDot(11));
-  TEST_ASSERT_EQUAL_HEX8(0x07, brandIntroDot(13));
-  TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandIntroDot(14));
-  TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandIntroDot(kBrandIntroSteps));
+}
+
+void test_battery_tracker_guards_and_debounce() {
+  BatteryTracker tracker;
+  TEST_ASSERT_EQUAL_INT(-1, tracker.percent());
+  // An unconnected divider reads near zero: unknown, and never a warning.
+  tracker.update(0, false, 0);
+  TEST_ASSERT_FALSE(tracker.valid());
+  TEST_ASSERT_EQUAL_INT(-1, tracker.percent());
+  TEST_ASSERT_TRUE(tracker.level() == BatteryLevel::Ok);
+
+  tracker.update(4000, false, 1000);
+  TEST_ASSERT_EQUAL_INT(78, tracker.percent());
+  // A single dip is smoothed: 4000 mV moves a quarter of the way to 3600 mV, to 3900 mV (62%).
+  tracker.update(3600, false, 2000);
+  TEST_ASSERT_EQUAL_INT(62, tracker.percent());
+
+  // Low needs four consecutive seconds below 10%; a charging cell never warns.
+  BatteryTracker low;
+  for (uint32_t second = 0; second < 3; ++second) low.update(3450, false, second * 1000UL);
+  TEST_ASSERT_TRUE(low.level() == BatteryLevel::Ok);
+  low.update(3450, false, 3000);
+  TEST_ASSERT_TRUE(low.level() == BatteryLevel::Low);
+
+  BatteryTracker empty;
+  for (uint32_t second = 0; second < 4; ++second) empty.update(3320, false, second * 1000UL);
+  TEST_ASSERT_TRUE(empty.level() == BatteryLevel::Critical);
+
+  BatteryTracker docked;
+  for (uint32_t second = 0; second < 10; ++second) docked.update(3320, true, second * 1000UL);
+  TEST_ASSERT_TRUE(docked.level() == BatteryLevel::Ok);
+  TEST_ASSERT_TRUE(docked.charging());
+
+  // A bouncing dock contact: one reading of the other state does not change the state.
+  BatteryTracker bounce;
+  bounce.update(4000, false, 0);
+  bounce.update(4000, true, 1000);
+  TEST_ASSERT_FALSE(bounce.charging());
+  bounce.update(4000, false, 2000);
+  TEST_ASSERT_FALSE(bounce.charging());
+  bounce.update(4000, true, 3000);
+  bounce.update(4000, true, 4000);
+  TEST_ASSERT_TRUE(bounce.charging());
+}
+
+void test_battery_tracker_learns_runtime() {
+  // A steady discharge from 4.00 V (78%) to 3.90 V (62%) over 20 minutes is about
+  // 75 s per percent, so about 77 minutes remain at the end.
+  BatteryTracker tracker;
+  for (uint32_t second = 0; second <= 1200; ++second) {
+    tracker.update(4000U - second / 12U, false, second * 1000UL);
+    if (second < 290) TEST_ASSERT_EQUAL_INT32(-1, tracker.minutesRemaining());
+  }
+  TEST_ASSERT_EQUAL_INT(62, tracker.percent());
+  const int32_t remaining = tracker.minutesRemaining();
+  TEST_ASSERT_TRUE(remaining >= 60 && remaining <= 95);
+
+  // Charging from 3.90 V (62%) to 4.10 V (90%) over 20 minutes: about 43 s per
+  // percent, with 10% left, so roughly 7 minutes to full.
+  BatteryTracker charging;
+  for (uint32_t second = 0; second <= 1200; ++second) {
+    charging.update(3900U + second / 6U, true, second * 1000UL);
+  }
+  TEST_ASSERT_TRUE(charging.charging());
+  const int32_t toFull = charging.minutesRemaining();
+  TEST_ASSERT_TRUE(toFull >= 4 && toFull <= 12);
+}
+
+void test_battery_estimate_text() {
+  char text[32];
+  TEST_ASSERT_TRUE(formatBatteryDuration(text, sizeof(text), 42));
+  TEST_ASSERT_EQUAL_STRING("42 min", text);
+  TEST_ASSERT_TRUE(formatBatteryDuration(text, sizeof(text), 65));
+  TEST_ASSERT_EQUAL_STRING("1h 05m", text);
+  TEST_ASSERT_FALSE(formatBatteryDuration(text, 4, 42));
+
+  TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 380, false, 60));
+  TEST_ASSERT_EQUAL_STRING("6h 20m left", text);
+  TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 80, true, 60));
+  TEST_ASSERT_EQUAL_STRING("Full: 1h 20m", text);
+  TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 0, true, 100));
+  TEST_ASSERT_EQUAL_STRING("Fully charged", text);
+  // No rate yet: nothing is shown rather than a guess.
+  TEST_ASSERT_FALSE(formatBatteryEstimate(text, sizeof(text), -1, false, 50));
+  TEST_ASSERT_EQUAL_STRING("", text);
 }
 
 // Builds an ISO 15434 DataMatrix whose raw length is exactly totalBytes. The
@@ -745,7 +869,13 @@ void setup() {
   RUN_TEST(test_ui_timing_and_activity_policy);
   RUN_TEST(test_scan_preemption_policy);
   RUN_TEST(test_brand_dot_policy);
-  RUN_TEST(test_brand_intro_policy);
+  RUN_TEST(test_header_page_cycle_policy);
+  RUN_TEST(test_battery_card_fill_steps);
+  RUN_TEST(test_backlight_policy);
+  RUN_TEST(test_battery_curve_policy);
+  RUN_TEST(test_battery_tracker_guards_and_debounce);
+  RUN_TEST(test_battery_tracker_learns_runtime);
+  RUN_TEST(test_battery_estimate_text);
   RUN_TEST(test_datamatrix_size_guard_is_exact_at_512_bytes);
   RUN_TEST(test_manufacturer_part_number_length_bounds);
   RUN_TEST(test_http_limit_helpers_accept_zero_and_one_below_limit);

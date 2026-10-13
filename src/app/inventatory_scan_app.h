@@ -3,8 +3,11 @@
 
 #pragma once
 
+#include "InventatoryScanBattery.h"
 #include "InventatoryScanCore.h"
 #include "InventatoryScanSync.h"
+#include "InventatoryScanUiPolicy.h"
+#include "display/backlight.h"
 #include "display/display_controller.h"
 #include "gm65/gm65_scanner.h"
 #include "keypad/keypad.h"
@@ -37,7 +40,9 @@ class InventatoryScanApp {
     Menu,
     QuickLabels,
     QuickSettings,
+    DisplaySettings,
     AdjustContrast,
+    AdjustBacklight,
     ConfirmReprovision,
     ConfirmDiscard,
     ConfirmRepair,
@@ -77,6 +82,16 @@ class InventatoryScanApp {
   void enterStandby();
   void exitStandby();
   void enterPowerOff();
+  void noteUserActivity();
+  void serviceBattery();
+  void serviceBacklight();
+  void startLowBatteryWarning();
+  void updateLowBatteryWarning(unsigned long now);
+  void cancelLowBatteryWarning();
+  void powerOffForBattery();
+  void powerOffWithNotice(const String& title, const String& detail);
+  String batteryEstimateText() const;
+  bool canShowBatteryCard() const;
   void submitCurrent(char action);
   void maybeSync();
   void handleSyncResponse(const SyncResponse& response);
@@ -89,6 +104,10 @@ class InventatoryScanApp {
   void resetPending();
   void openQuickLabels();
   void openQuickSettings();
+  void openDisplaySettings();
+  void openBacklightSettings();
+  void stepBacklightMode(int step);
+  void persistBacklightMode();
   void requestQuickLabelPrint(uint8_t presetIndex);
   void refreshQuickLabels();
   void persistContrast();
@@ -106,6 +125,18 @@ class InventatoryScanApp {
   ProvisionedSettings provisionedSettings_;
   DisplayController display_;
   BatteryMonitor battery_;
+  BatteryTracker batteryTracker_;
+  Backlight backlight_;
+  BacklightMode backlightMode_ = BacklightMode::On;
+  bool batterySampled_ = false;
+  unsigned long lastBatterySampleAt_ = 0;
+  bool lastCharging_ = false;
+  // Latched when the low-battery warning appears; it clears only when the dock connects.
+  bool lowBatteryWarning_ = false;
+  unsigned long lowBatteryWarningAt_ = 0;
+  int lowBatteryShownSeconds_ = -1;
+  // Any key or scan keeps the backlight lit in the Auto modes.
+  unsigned long lastUserActivityAt_ = 0;
   InventatoryClient client_;
   InventatoryClientConfig clientConfig_;
   QuantityComposer quantity_;

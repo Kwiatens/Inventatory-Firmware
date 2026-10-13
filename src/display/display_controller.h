@@ -16,8 +16,8 @@ class DisplayController {
   void setConnectivity(DisplayConnectivityState state, bool wifiOnline, bool pcOnline,
                        std::size_t queueDepth);
   void showSplash();
-  // Builds the splash lockup step by step; blocks for about 1.5 s.
-  void playBootIntro();
+  // Shows the static splash for holdMs and keeps the LCD refreshed meanwhile.
+  void playBootSplash(unsigned long holdMs);
   void showBoot(const String& stage);
   void showPowerOff();
   void showReady();
@@ -37,7 +37,9 @@ class DisplayController {
   void showMenu(bool blocked = false, bool unreadable = false);
   void showQuickLabels(const String* labels, std::size_t count, std::size_t page, bool snapshotReceived,
                        bool pcSupportsQuickLabels);
-  void showQuickSettings(uint8_t contrast);
+  void showQuickSettings();
+  void showDisplaySettings(uint8_t contrast, const String& backlightLabel);
+  void showBacklight(const String& label, const String& detail, std::size_t index, std::size_t count);
   void showContrast(uint8_t contrast);
   void showResetConfirm();
   void showDiscardConfirm();
@@ -46,6 +48,17 @@ class DisplayController {
   void showQuickLabelPrintResult(bool success, const String& message);
   void setSyncBlocked(bool blocked);
   void setQueueUnreadable(bool unreadable);
+
+  // Battery in the top bar. percent < 0 means unknown.
+  void setBatteryStatus(int percent, bool charging, const String& estimate);
+  // Overlays cover the screen beneath them and leave it intact, so the screen is
+  // back as it was when the overlay ends.
+  void showBatteryCard(bool charging, int percent, const String& estimate, unsigned long dwellMs);
+  // countdownSeconds < 0 hides the countdown line and bar.
+  void showLowBattery(const String& title, const String& detail, const String& note, int countdownSeconds,
+                      int countdownPercent);
+  void clearOverlay();
+
   bool errorVisible() const {
     return model_.mode == DisplayUiMode::Error || model_.mode == DisplayUiMode::Warning;
   }
@@ -55,11 +68,17 @@ class DisplayController {
   void applyResult(const SyncResult& result);
   void clearContent();
   void refreshReadyContent();
+  const DisplayModel& shownModel() const { return overlayActive_ ? overlay_ : model_; }
   RenderActivity computeActivity(unsigned long now) const;
   static bool activityEquals(const RenderActivity& a, const RenderActivity& b);
 
   DisplayRenderer renderer_;
   DisplayModel model_;
+  DisplayModel overlay_;
+  bool overlayActive_ = false;
+  unsigned long overlayStartedAt_ = 0;
+  // 0 keeps the overlay until clearOverlay().
+  unsigned long overlayUntilMs_ = 0;
   bool dirty_ = true;
   bool deferredResult_ = false;
   SyncResult pendingResult_;
