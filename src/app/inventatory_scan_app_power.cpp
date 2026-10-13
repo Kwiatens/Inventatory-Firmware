@@ -34,7 +34,6 @@ void InventatoryScanApp::enterPowerOff() {
   const bool fromStandby = powerMode_ == PowerMode::Standby;
   Serial.println("Power off requested with the * key.");
   powerOffWarning_ = false;
-  powerOffShownSeconds_ = -1;
   display_.clearOverlay();
   // Standby has already paused the network worker and suspended the scanner. A worker still in a
   // blocking HTTP or mDNS call does not cancel power off: deep sleep stops it, and a queued event is
@@ -85,24 +84,14 @@ void InventatoryScanApp::enterPowerOff() {
 }
 
 // The countdown starts once '*' has been held for a second. Like the low-battery warning, it takes
-// the panel out of standby, so the countdown is always visible while it runs.
+// the panel out of standby, so the countdown is always visible while it runs. The display drains the
+// bar itself from here, one pixel at a time, until the commit or a release.
 void InventatoryScanApp::startPowerOffWarning() {
   if (powerMode_ == PowerMode::Standby) exitStandby();
   Serial.println("Power off warning: release * to stay on.");
   powerOffWarning_ = true;
-  powerOffWarningAt_ = millis();
-  powerOffShownSeconds_ = -1;
   noteUserActivity();
-  updatePowerOffWarning();
-}
-
-// Each whole second of the countdown is drawn once, from the warning's own clock.
-void InventatoryScanApp::updatePowerOffWarning() {
-  if (!powerOffWarning_) return;
-  const int seconds = powerOffCountdownSeconds(millis() - powerOffWarningAt_);
-  if (seconds == powerOffShownSeconds_) return;
-  powerOffShownSeconds_ = seconds;
-  display_.showPowerWarning(powerOffCountdownPercent(seconds));
+  display_.showPowerWarning();
 }
 
 // A cancel does nothing unless the countdown is on screen, so it never clears the low-battery overlay.
@@ -110,7 +99,6 @@ void InventatoryScanApp::cancelPowerOffWarning() {
   if (!powerOffWarning_) return;
   Serial.println("Power off cancelled: * released.");
   powerOffWarning_ = false;
-  powerOffShownSeconds_ = -1;
   display_.clearOverlay();
 }
 
@@ -171,7 +159,6 @@ void InventatoryScanApp::startLowBatteryWarning() {
   Serial.println("Battery low: dock the scanner, or it powers off in 60 s.");
   // The low-battery overlay replaces any power-off countdown on screen, so that countdown ends here.
   powerOffWarning_ = false;
-  powerOffShownSeconds_ = -1;
   if (powerMode_ == PowerMode::Standby) exitStandby();
   lowBatteryWarning_ = true;
   lowBatteryWarningAt_ = millis();

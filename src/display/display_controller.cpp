@@ -145,13 +145,12 @@ void DisplayController::showBoot(const String& stage) {
 
 // The soft power-off warning: a countdown bar over the screen beneath, which comes back when the
 // overlay clears.
-void DisplayController::showPowerWarning(int countdownPercent) {
+void DisplayController::showPowerWarning() {
   overlay_ = DisplayModel();
   overlay_.mode = DisplayUiMode::PowerWarning;
   overlay_.rail = DisplayRailStyle::None;
   overlay_.primary = "Powering off";
   overlay_.secondary = "Release to cancel";
-  overlay_.countdownPercent = countdownPercent;
   overlayActive_ = true;
   overlayStartedAt_ = millis();
   overlayUntilMs_ = 0;
@@ -667,6 +666,8 @@ RenderActivity DisplayController::computeActivity(unsigned long now) const {
     activity.headerPage = static_cast<uint8_t>(headerPageAt(now, hasEstimate));
   } else if (overlay_.mode == DisplayUiMode::BatteryCard) {
     activity.cardFillStep = batteryCardFillStep(now - overlayStartedAt_);
+  } else if (overlay_.mode == DisplayUiMode::PowerWarning) {
+    activity.powerBarFillPx = powerOffBarFillPx(now - overlayStartedAt_, style::kPowerBarFillW);
   }
   return activity;
 }
@@ -675,7 +676,7 @@ bool DisplayController::activityEquals(const RenderActivity& a, const RenderActi
   return a.alternate == b.alternate && a.quantityCursorVisible == b.quantityCursorVisible &&
          a.railActivityOffset == b.railActivityOffset && a.brandDotSlots == b.brandDotSlots &&
          a.headerPage == b.headerPage && a.cardFillStep == b.cardFillStep &&
-         a.bloomStage == b.bloomStage;
+         a.bloomStage == b.bloomStage && a.powerBarFillPx == b.powerBarFillPx;
 }
 
 void DisplayController::tick() {

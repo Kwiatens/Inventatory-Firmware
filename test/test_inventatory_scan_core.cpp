@@ -524,18 +524,19 @@ void test_soft_power_off_policy() {
   TEST_ASSERT_EQUAL_UINT32(1000UL, kPowerOffWarnMs);
   TEST_ASSERT_EQUAL_UINT32(4000UL, kPowerOffCommitMs);
   TEST_ASSERT_EQUAL_UINT32(3000UL, kPowerOffCommitMs - kPowerOffWarnMs);
-  // The count reads 3, 2, 1 from the warning.
-  TEST_ASSERT_EQUAL_INT(3, powerOffCountdownSeconds(0));
-  TEST_ASSERT_EQUAL_INT(3, powerOffCountdownSeconds(999));
-  TEST_ASSERT_EQUAL_INT(2, powerOffCountdownSeconds(1000));
-  TEST_ASSERT_EQUAL_INT(2, powerOffCountdownSeconds(1999));
-  TEST_ASSERT_EQUAL_INT(1, powerOffCountdownSeconds(2000));
-  TEST_ASSERT_EQUAL_INT(1, powerOffCountdownSeconds(2999));
-  // The bar empties with the count: full at 3, two-thirds at 2, a third at 1.
-  TEST_ASSERT_EQUAL_INT(100, powerOffCountdownPercent(3));
-  TEST_ASSERT_EQUAL_INT(66, powerOffCountdownPercent(2));
-  TEST_ASSERT_EQUAL_INT(33, powerOffCountdownPercent(1));
-  TEST_ASSERT_EQUAL_INT(0, powerOffCountdownPercent(0));
+  // The bar drains across the countdown: full at the warning, empty at the commit. The inside of
+  // the bar is 74 px wide.
+  TEST_ASSERT_EQUAL_INT(74, powerOffBarFillPx(0, 74));
+  TEST_ASSERT_EQUAL_INT(37, powerOffBarFillPx(1500, 74));
+  TEST_ASSERT_EQUAL_INT(0, powerOffBarFillPx(3000, 74));
+  TEST_ASSERT_EQUAL_INT(0, powerOffBarFillPx(5000, 74));
+  // It only shrinks, a pixel at a time at most, and never goes below zero.
+  int previous = powerOffBarFillPx(0, 74);
+  for (unsigned long t = 10UL; t <= 3500UL; t += 10UL) {
+    const int fill = powerOffBarFillPx(t, 74);
+    TEST_ASSERT_TRUE(fill <= previous && previous - fill <= 1 && fill >= 0);
+    previous = fill;
+  }
   // The sink drops 8 rows a step over six steps, then stays fully behind the glass.
   TEST_ASSERT_EQUAL_INT(6, kPowerOffSinkSteps);
   TEST_ASSERT_EQUAL_UINT32(60UL, kPowerOffSinkStepMs);

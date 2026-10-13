@@ -137,6 +137,8 @@ constexpr int kPowerBarX = 44;
 constexpr int kPowerBarY = 46;
 constexpr int kPowerBarW = 78;
 constexpr int kPowerBarH = 7;
+// The bar's inside, clear of its one-pixel frame and margin.
+constexpr int kPowerBarFillW = kPowerBarW - 4;
 constexpr int kGlassEdgeY = 56;
 
 // Backlight picker: one segment per option, the chosen one filled.
