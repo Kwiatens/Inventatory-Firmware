@@ -30,6 +30,24 @@ inline OutboxQueueState makeOutboxQueueState(std::size_t head, std::size_t count
   return state;
 }
 
+// A stored header is trusted only when every field is inside the layout the
+// firmware writes. Out-of-range values are corruption, so they are reported and
+// never clamped into a different queue.
+inline bool outboxHeaderFieldsValid(std::size_t head, std::size_t count, uint32_t nextSequence,
+                                    std::size_t capacity) {
+  return capacity > 0 && head < capacity && count <= capacity && nextSequence != 0;
+}
+
+// A new outbox starts its event sequence at a random point, not at 1. Event
+// ids are "<device>-<sequence>", and the desktop deduplicates on that id. If the
+// queue is erased (for example by a full flash erase), a restart at 1 would reuse
+// ids the desktop already stored and silently drop the new scans. The result is
+// odd, so it is never zero, and stays below 2^31 so the sequence cannot wrap in
+// practice.
+inline uint32_t freshOutboxSequenceStart(uint32_t entropy) {
+  return (entropy & 0x7FFFFFFFU) | 1U;
+}
+
 inline bool prepareOutboxEnqueue(const OutboxQueueState& current, std::size_t capacity,
                                  OutboxQueueState& next) {
   if (capacity == 0 || current.count >= capacity || current.head >= capacity ||
