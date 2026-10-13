@@ -181,6 +181,13 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     display_.showResetConfirm();
     return;
   }
+  // The power-off hold is honoured during setup too (AGENTS.md section 9). Setup has no network
+  // work to pause, and deep sleep ends BLE pairing.
+  if (event.type == InventatoryKeyEventType::PowerOff) {
+    if (state_ != State::Idle || otaRequested_ || otaActive_) return;
+    enterPowerOff();
+    return;
+  }
   if (setupMode_) {
     // A keypress on the device is the physical confirmation that re-opens
     // BLE pairing after a lockout or an expired advertising window.
@@ -203,12 +210,6 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     } else {
       enterStandby();
     }
-    return;
-  }
-
-  if (event.type == InventatoryKeyEventType::PowerOff) {
-    if (state_ != State::Idle || otaRequested_ || otaActive_) return;
-    enterPowerOff();
     return;
   }
 
