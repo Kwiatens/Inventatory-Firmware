@@ -361,9 +361,11 @@ preserved:
   - `#`: Short press deletes selected quantity digit; holding `#` (from the idle screen only) opens
     the "Pair with new PC?" confirmation; `A` confirms the reset.
   - `D` hold (about 1.8 s, `*` not pressed): toggles standby; ignored unless on the idle screen.
-  - `*` hold (about 1.8 s, `D` not pressed): powers off into deep sleep once `*` is released; ignored unless
-    on the idle screen, during setup, or during an OTA request. `*` is armed only after it has been seen
-    released since boot. A press of `*` wakes the chip, which restarts the firmware.
+  - `*` hold (`D` not pressed): after 1 s a warning shows a countdown bar, and releasing `*`
+    or pressing `D` or `#` cancels it. Holding to 4 s powers off into deep sleep: the `›i` sinks behind the
+    glass, and the chip sleeps once `*` is released. Ignored unless on the idle screen, during setup, or
+    during an OTA request. `*` is armed only after it has been seen released since boot. A press of `*`
+    wakes the chip, which restarts the firmware and blooms the mark in on the boot splash.
   - `*` + `D` hold (about 1.8 s): requests an OTA update; ignored if setup is incomplete.
   - `0`-`9`: Numeric digit entry or direct menu selection.
 - **Scan responsiveness**: The scanner remains active while ordinary menus are open;

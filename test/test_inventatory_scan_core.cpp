@@ -519,6 +519,46 @@ void test_brand_dot_policy() {
   TEST_ASSERT_TRUE(style::kMarkRows * style::kBootMarkUnit < style::kScreenH);
 }
 
+void test_soft_power_off_policy() {
+  // The warning opens at a 1 s hold and the power-off commits at a 4 s hold: a 3 s countdown.
+  TEST_ASSERT_EQUAL_UINT32(1000UL, kPowerOffWarnMs);
+  TEST_ASSERT_EQUAL_UINT32(4000UL, kPowerOffCommitMs);
+  TEST_ASSERT_EQUAL_UINT32(3000UL, kPowerOffCommitMs - kPowerOffWarnMs);
+  // The count reads 3, 2, 1 from the warning.
+  TEST_ASSERT_EQUAL_INT(3, powerOffCountdownSeconds(0));
+  TEST_ASSERT_EQUAL_INT(3, powerOffCountdownSeconds(999));
+  TEST_ASSERT_EQUAL_INT(2, powerOffCountdownSeconds(1000));
+  TEST_ASSERT_EQUAL_INT(2, powerOffCountdownSeconds(1999));
+  TEST_ASSERT_EQUAL_INT(1, powerOffCountdownSeconds(2000));
+  TEST_ASSERT_EQUAL_INT(1, powerOffCountdownSeconds(2999));
+  // The bar empties with the count: full at 3, two-thirds at 2, a third at 1.
+  TEST_ASSERT_EQUAL_INT(100, powerOffCountdownPercent(3));
+  TEST_ASSERT_EQUAL_INT(66, powerOffCountdownPercent(2));
+  TEST_ASSERT_EQUAL_INT(33, powerOffCountdownPercent(1));
+  TEST_ASSERT_EQUAL_INT(0, powerOffCountdownPercent(0));
+  // The sink drops 8 rows a step over six steps, then stays fully behind the glass.
+  TEST_ASSERT_EQUAL_INT(6, kPowerOffSinkSteps);
+  TEST_ASSERT_EQUAL_UINT32(60UL, kPowerOffSinkStepMs);
+  TEST_ASSERT_EQUAL_UINT32(700UL, kPowerOffRestMs);
+  TEST_ASSERT_EQUAL_INT(0, powerOffSinkOffset(-1));
+  TEST_ASSERT_EQUAL_INT(0, powerOffSinkOffset(0));
+  TEST_ASSERT_EQUAL_INT(8, powerOffSinkOffset(1));
+  TEST_ASSERT_EQUAL_INT(40, powerOffSinkOffset(5));
+  TEST_ASSERT_EQUAL_INT(40, powerOffSinkOffset(9));
+}
+
+void test_boot_bloom_policy() {
+  TEST_ASSERT_EQUAL_INT(0, bootBloomStage(0));
+  TEST_ASSERT_EQUAL_INT(0, bootBloomStage(149));
+  TEST_ASSERT_EQUAL_INT(1, bootBloomStage(150));
+  TEST_ASSERT_EQUAL_INT(3, bootBloomStage(450));
+  TEST_ASSERT_EQUAL_INT(5, bootBloomStage(899));
+  TEST_ASSERT_EQUAL_INT(kBootBloomStages, bootBloomStage(900));
+  TEST_ASSERT_EQUAL_INT(kBootBloomStages, bootBloomStage(1200));
+  // The whole bloom fits inside the 1200 ms boot splash hold (kBootSplashHoldMs in the app).
+  TEST_ASSERT_TRUE(kBootBloomStepMs * kBootBloomStages <= 1200UL);
+}
+
 void test_header_page_cycle_policy() {
   // Status for 4 s, the battery for 1.5 s, then the estimate for 2 s when it is known.
   TEST_ASSERT_TRUE(headerPageAt(0, true) == HeaderPage::Status);
@@ -869,6 +909,8 @@ void setup() {
   RUN_TEST(test_ui_timing_and_activity_policy);
   RUN_TEST(test_scan_preemption_policy);
   RUN_TEST(test_brand_dot_policy);
+  RUN_TEST(test_soft_power_off_policy);
+  RUN_TEST(test_boot_bloom_policy);
   RUN_TEST(test_header_page_cycle_policy);
   RUN_TEST(test_battery_card_fill_steps);
   RUN_TEST(test_backlight_policy);
