@@ -8,6 +8,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -109,6 +110,26 @@ class String {
 
   void clear() { data_.clear(); }
 
+  // Arduino semantics: trim() removes leading and trailing whitespace in place.
+  void trim() {
+    std::size_t begin = 0;
+    while (begin < data_.size() && std::isspace(static_cast<unsigned char>(data_[begin])) != 0) ++begin;
+    std::size_t end = data_.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(data_[end - 1])) != 0) --end;
+    data_ = data_.substr(begin, end - begin);
+  }
+
+  bool equalsIgnoreCase(const String& other) const {
+    if (length() != other.length()) return false;
+    for (std::size_t index = 0; index < data_.size(); ++index) {
+      if (std::tolower(static_cast<unsigned char>(data_[index])) !=
+          std::tolower(static_cast<unsigned char>(other.data_[index]))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   int indexOf(char value, unsigned int fromIndex = 0) const {
     if (fromIndex >= length()) return -1;
     const auto found = data_.find(value, fromIndex);
@@ -150,3 +171,51 @@ class String {
  private:
   std::string data_;
 };
+
+// ---- Host stand-ins for the timing, serial and IP helpers the network code uses. ----
+// The clock is fake: it only moves when delay() is called, so timeouts are deterministic.
+inline unsigned long& hostClockMs() {
+  static unsigned long now = 10000UL;
+  return now;
+}
+inline unsigned long millis() { return hostClockMs(); }
+inline void delay(unsigned long ms) { hostClockMs() += ms; }
+inline void delayMicroseconds(unsigned int) {}
+
+class IPAddress {
+ public:
+  IPAddress() = default;
+  IPAddress(uint8_t a, uint8_t b, uint8_t c, uint8_t d) : bytes_{a, b, c, d} {}
+  String toString() const {
+    return String(static_cast<int>(bytes_[0])) + "." + String(static_cast<int>(bytes_[1])) + "." +
+           String(static_cast<int>(bytes_[2])) + "." + String(static_cast<int>(bytes_[3]));
+  }
+  bool operator==(const IPAddress& other) const { return bytes_[0] == other.bytes_[0] && bytes_[1] == other.bytes_[1] && bytes_[2] == other.bytes_[2] && bytes_[3] == other.bytes_[3]; }
+
+ private:
+  uint8_t bytes_[4]{};
+};
+
+// Serial output is discarded on the host. The firmware never logs secrets (AGENTS.md
+// invariant 1), and the host tests check behaviour, not log text.
+class HostSerial {
+ public:
+  void begin(unsigned long) {}
+  void print(const char*) {}
+  void print(char) {}
+  void print(int) {}
+  void print(unsigned int) {}
+  void print(unsigned long) {}
+  void print(const String&) {}
+  void print(const IPAddress&) {}
+  void println() {}
+  void println(const char*) {}
+  void println(char) {}
+  void println(int) {}
+  void println(unsigned int) {}
+  void println(unsigned long) {}
+  void println(const String&) {}
+  void println(const IPAddress&) {}
+  void printf(const char*, ...) {}
+};
+inline HostSerial Serial;

@@ -13,6 +13,8 @@
 // rules the firmware depends on (see AGENTS.md section 7).
 #pragma once
 
+#include "Arduino.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -102,19 +104,19 @@ class Preferences {
     return host_nvs::storage()[name_].erase(key) > 0;
   }
 
-  bool isKey(const char* key) const {
+  bool isKey(const char* key) {
     return open_ && validKey(key) && find(key) != nullptr;
   }
 
   // Entries left in the namespace budget, as the NVS partition reports them.
-  std::size_t freeEntries() const {
+  std::size_t freeEntries() {
     std::size_t used = 0;
     const auto space = host_nvs::storage().find(name_);
     if (space != host_nvs::storage().end()) used = space->second.size();
     return used >= host_nvs::kEntryCapacity ? 0 : host_nvs::kEntryCapacity - used;
   }
 
-  std::size_t getBytesLength(const char* key) const {
+  std::size_t getBytesLength(const char* key) {
     const auto* blob = open_ && validKey(key) ? find(key) : nullptr;
     return blob != nullptr ? blob->size() : 0;
   }
@@ -129,14 +131,64 @@ class Preferences {
 
   // Returns the number of bytes read, or 0 when the key is missing or the
   // stored value does not fit in maxLength.
-  std::size_t getBytes(const char* key, void* buffer, std::size_t maxLength) const {
+  std::size_t getBytes(const char* key, void* buffer, std::size_t maxLength) {
     const auto* blob = open_ && validKey(key) ? find(key) : nullptr;
     if (blob == nullptr || blob->size() > maxLength || buffer == nullptr) return 0;
     if (!blob->empty()) std::memcpy(buffer, blob->data(), blob->size());
     return blob->size();
   }
 
+  // Typed accessors with the ESP32 Arduino Preferences conventions: a put returns
+  // the number of bytes written (0 on failure), and a get returns the default when
+  // the key is missing or holds a value of another size.
+  bool getBool(const char* key, bool defaultValue = false) {
+    std::uint8_t value = 0;
+    return readFixed(key, value) ? value != 0 : defaultValue;
+  }
+  std::size_t putBool(const char* key, bool value) {
+    const std::uint8_t byte = value ? 1 : 0;
+    return putBytes(key, &byte, sizeof(byte));
+  }
+  std::uint8_t getUChar(const char* key, std::uint8_t defaultValue = 0) {
+    std::uint8_t value = 0;
+    return readFixed(key, value) ? value : defaultValue;
+  }
+  std::size_t putUChar(const char* key, std::uint8_t value) { return putBytes(key, &value, sizeof(value)); }
+  std::uint16_t getUShort(const char* key, std::uint16_t defaultValue = 0) {
+    std::uint16_t value = 0;
+    return readFixed(key, value) ? value : defaultValue;
+  }
+  std::size_t putUShort(const char* key, std::uint16_t value) { return putBytes(key, &value, sizeof(value)); }
+  std::uint32_t getUInt(const char* key, std::uint32_t defaultValue = 0) {
+    std::uint32_t value = 0;
+    return readFixed(key, value) ? value : defaultValue;
+  }
+  std::size_t putUInt(const char* key, std::uint32_t value) { return putBytes(key, &value, sizeof(value)); }
+  std::uint64_t getULong64(const char* key, std::uint64_t defaultValue = 0) {
+    std::uint64_t value = 0;
+    return readFixed(key, value) ? value : defaultValue;
+  }
+  std::size_t putULong64(const char* key, std::uint64_t value) { return putBytes(key, &value, sizeof(value)); }
+  // Returns the number of characters stored, as the ESP32 library does, or 0 on failure.
+  std::size_t putString(const char* key, const String& value) {
+    const std::size_t length = value.length();
+    return putBytes(key, value.c_str(), length + 1U) == length + 1U ? length : 0;
+  }
+  String getString(const char* key, const String& defaultValue = String()) {
+    const auto* blob = open_ && validKey(key) ? find(key) : nullptr;
+    if (blob == nullptr || blob->empty() || blob->back() != '\0') return defaultValue;
+    return String(reinterpret_cast<const char*>(blob->data()));
+  }
+
  private:
+  template <typename T>
+  bool readFixed(const char* key, T& value) {
+    const auto* blob = open_ && validKey(key) ? find(key) : nullptr;
+    if (blob == nullptr || blob->size() != sizeof(T)) return false;
+    std::memcpy(&value, blob->data(), sizeof(T));
+    return true;
+  }
+
   static bool validKey(const char* key) {
     return key != nullptr && key[0] != '\0' && std::strlen(key) <= host_nvs::kMaxNameLength;
   }

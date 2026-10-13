@@ -34,7 +34,8 @@ ifneq ($(SANITIZE),)
 endif
 
 SHARED_SRCS := $(wildcard ../test/*.cpp)
-APP_SRCS    := ../src/storage/outbox_store.cpp
+APP_SRCS    := ../src/storage/outbox_store.cpp ../src/setup/setup_state_store.cpp \
+             ../src/net/inventatory_client.cpp
 HOST_SRCS   := $(wildcard tests/*.cpp) main.cpp
 
 OBJS := $(patsubst ../%.cpp,$(BUILD)/%.o,$(SHARED_SRCS) $(APP_SRCS)) \
@@ -46,7 +47,7 @@ OBJS := $(patsubst ../%.cpp,$(BUILD)/%.o,$(SHARED_SRCS) $(APP_SRCS)) \
 CONFIG_KEY   := $(shell printf '%s|%s' '$(CXX)' '$(SANITIZE)' | tr -c 'A-Za-z0-9' '_')
 CONFIG_STAMP := $(BUILD)/config.$(CONFIG_KEY)
 
-.PHONY: test build clean
+.PHONY: test build clean coverage
 
 build: $(BIN)
 
@@ -80,3 +81,12 @@ $(BUILD)/vendor/unity/unity.o: vendor/unity/unity.c
 
 clean:
 	rm -rf $(BUILD)
+
+# Line coverage of the firmware's headers and sources, from gcov. The tests and shims are
+# excluded. Prints one line per file with the best coverage seen across translation units.
+coverage:
+	@$(MAKE) --no-print-directory clean
+	@$(MAKE) --no-print-directory CXX="$(CXX) --coverage" CC="$(CC) --coverage" LDFLAGS=--coverage test
+	@for obj in $$(find $(BUILD) -name '*.o' ! -path '*/vendor/*'); do \
+	  gcov -n -o $$(dirname $$obj) $$obj 2>/dev/null; \
+	done | awk -f coverage.awk | sort -k3
