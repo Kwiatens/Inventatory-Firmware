@@ -54,7 +54,11 @@ class OutboxStore {
   // longer name makes nvs_open fail with KEY_TOO_LONG, and nothing can be saved.
   static constexpr std::size_t kMaxNamespaceLength = 15;
 
-  bool begin(const char* namespaceName = "inv_outbox", const char* deviceId = nullptr);
+  // freshSequenceStart is used only when the namespace has no queue header yet (a
+  // new or erased outbox). The firmware passes freshOutboxSequenceStart(entropy).
+  // The default of 1 is for tests.
+  bool begin(const char* namespaceName = "inv_outbox", const char* deviceId = nullptr,
+             uint32_t freshSequenceStart = 1U);
   void end();
   bool load();
 
@@ -72,6 +76,9 @@ class OutboxStore {
   std::size_t freeStorageEntries() { return storageReady_ ? prefs_.freeEntries() : 0U; }
   uint32_t nextSequence() const { return nextSequence_; }
   bool unreadable() const { return unreadable_; }
+  // True when the stored queue is in a layout this firmware cannot read, so a repair
+  // removes every stored scan rather than salvaging the readable ones.
+  bool incompatible() const { return incompatible_; }
 
   enum class RepairResult : uint8_t { Repaired, NothingToRepair, StorageFailed };
   RepairResult repair(std::size_t& salvaged, std::size_t& dropped);
@@ -112,7 +119,6 @@ class OutboxStore {
   static_assert(sizeof(Record) <= 512U, "Record must stay inside a single NVS blob chunk");
 
   static void copyString(char* dest, std::size_t capacity, const String& value);
-  static String readString(const char* value);
   static void slotKey(std::size_t slot, char (&out)[8]);
 
   DeviceEventRecord fromRecord(const Record& record) const;
@@ -122,12 +128,17 @@ class OutboxStore {
   bool readSlot(std::size_t slot);
   void eraseSlot(std::size_t slot);
   enum class MigrationResult : uint8_t { Migrated, NotRecognized, WriteFailed };
+  // Absent: no header key. Valid: a header this firmware can read. Invalid: a
+  // header is present but is another layout, damaged, or out of range.
+  enum class HeaderState : uint8_t { Absent, Valid, Invalid };
 
   bool ensureStorage();
-  bool loadCurrentLayout();
+  HeaderState readHeader(Header& header);
+  bool loadQueue(const Header& header);
   bool persistQueue();
   MigrationResult migrateLegacyState();
   bool adoptMigratedRecords(std::size_t count, uint32_t nextSequence);
+  RepairResult discardUnreadableQueue(std::size_t& dropped);
   void resetRecords();
 
   Preferences prefs_;
@@ -136,11 +147,13 @@ class OutboxStore {
   bool storageReady_ = false;
   bool loaded_ = false;
   bool unreadable_ = false;
+  bool incompatible_ = false;
   Record records_[kCapacity]{};
   std::size_t count_ = 0;
   std::size_t head_ = 0;
   std::size_t tail_ = 0;
   uint32_t nextSequence_ = 1;
+  uint32_t freshSequenceStart_ = 1;
 };
 
 }  // namespace inventatory_scan
