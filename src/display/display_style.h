@@ -128,6 +128,17 @@ constexpr int kWarnBarY = 50;
 constexpr int kWarnBarW = 114;
 constexpr int kWarnBarH = 6;
 
+// Soft power-off: the warning keeps the boot mark's place on the left, with the title and detail
+// beside it and the countdown bar along the bottom. The sink's glass edge is the rule that the mark
+// drops behind.
+constexpr int kPowerTitleY = 18;
+constexpr int kPowerDetailY = 31;
+constexpr int kPowerBarX = 44;
+constexpr int kPowerBarY = 46;
+constexpr int kPowerBarW = 78;
+constexpr int kPowerBarH = 7;
+constexpr int kGlassEdgeY = 56;
+
 // Backlight picker: one segment per option, the chosen one filled.
 constexpr int kChoiceSegmentW = 12;
 constexpr int kChoiceSegmentGap = 3;

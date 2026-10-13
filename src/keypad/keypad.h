@@ -14,6 +14,11 @@ enum class InventatoryKeyEventType {
   CycleCursor,
   DeleteDigit,
   PowerToggle,
+  // '*' held for the warning time: the power-off countdown starts.
+  PowerOffWarning,
+  // Released, or joined by D or #, before the power-off commits.
+  PowerOffCancel,
+  // '*' held to the commit time. The chip sleeps once '*' is released.
   PowerOff,
   OtaUpdate,
   ProvisioningReset,

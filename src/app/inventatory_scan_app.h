@@ -90,6 +90,9 @@ class InventatoryScanApp {
   void cancelLowBatteryWarning();
   void powerOffForBattery();
   void powerOffWithNotice(const String& title, const String& detail);
+  void startPowerOffWarning();
+  void updatePowerOffWarning();
+  void cancelPowerOffWarning();
   String batteryEstimateText() const;
   bool canShowBatteryCard() const;
   void submitCurrent(char action);
@@ -135,6 +138,10 @@ class InventatoryScanApp {
   bool lowBatteryWarning_ = false;
   unsigned long lowBatteryWarningAt_ = 0;
   int lowBatteryShownSeconds_ = -1;
+  // The soft power-off countdown, from the '*' warning until the commit or a release.
+  bool powerOffWarning_ = false;
+  unsigned long powerOffWarningAt_ = 0;
+  int powerOffShownSeconds_ = -1;
   // Any key or scan keeps the backlight lit in the Auto modes.
   unsigned long lastUserActivityAt_ = 0;
   InventatoryClient client_;

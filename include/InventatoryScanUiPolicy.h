@@ -219,4 +219,49 @@ inline const char* backlightModeDetail(BacklightMode mode) {
   return "Stays lit";
 }
 
+// Soft power-off. Holding '*' alone for kPowerOffWarnMs shows a countdown; the power-off commits at
+// kPowerOffCommitMs. Releasing '*', or pressing D or # while it is held, cancels before the commit.
+constexpr unsigned long kPowerOffWarnMs = 1000UL;
+constexpr unsigned long kPowerOffCommitMs = 4000UL;
+constexpr int kPowerOffCountdownSeconds = 3;
+constexpr unsigned long kPowerOffCountdownStepMs = 1000UL;
+
+// The ›i sinks behind the glass in kPowerOffSinkSteps steps of kPowerOffSinkStepPx rows, one every
+// kPowerOffSinkStepMs. It then rests for kPowerOffRestMs before the panel goes dark.
+constexpr int kPowerOffSinkSteps = 6;
+constexpr int kPowerOffSinkStepPx = 8;
+constexpr unsigned long kPowerOffSinkStepMs = 60UL;
+constexpr unsigned long kPowerOffRestMs = 700UL;
+
+// Seconds left on the countdown, measured from the warning: 3, then 2, then 1.
+constexpr int powerOffCountdownSeconds(unsigned long sinceWarningMs) {
+  return sinceWarningMs < kPowerOffCountdownStepMs
+             ? kPowerOffCountdownSeconds
+             : sinceWarningMs < 2UL * kPowerOffCountdownStepMs ? kPowerOffCountdownSeconds - 1 : 1;
+}
+
+// The countdown bar: full at the first count, a third at the last.
+constexpr int powerOffCountdownPercent(int seconds) {
+  return seconds <= 0 ? 0
+         : seconds >= kPowerOffCountdownSeconds ? 100
+                                                : seconds * 100 / kPowerOffCountdownSeconds;
+}
+
+// How far the mark has dropped at a sink step. Step 0 is the commit, where the mark still stands.
+constexpr int powerOffSinkOffset(int step) {
+  return step <= 0 ? 0
+         : step >= kPowerOffSinkSteps - 1 ? (kPowerOffSinkSteps - 1) * kPowerOffSinkStepPx
+                                          : step * kPowerOffSinkStepPx;
+}
+
+// Wake bloom: the boot mark draws in kBootBloomStages stages, one every kBootBloomStepMs. The whole
+// bloom fits inside the boot splash hold, so waking takes no longer than it did.
+constexpr unsigned long kBootBloomStepMs = 150UL;
+constexpr int kBootBloomStages = 6;
+constexpr int bootBloomStage(unsigned long elapsedMs) {
+  return elapsedMs >= kBootBloomStepMs * kBootBloomStages
+             ? kBootBloomStages
+             : static_cast<int>(elapsedMs / kBootBloomStepMs);
+}
+
 }  // namespace inventatory_scan

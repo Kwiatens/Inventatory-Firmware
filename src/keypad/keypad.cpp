@@ -5,10 +5,14 @@
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
 
+#include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "keypad.h"
 
 namespace {
+
+using inventatory_scan::kPowerOffCommitMs;
+using inventatory_scan::kPowerOffWarnMs;
 
 constexpr unsigned int kKeyHoldTimeMs = 1800U;
 
@@ -17,7 +21,6 @@ enum class HoldGesture {
   Power,
   Ota,
   ProvisioningReset,
-  PowerOff,
 };
 
 HoldGesture holdGesture_ = HoldGesture::None;
@@ -25,6 +28,14 @@ bool dShortPressPending_ = false;
 bool hashShortPressPending_ = false;
 // '*' holds power the device off only after it has been seen released since boot.
 bool starPowerArmed_ = false;
+// Where the '*' power-off hold stands: warned at kPowerOffWarnMs, committed at kPowerOffCommitMs.
+enum class PowerHold {
+  Idle,
+  Warned,
+  Committed,
+  Blocked,
+};
+PowerHold powerHold_ = PowerHold::Idle;
 
 enum KeyState { IDLE, PRESSED, HOLD, RELEASED };
 
@@ -176,6 +187,51 @@ void releaseMatrixRtcPins() {
 
 MatrixKeypad keypad;
 
+// The '*' power-off hold, checked on every poll because it runs on the clock. A warning starts once
+// '*' has been held alone for kPowerOffWarnMs, and the power-off commits at kPowerOffCommitMs.
+// Releasing '*' before the commit, or pressing D or # while it is held, cancels. A hold that a combo
+// has blocked waits for its release. Only a '*' seen released since boot can warn.
+bool powerHoldEvent(int starIndex, InventatoryKeyEvent& event) {
+  const Key& star = keypad.key[starIndex];
+  const int dIndex = findKeyIndexForChar(keypad, 'D');
+  const int hashIndex = findKeyIndexForChar(keypad, '#');
+  const bool comboActive = (dIndex >= 0 && isActiveState(keypad.key[dIndex].kstate)) ||
+                           (hashIndex >= 0 && isActiveState(keypad.key[hashIndex].kstate));
+  const bool warned = powerHold_ == PowerHold::Warned;
+
+  if (!isActiveState(star.kstate)) {
+    powerHold_ = PowerHold::Idle;
+    if (!warned) return false;
+    event.type = InventatoryKeyEventType::PowerOffCancel;
+    event.value = '*';
+    return true;
+  }
+  // The commit is already running; the chip sleeps on the release, not here.
+  if (powerHold_ == PowerHold::Committed) return false;
+  if (comboActive) {
+    powerHold_ = PowerHold::Blocked;
+    if (!warned) return false;
+    event.type = InventatoryKeyEventType::PowerOffCancel;
+    event.value = '*';
+    return true;
+  }
+  if (powerHold_ == PowerHold::Blocked) return false;
+
+  const unsigned long heldMs = millis() - star.pressedAt;
+  if (powerHold_ == PowerHold::Idle) {
+    if (!starPowerArmed_ || heldMs < kPowerOffWarnMs) return false;
+    powerHold_ = PowerHold::Warned;
+    event.type = InventatoryKeyEventType::PowerOffWarning;
+    event.value = '*';
+    return true;
+  }
+  if (heldMs < kPowerOffCommitMs) return false;
+  powerHold_ = PowerHold::Committed;
+  event.type = InventatoryKeyEventType::PowerOff;
+  event.value = '*';
+  return true;
+}
+
 }  // namespace
 
 void keypadInit() {
@@ -209,6 +265,9 @@ bool keypadPoll(InventatoryKeyEvent& event) {
   if (starIndex >= 0 && !keypad.key[starIndex].lastClosed) {
     starPowerArmed_ = true;
   }
+  if (starIndex >= 0 && powerHoldEvent(starIndex, event)) {
+    return true;
+  }
   if (!changed) {
     return false;
   }
@@ -220,7 +279,6 @@ bool keypadPoll(InventatoryKeyEvent& event) {
   const bool dActive = dIndex >= 0 && isActiveState(keypad.key[dIndex].kstate);
   const bool starHeld = starIndex >= 0 && isHeldState(keypad.key[starIndex].kstate);
   const bool dHeld = dIndex >= 0 && isHeldState(keypad.key[dIndex].kstate);
-  const bool hashActive = hashIndex >= 0 && isActiveState(keypad.key[hashIndex].kstate);
   const bool hashHeld = hashIndex >= 0 && isHeldState(keypad.key[hashIndex].kstate);
 
   if (holdGesture_ == HoldGesture::Ota) {
@@ -240,11 +298,6 @@ bool keypadPoll(InventatoryKeyEvent& event) {
     if (hashIndex < 0 || !isActiveState(keypad.key[hashIndex].kstate)) holdGesture_ = HoldGesture::None;
     return false;
   }
-  if (holdGesture_ == HoldGesture::PowerOff) {
-    if (!starActive) holdGesture_ = HoldGesture::None;
-    return false;
-  }
-
   for (byte i = 0; i < keyCount; ++i) {
     const auto& keyState = keypad.key[i];
     if (!keyState.stateChanged || keyState.kstate != PRESSED) {
@@ -284,15 +337,6 @@ bool keypadPoll(InventatoryKeyEvent& event) {
     holdGesture_ = HoldGesture::Ota;
     event.type = InventatoryKeyEventType::OtaUpdate;
     event.value = 'D';
-    return true;
-  }
-
-  // Holding '*' alone powers the device off. The event fires while the key is still held;
-  // enterPowerOff() waits for the release before the chip sleeps.
-  if (starHeld && starPowerArmed_ && !dActive && !hashActive) {
-    holdGesture_ = HoldGesture::PowerOff;
-    event.type = InventatoryKeyEventType::PowerOff;
-    event.value = '*';
     return true;
   }
 

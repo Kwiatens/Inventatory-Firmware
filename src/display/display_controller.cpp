@@ -118,15 +118,18 @@ void DisplayController::showSplash() {
   markDirty();
 }
 
-// The static boot splash, held for holdMs. Tick keeps the LCD start line
-// refreshed during the hold, as it does on every other screen.
+// The boot splash, held for holdMs. The mark blooms in over the first stages and the name appears
+// once it is whole. Tick keeps the LCD start line refreshed during the hold, as on every other screen.
 void DisplayController::playBootSplash(unsigned long holdMs) {
   showSplash();
   const unsigned long start = millis();
   while (millis() - start < holdMs) {
+    bootBloomStage_ = bootBloomStage(millis() - start);
     tick();
     delay(20);
   }
+  bootBloomStage_ = kBootBloomStages;
+  markDirty();
 }
 
 // Boot keeps the splash on screen until the scanner is ready; a failed stage
@@ -140,11 +143,45 @@ void DisplayController::showBoot(const String& stage) {
   model_.brandDot = DisplayBrandDot::Fault;
 }
 
-void DisplayController::showPowerOff() {
-  showSplash();
-  model_.mode = DisplayUiMode::Boot;
-  model_.primary = "Powering off";
+// The soft power-off warning: a countdown bar over the screen beneath, which comes back when the
+// overlay clears.
+void DisplayController::showPowerWarning(int countdownPercent) {
+  overlay_ = DisplayModel();
+  overlay_.mode = DisplayUiMode::PowerWarning;
+  overlay_.rail = DisplayRailStyle::None;
+  overlay_.primary = "Powering off";
+  overlay_.secondary = "Release to cancel";
+  overlay_.countdownPercent = countdownPercent;
+  overlayActive_ = true;
+  overlayStartedAt_ = millis();
+  overlayUntilMs_ = 0;
+  markDirty();
+}
+
+// The power-off ending, run to its end. The mark sinks behind the glass in steps while the text stays,
+// the text rests, and the panel goes dark. The caller sleeps the chip after this returns.
+void DisplayController::playPowerOffSink() {
+  clearOverlay();
+  clearContent();
+  model_.mode = DisplayUiMode::PowerOff;
+  model_.rail = DisplayRailStyle::None;
+  model_.showPcStatus = false;
+  model_.primary = "See you soon";
   model_.secondary = "Press * to wake";
+  for (int step = 0; step < kPowerOffSinkSteps; ++step) {
+    renderPowerOffFrame(powerOffSinkOffset(step));
+    delay(step < kPowerOffSinkSteps - 1 ? kPowerOffSinkStepMs : kPowerOffRestMs);
+  }
+  model_.mode = DisplayUiMode::Blank;
+  renderPowerOffFrame(0);
+  dirty_ = false;
+}
+
+// Draws the power-off ending directly, outside tick(), because each step is a timed frame.
+void DisplayController::renderPowerOffFrame(int markOffsetY) {
+  RenderActivity activity = computeActivity(millis());
+  activity.markOffsetY = markOffsetY;
+  renderer_.render(model_, activity);
 }
 
 void DisplayController::showReady() {
@@ -602,6 +639,7 @@ void DisplayController::clearOverlay() {
 RenderActivity DisplayController::computeActivity(unsigned long now) const {
   const DisplayModel& shown = shownModel();
   RenderActivity activity;
+  activity.bloomStage = bootBloomStage_;
   if (uiActivityEnabled(standby_, shown.rail == DisplayRailStyle::Activity)) {
     activity.alternate = uiActivityAlternate(now);
     activity.railActivityOffset = uiRailSweepOffset(
@@ -636,7 +674,8 @@ RenderActivity DisplayController::computeActivity(unsigned long now) const {
 bool DisplayController::activityEquals(const RenderActivity& a, const RenderActivity& b) {
   return a.alternate == b.alternate && a.quantityCursorVisible == b.quantityCursorVisible &&
          a.railActivityOffset == b.railActivityOffset && a.brandDotSlots == b.brandDotSlots &&
-         a.headerPage == b.headerPage && a.cardFillStep == b.cardFillStep;
+         a.headerPage == b.headerPage && a.cardFillStep == b.cardFillStep &&
+         a.bloomStage == b.bloomStage;
 }
 
 void DisplayController::tick() {

@@ -16,10 +16,14 @@ class DisplayController {
   void setConnectivity(DisplayConnectivityState state, bool wifiOnline, bool pcOnline,
                        std::size_t queueDepth);
   void showSplash();
-  // Shows the static splash for holdMs and keeps the LCD refreshed meanwhile.
+  // Shows the splash for holdMs, with the mark blooming in first, and keeps the LCD refreshed meanwhile.
   void playBootSplash(unsigned long holdMs);
   void showBoot(const String& stage);
-  void showPowerOff();
+  // The soft power-off warning: a countdown bar overlay. The app sets its fill as each second passes.
+  void showPowerWarning(int countdownPercent);
+  // Runs the power-off ending to its end: the mark sinks behind the glass, the text rests, and the
+  // panel goes dark. Returns with the panel blank, before the chip sleeps.
+  void playPowerOffSink();
   void showReady();
   void showQuantity(const String& itemText, const String& itemCode, const String& quantityText,
                     std::size_t cursor, bool receiveMode, QuantityLookupState lookupState);
@@ -70,6 +74,7 @@ class DisplayController {
   void refreshReadyContent();
   const DisplayModel& shownModel() const { return overlayActive_ ? overlay_ : model_; }
   RenderActivity computeActivity(unsigned long now) const;
+  void renderPowerOffFrame(int markOffsetY);
   static bool activityEquals(const RenderActivity& a, const RenderActivity& b);
 
   DisplayRenderer renderer_;
@@ -88,6 +93,8 @@ class DisplayController {
   bool standby_ = false;
   bool syncBlocked_ = false;
   bool queueUnreadable_ = false;
+  // The boot mark's bloom stage while the splash plays; the full mark otherwise.
+  int bootBloomStage_ = kBootBloomStages;
 };
 
 }  // namespace inventatory_scan

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Holding `*` on the Ready screen powers the device off into deep sleep. Pressing `*` wakes it and the firmware restarts.
+- Holding `*` on an idle screen shows a countdown bar after one second, then powers the device off into deep sleep at four seconds. The `›i` sinks behind the glass. Releasing `*` before then cancels. Pressing `*` wakes it and the firmware restarts.
 - The LiPo voltage is read on GPIO1 through a resistor divider and logged at boot.
 - Operator-confirmed repair of an unreadable offline queue. Readable scans are kept.
 - A faulty barcode scanner no longer stops the device from starting.
@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A low-battery warning counts down 60 seconds, then powers the device off. A cell too low to run is refused at boot with a notice, and the device sleeps again.
 
 ### Changed
-- The boot screen is a static logo with the name and version. The animated dot and the build-up are gone; the splash holds for about a second.
+- The power-off hold is four seconds of `*`, not 1.8 s. The first second opens the countdown, so a short press does nothing.
+- The boot screen is the logo with the name and version and no animated dot. On wake the mark blooms in over the first 0.9 s of the 1.2 s splash hold, and the name appears once it is whole.
 - Device settings opens Display, which holds the contrast and the backlight.
 - The firmware targets the Waveshare ESP32-S3-Nano (16 MB flash) instead of the Tenstar ESP32-S3-Zero. The LCD, keypad and scanner pins moved to match.
 - A result message no longer closes a screen that you have moved on to.

@@ -23,6 +23,9 @@ constexpr int kStemColumn = 4;
 // Lightning bolt, 5 x 7: one byte per row, bit 0 at the left.
 constexpr uint8_t kBoltRows[style::kBoltH] = {0x18, 0x0C, 0x06, 0x1F, 0x18, 0x0C, 0x06};
 
+// The chevron's tip row: the middle of the five body rows.
+constexpr int kTipRow = style::kMarkBodyRows / 2;
+
 }  // namespace
 
 DisplayRenderer::DisplayRenderer()
@@ -427,6 +430,11 @@ void DisplayRenderer::drawBoot(const DisplayModel& model, const RenderActivity& 
   const int unit = style::kBootMarkUnit;
   const int markY =
       (style::kScreenH - style::kMarkBodyRows * unit) / 2 - style::kMarkBodyRow * unit;
+  // The mark blooms in on wake; the name and version wait until it is whole.
+  if (activity.bloomStage < kBootBloomStages) {
+    drawMarkBloom(style::kBootMarkX, markY, unit, activity.bloomStage);
+    return;
+  }
   drawMark(style::kBootMarkX, markY, unit, activity.brandDotSlots, false);
 
   const int textX = style::kBootMarkX + style::kMarkCols * unit + style::kBootColumnGap;
@@ -561,6 +569,75 @@ void DisplayRenderer::drawLowBattery(const DisplayModel& model) {
   }
 }
 
+// The soft power-off warning: the ›i on the left with no dot, the title and detail beside it, and a bar
+// that empties as the countdown runs down. The bar is the only countdown on the screen.
+void DisplayRenderer::drawPowerWarning(const DisplayModel& model) {
+  const int unit = style::kBootMarkUnit;
+  const int markY = (style::kScreenH - style::kMarkBodyRows * unit) / 2 - style::kMarkBodyRow * unit;
+  drawMark(style::kBootMarkX, markY, unit, 0, false);
+
+  const int textX = style::kBootMarkX + style::kMarkCols * unit + style::kBootColumnGap;
+  const int textW = style::kHeaderRightX - textX;
+  lcd_.setFont(style::kFontHeading);
+  drawClipped(textX, style::kPowerTitleY, textW, model.primary);
+  lcd_.setFont(style::kFontRegular);
+  drawClipped(textX, style::kPowerDetailY, textW, model.secondary);
+
+  lcd_.drawFrame(style::kPowerBarX, style::kPowerBarY, style::kPowerBarW, style::kPowerBarH);
+  const int innerW = style::kPowerBarW - 4;
+  const int fill = innerW * constrain(model.countdownPercent, 0, 100) / 100;
+  if (fill > 0) lcd_.drawBox(style::kPowerBarX + 2, style::kPowerBarY + 2, fill, style::kPowerBarH - 4);
+}
+
+// The power-off ending: the ›i, dropped by activity.markOffsetY and cut at the glass edge, with the
+// text beside it. The rule under the glass is drawn last.
+void DisplayRenderer::drawPowerOff(const DisplayModel& model, const RenderActivity& activity) {
+  const int unit = style::kBootMarkUnit;
+  const int markY = (style::kScreenH - style::kMarkBodyRows * unit) / 2 - style::kMarkBodyRow * unit;
+  drawMarkBehindGlass(style::kBootMarkX, markY + activity.markOffsetY, unit);
+
+  const int textX = style::kBootMarkX + style::kMarkCols * unit + style::kBootColumnGap;
+  const int textW = style::kHeaderRightX - textX;
+  lcd_.setFont(style::kFontHeading);
+  drawClipped(textX, style::kPowerTitleY, textW, model.primary);
+  lcd_.setFont(style::kFontRegular);
+  drawClipped(textX, style::kPowerDetailY, textW, model.secondary);
+  lcd_.drawBox(0, style::kGlassEdgeY, style::kScreenW, 1);
+}
+
+// The wake bloom: stage 1 draws the top of the stem, stage 3 the whole stem, then the chevron draws out
+// from its tip, the middle arms first, and stage 6 completes it. Stage 0 is blank.
+void DisplayRenderer::drawMarkBloom(int x, int y, int unit, int stage) {
+  const int bodyY = y + style::kMarkBodyRow * unit;
+  const int stemRows = stage >= 3 ? style::kMarkBodyRows : stage == 2 ? 3 : stage == 1 ? 1 : 0;
+  if (stemRows > 0) lcd_.drawBox(x + kStemColumn * unit, bodyY, unit, stemRows * unit);
+
+  // Rows within reach of the tip: stage 4 draws the tip alone, stage 5 adds its neighbours.
+  const int reach = stage - 4;
+  if (reach < 0) return;
+  for (int row = 0; row < style::kMarkBodyRows; ++row) {
+    const int distance = row > kTipRow ? row - kTipRow : kTipRow - row;
+    if (distance <= reach) {
+      lcd_.drawBox(x + kChevronColumns[row] * unit, bodyY + row * unit, unit, unit);
+    }
+  }
+}
+
+// The chevron and stem with no dot, each cell cut at the glass edge so the mark slides behind it.
+void DisplayRenderer::drawMarkBehindGlass(int x, int y, int unit) {
+  const int bodyY = y + style::kMarkBodyRow * unit;
+  for (int row = 0; row < style::kMarkBodyRows; ++row) {
+    drawBoxAboveGlass(x + kChevronColumns[row] * unit, bodyY + row * unit, unit, unit);
+  }
+  drawBoxAboveGlass(x + kStemColumn * unit, bodyY, unit, style::kMarkBodyRows * unit);
+}
+
+// A box drawn only where it is above the glass edge.
+void DisplayRenderer::drawBoxAboveGlass(int x, int y, int w, int h) {
+  const int bottom = std::min(y + h, style::kGlassEdgeY);
+  if (bottom > y) lcd_.drawBox(x, y, w, bottom - y);
+}
+
 void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& activity) {
   lcd_.clearBuffer();
   lcd_.setDrawColor(1);
@@ -577,6 +654,14 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
       break;
     case DisplayUiMode::LowBattery:
       drawLowBattery(model);
+      break;
+    case DisplayUiMode::PowerWarning:
+      drawPowerWarning(model);
+      break;
+    case DisplayUiMode::PowerOff:
+      drawPowerOff(model, activity);
+      break;
+    case DisplayUiMode::Blank:
       break;
     default:
       drawHeader(model, activity);

@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Power off with the '*' key. Deep sleep stops the chip and the radios; the same key wakes it,
-// and the wake restarts the firmware through setup().
+// Power off with the '*' key. Holding '*' alone for a second shows a three-second countdown; holding
+// on to its end sinks the mark behind the glass, and deep sleep stops the chip and the radios.
+// Releasing '*' before the end cancels. The same key wakes the chip, and the wake restarts the
+// firmware through setup().
 //
 // The battery is read here too: a low cell gets a warning and a shutdown, a critical one shuts
 // down at once, and a low cell at boot is refused.
@@ -15,10 +17,8 @@ namespace inventatory_scan {
 
 namespace {
 
-// A '*' still held after this long cancels power off instead of waiting indefinitely.
+// A '*' still held this long after the commit cancels power off instead of waiting indefinitely.
 constexpr unsigned long kPowerOffReleaseTimeoutMs = 5000UL;
-// Time the "Powering off" screen stays up before the panel is blanked.
-constexpr unsigned long kPowerOffMessageMs = 600UL;
 // One battery reading per second, so the tracker's trip counters count seconds.
 constexpr unsigned long kBatterySampleIntervalMs = 1000UL;
 // Time the low-battery warning gives the user to dock the scanner before it powers off.
@@ -33,6 +33,9 @@ constexpr unsigned long kBatteryCardMs = 2500UL;
 void InventatoryScanApp::enterPowerOff() {
   const bool fromStandby = powerMode_ == PowerMode::Standby;
   Serial.println("Power off requested with the * key.");
+  powerOffWarning_ = false;
+  powerOffShownSeconds_ = -1;
+  display_.clearOverlay();
   // Standby has already paused the network worker and suspended the scanner. A worker still in a
   // blocking HTTP or mDNS call does not cancel power off: deep sleep stops it, and a queued event is
   // already durable in NVS, so a sync cut short is the same as a power cut.
@@ -40,41 +43,75 @@ void InventatoryScanApp::enterPowerOff() {
     Serial.println("Network worker is busy; powering off without waiting for it.");
   }
 
+  // The sink runs at once, even while '*' is still held: the chip sleeps only after the release.
+  display_.playPowerOffSink();
+
+  // Puts the screen back as it was when the power-off was cancelled.
+  const auto restoreScreen = [&]() {
+    if (fromStandby) {
+      display_.setStandby(true);
+      return;
+    }
+    resumeNetworkAfterSetupTransition();
+    // Setup has no Ready screen; the pairing screen comes back instead.
+    if (setupMode_) {
+      display_.showSetup(provisioning_.pairingCode());
+    } else {
+      display_.showReady();
+    }
+  };
+
   const unsigned long deadline = millis() + kPowerOffReleaseTimeoutMs;
   while (keypadPowerKeyDown()) {
     if (static_cast<long>(deadline - millis()) <= 0) {
       Serial.println("Power off cancelled: release * first.");
-      if (!fromStandby) resumeNetworkAfterSetupTransition();
+      restoreScreen();
       return;
     }
     InventatoryKeyEvent ignored;
     keypadPoll(ignored);
     delay(5);
   }
-
-  display_.showPowerOff();
-  display_.tick();
-  delay(kPowerOffMessageMs);
-  // Checked only now, so a press during the message cancels instead of waking the chip at once.
+  // Checked only now, so a press during the sink cancels instead of waking the chip at once.
   if (!keypadArmPowerKeyWake()) {
     Serial.println("Power off cancelled: * is still pressed.");
-    if (fromStandby) {
-      display_.setStandby(true);
-    } else {
-      resumeNetworkAfterSetupTransition();
-      // Setup has no Ready screen; the pairing screen comes back instead.
-      if (setupMode_) {
-        display_.showSetup(provisioning_.pairingCode());
-      } else {
-        display_.showReady();
-      }
-    }
+    restoreScreen();
     return;
   }
   display_.setStandby(true);
   backlight_.setLit(false);
   Serial.println("Powered off. Press * to wake.");
   esp_deep_sleep_start();
+}
+
+// The countdown starts once '*' has been held for a second. Like the low-battery warning, it takes
+// the panel out of standby, so the countdown is always visible while it runs.
+void InventatoryScanApp::startPowerOffWarning() {
+  if (powerMode_ == PowerMode::Standby) exitStandby();
+  Serial.println("Power off warning: release * to stay on.");
+  powerOffWarning_ = true;
+  powerOffWarningAt_ = millis();
+  powerOffShownSeconds_ = -1;
+  noteUserActivity();
+  updatePowerOffWarning();
+}
+
+// Each whole second of the countdown is drawn once, from the warning's own clock.
+void InventatoryScanApp::updatePowerOffWarning() {
+  if (!powerOffWarning_) return;
+  const int seconds = powerOffCountdownSeconds(millis() - powerOffWarningAt_);
+  if (seconds == powerOffShownSeconds_) return;
+  powerOffShownSeconds_ = seconds;
+  display_.showPowerWarning(powerOffCountdownPercent(seconds));
+}
+
+// A cancel does nothing unless the countdown is on screen, so it never clears the low-battery overlay.
+void InventatoryScanApp::cancelPowerOffWarning() {
+  if (!powerOffWarning_) return;
+  Serial.println("Power off cancelled: * released.");
+  powerOffWarning_ = false;
+  powerOffShownSeconds_ = -1;
+  display_.clearOverlay();
 }
 
 void InventatoryScanApp::noteUserActivity() { lastUserActivityAt_ = millis(); }
@@ -88,10 +125,10 @@ String InventatoryScanApp::batteryEstimateText() const {
   return String(text);
 }
 
-// The card is for the Ready screen only: it must not cover a quantity being typed or a menu.
+// The card is for the Ready screen only: it must not cover a quantity being typed, a menu or a warning.
 bool InventatoryScanApp::canShowBatteryCard() const {
   return !setupMode_ && powerMode_ == PowerMode::Normal && state_ == State::Idle && !otaRequested_ &&
-         !otaActive_ && !lowBatteryWarning_;
+         !otaActive_ && !lowBatteryWarning_ && !powerOffWarning_;
 }
 
 void InventatoryScanApp::serviceBattery() {
@@ -132,6 +169,9 @@ void InventatoryScanApp::serviceBattery() {
 
 void InventatoryScanApp::startLowBatteryWarning() {
   Serial.println("Battery low: dock the scanner, or it powers off in 60 s.");
+  // The low-battery overlay replaces any power-off countdown on screen, so that countdown ends here.
+  powerOffWarning_ = false;
+  powerOffShownSeconds_ = -1;
   if (powerMode_ == PowerMode::Standby) exitStandby();
   lowBatteryWarning_ = true;
   lowBatteryWarningAt_ = millis();

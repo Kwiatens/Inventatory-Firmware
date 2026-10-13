@@ -182,7 +182,17 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     return;
   }
   // The power-off hold is honoured during setup too (AGENTS.md section 9). Setup has no network
-  // work to pause, and deep sleep ends BLE pairing.
+  // work to pause, and deep sleep ends BLE pairing. One second of hold opens the countdown, a release
+  // or a D or # press cancels it, and the commit at four seconds powers off.
+  if (event.type == InventatoryKeyEventType::PowerOffWarning) {
+    if (state_ != State::Idle || otaRequested_ || otaActive_) return;
+    startPowerOffWarning();
+    return;
+  }
+  if (event.type == InventatoryKeyEventType::PowerOffCancel) {
+    cancelPowerOffWarning();
+    return;
+  }
   if (event.type == InventatoryKeyEventType::PowerOff) {
     if (state_ != State::Idle || otaRequested_ || otaActive_) return;
     enterPowerOff();
