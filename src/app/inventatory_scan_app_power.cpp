@@ -33,10 +33,11 @@ constexpr unsigned long kBatteryCardMs = 2500UL;
 void InventatoryScanApp::enterPowerOff() {
   const bool fromStandby = powerMode_ == PowerMode::Standby;
   Serial.println("Power off requested with the * key.");
-  // Standby has already paused the network worker and suspended the scanner.
+  // Standby has already paused the network worker and suspended the scanner. A worker still in a
+  // blocking HTTP or mDNS call does not cancel power off: deep sleep stops it, and a queued event is
+  // already durable in NVS, so a sync cut short is the same as a power cut.
   if (!fromStandby && !pauseNetworkForSetupTransition()) {
-    Serial.println("Network worker is busy; power off postponed.");
-    return;
+    Serial.println("Network worker is busy; powering off without waiting for it.");
   }
 
   const unsigned long deadline = millis() + kPowerOffReleaseTimeoutMs;
@@ -61,7 +62,12 @@ void InventatoryScanApp::enterPowerOff() {
       display_.setStandby(true);
     } else {
       resumeNetworkAfterSetupTransition();
-      display_.showReady();
+      // Setup has no Ready screen; the pairing screen comes back instead.
+      if (setupMode_) {
+        display_.showSetup(provisioning_.pairingCode());
+      } else {
+        display_.showReady();
+      }
     }
     return;
   }
