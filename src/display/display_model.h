@@ -27,6 +27,10 @@ enum class DisplayUiMode {
   Contrast,
   ConfirmReset,
   Printing,
+  DisplaySettings,
+  Backlight,
+  BatteryCard,
+  LowBattery,
 };
 
 enum class DisplayConnectivityState {
@@ -45,10 +49,13 @@ enum class DisplayBodyKind {
   Contrast,
   Confirm,
   Setup,
+  Backlight,
 };
 
-// What the dot of the ›i mark shows on the boot and update screens.
+// What the dot of the ›i mark shows on the boot and update screens. The normal
+// boot shows no dot; a fault keeps a static broken dot.
 enum class DisplayBrandDot {
+  None,
   Full,
   Busy,
   Progress,
@@ -73,6 +80,10 @@ struct RenderActivity {
   bool quantityCursorVisible = true;
   int railActivityOffset = 0;
   uint8_t brandDotSlots = 0;
+  // Top bar page, as a HeaderPage value.
+  uint8_t headerPage = 0;
+  // Battery card fill, 0 .. kBatteryCardFillSteps.
+  uint8_t cardFillStep = 0;
 };
 
 struct DisplayModel {
@@ -81,9 +92,7 @@ struct DisplayModel {
   DisplayRailStyle rail = DisplayRailStyle::Activity;
   DisplayConnectivityState connectivity = DisplayConnectivityState::Offline;
   bool showPcStatus = true;
-  DisplayBrandDot brandDot = DisplayBrandDot::Full;
-  // Elements of the boot lockup built so far; the full lockup outside the intro.
-  int introStep = kBrandIntroSteps;
+  DisplayBrandDot brandDot = DisplayBrandDot::None;
   bool animateEllipsis = false;
   bool receiveQuantity = false;
   std::size_t queueDepth = 0;
@@ -100,6 +109,17 @@ struct DisplayModel {
   uint32_t setupCode = 0;
   String listRows[5];
   std::size_t listRowCount = 0;
+  // Battery in the top bar and on the battery cards. batteryPercent < 0 means unknown.
+  int batteryPercent = -1;
+  bool batteryCharging = false;
+  // Runtime line ("6h 20m left", "Full: 1h 05m"); empty until a rate is known.
+  String batteryEstimate;
+  // Low-battery countdown in seconds; negative when the screen has none.
+  int countdownSeconds = -1;
+  int countdownPercent = 0;
+  // Backlight picker: the chosen option out of choiceCount.
+  std::size_t choiceIndex = 0;
+  std::size_t choiceCount = 0;
 };
 
 }  // namespace inventatory_scan

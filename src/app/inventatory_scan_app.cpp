@@ -8,27 +8,78 @@
 #include "InventatoryScanCore.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
+#include "config/hardware.h"
 #include "config/version.h"
 
 #include <WiFi.h>
+
+#include <cstddef>
 
 namespace inventatory_scan {
 
 namespace {
 
+// Pins that the board already drives or reads, from config.h and hardware.h. The backlight and
+// dock signal must not share one with them, nor with each other.
+constexpr int kClaimedPins[] = {
+    KEYPAD_COLUMN_1_PIN, KEYPAD_COLUMN_2_PIN, KEYPAD_COLUMN_3_PIN, KEYPAD_COLUMN_4_PIN,
+    KEYPAD_ROW_1_PIN,    KEYPAD_ROW_2_PIN,    KEYPAD_ROW_3_PIN,    KEYPAD_ROW_4_PIN,
+    BATTERY_ADC_PIN,     GM65_TX_PIN,         GM65_RX_PIN,
+    hardware::kLcdClockPin, hardware::kLcdDcPin, hardware::kLcdResetPin, hardware::kLcdCsPin,
+    hardware::kLcdDataPin,
+};
+constexpr std::size_t kClaimedPinCount = sizeof(kClaimedPins) / sizeof(kClaimedPins[0]);
+
+// Strapping pins, the RGB and SCK LEDs, USB, and the in-package flash and PSRAM (see AGENTS.md section 3).
+constexpr bool pinIsReserved(int pin) {
+  return pin == 0 || pin == 3 || pin == 45 || pin == 46 || pin == 48 || pin == 19 || pin == 20 ||
+         (pin >= 26 && pin <= 37);
+}
+
+constexpr bool pinIsClaimed(int pin, const int* pins, std::size_t count) {
+  return count == 0 ? false : (pins[count - 1] == pin || pinIsClaimed(pin, pins, count - 1));
+}
+
+static_assert(!pinIsReserved(hardware::kBacklightPin), "kBacklightPin is a strap, LED, USB or flash pin");
+static_assert(!pinIsReserved(hardware::kChargerSensePin), "kChargerSensePin is a strap, LED, USB or flash pin");
+static_assert(!pinIsClaimed(hardware::kBacklightPin, kClaimedPins, kClaimedPinCount),
+              "kBacklightPin is already used by the keypad, scanner, battery or LCD");
+static_assert(!pinIsClaimed(hardware::kChargerSensePin, kClaimedPins, kClaimedPinCount),
+              "kChargerSensePin is already used by the keypad, scanner, battery or LCD");
+static_assert(hardware::kBacklightPin != hardware::kChargerSensePin, "backlight and dock signal share a pin");
+
 // ESP32 NVS namespaces are limited to 15 characters plus the terminator.
 constexpr char kOutboxNamespace[] = "inv_outbox";
 static_assert(sizeof(kOutboxNamespace) <= 16, "NVS namespace exceeds ESP32's 15-character limit");
+
+// The static boot splash stays up this long before the normal screens take over.
+constexpr unsigned long kBootSplashHoldMs = 1200UL;
 
 }  // namespace
 
 bool InventatoryScanApp::begin() {
   Serial.println("Inventatory Scan R1 booting");
   display_.begin();
-  display_.playBootIntro();
-  keypadInit();
+  // The backlight is lit for the splash; the configured mode takes over in the loop.
+  backlight_.begin();
+  backlight_.setLit(true);
+  lastUserActivityAt_ = millis();
   battery_.begin();
-  Serial.printf("Battery %lu mV\r\n", static_cast<unsigned long>(battery_.readMillivolts()));
+  display_.playBootSplash(kBootSplashHoldMs);
+  keypadInit();
+  const uint32_t bootMillivolts = battery_.readMillivolts();
+  Serial.printf("Battery %lu mV\r\n", static_cast<unsigned long>(bootMillivolts));
+  batteryTracker_.update(bootMillivolts, battery_.chargerPresent(), millis());
+  batterySampled_ = true;
+  lastBatterySampleAt_ = millis();
+  lastCharging_ = batteryTracker_.charging();
+  display_.setBatteryStatus(batteryTracker_.percent(), lastCharging_, batteryEstimateText());
+  // A cell that is low and not docked is refused: show why, then sleep again.
+  const int bootPercent = batteryTracker_.percent();
+  if (bootPercent >= 0 && bootPercent <= kBatteryLowPercent && !lastCharging_) {
+    powerOffWithNotice(bootPercent <= kBatteryCriticalPercent ? String("Battery empty") : String("Battery low"),
+                       String("Charge to power on"));
+  }
   if (!scanner_.begin(9600)) {
     Serial.println("Scanner initialization failed; verify the GM65 connection and profile.");
     display_.showBoot("Scanner error");
@@ -64,6 +115,7 @@ bool InventatoryScanApp::begin() {
   } else {
     lcdContrast_ = deviceSettings_.contrast();
     display_.setContrast(lcdContrast_);
+    backlightMode_ = backlightModeFromStored(deviceSettings_.backlightMode());
   }
   if (!setupStore_.begin() || !setupStore_.load(provisionedSettings_)) {
     setupMode_ = true;
@@ -83,6 +135,8 @@ bool InventatoryScanApp::begin() {
 }
 
 void InventatoryScanApp::loop() {
+  serviceBattery();
+  serviceBacklight();
   if (setupMode_) {
     InventatoryKeyEvent event;
     while (keypadPoll(event)) handleKey(event);

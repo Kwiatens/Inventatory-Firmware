@@ -84,6 +84,11 @@ void InventatoryScanApp::pollScanner() {
 }
 
 void InventatoryScanApp::handleScan(const String& code) {
+  if (lowBatteryWarning_) {
+    Serial.println("Scan ignored while the battery warning is shown.");
+    return;
+  }
+  noteUserActivity();
   if (!scanMayInterruptUi(setupMode_, powerMode_ == PowerMode::Standby,
                           otaRequested_ || otaActive_,
                           state_ == State::ConfirmReprovision || state_ == State::ConfirmDiscard || state_ == State::ConfirmRepair,
@@ -162,6 +167,9 @@ void InventatoryScanApp::handleScan(const String& code) {
 }
 
 void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
+  noteUserActivity();
+  // While the low-battery warning is up only the power-off hold is honoured.
+  if (lowBatteryWarning_ && event.type != InventatoryKeyEventType::PowerOff) return;
   if (event.type == InventatoryKeyEventType::ProvisioningReset) {
     // Holding # only opens the confirmation screen; the wipe itself needs A.
     if (setupMode_ || state_ != State::Idle || powerMode_ == PowerMode::Standby || otaRequested_ ||
@@ -233,8 +241,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     }
     if (state_ == State::QuickSettings) {
       if (event.value == '1') {
-        state_ = State::AdjustContrast;
-        display_.showContrast(lcdContrast_);
+        openDisplaySettings();
       } else if (event.value == '2') {
         state_ = State::Idle;
         enterStandby();
@@ -248,6 +255,17 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       }
       return;
     }
+    if (state_ == State::DisplaySettings) {
+      if (event.value == '1') {
+        state_ = State::AdjustContrast;
+        display_.showContrast(lcdContrast_);
+      } else if (event.value == '2') {
+        openBacklightSettings();
+      }
+      return;
+    }
+    // The contrast and backlight screens take no digits.
+    if (state_ == State::AdjustContrast || state_ == State::AdjustBacklight) return;
     if (state_ == State::Idle) {
       Serial.println("Digit ignored, scan a code first.");
       return;
@@ -309,6 +327,15 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     }
     if (state_ == State::AdjustContrast) {
       persistContrast();
+      openDisplaySettings();
+      return;
+    }
+    if (state_ == State::AdjustBacklight) {
+      // Each change is already saved; C only leaves the picker.
+      openDisplaySettings();
+      return;
+    }
+    if (state_ == State::DisplaySettings) {
       openQuickSettings();
       return;
     }
@@ -335,6 +362,11 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       display_.setContrast(lcdContrast_);
       persistContrast();
       display_.showContrast(lcdContrast_);
+      return;
+    }
+    if (state_ == State::AdjustBacklight) {
+      // A moves towards Off, B towards the longest timeout.
+      stepBacklightMode(event.type == InventatoryKeyEventType::Add ? -1 : 1);
       return;
     }
     if (state_ == State::ConfirmReprovision && event.type == InventatoryKeyEventType::Add) {

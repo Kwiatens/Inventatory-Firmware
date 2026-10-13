@@ -5,6 +5,7 @@
 
 #include "storage/device_settings_store.h"
 
+#include "InventatoryScanUiPolicy.h"
 #include "config/hardware.h"
 
 namespace inventatory_scan {
@@ -17,6 +18,7 @@ constexpr uint8_t kMaxContrast = 63;
 bool DeviceSettingsStore::begin() {
   if (!prefs_.begin(kSettingsNamespace, false)) return false;
   lastContrast_ = contrast();
+  lastBacklightMode_ = backlightMode();
   return true;
 }
 
@@ -29,6 +31,18 @@ bool DeviceSettingsStore::saveContrast(uint8_t contrast) {
   if (lastContrast_ >= 0 && value == lastContrast_) return true;
   if (prefs_.putUChar("contrast", value) != 1) return false;
   lastContrast_ = value;
+  return true;
+}
+
+uint8_t DeviceSettingsStore::backlightMode() const {
+  return static_cast<uint8_t>(backlightModeFromStored(prefs_.getUChar("backlight", kBacklightModeDefault)));
+}
+
+bool DeviceSettingsStore::saveBacklightMode(uint8_t mode) {
+  const uint8_t value = static_cast<uint8_t>(backlightModeFromStored(mode));
+  if (lastBacklightMode_ >= 0 && value == lastBacklightMode_) return true;
+  if (prefs_.putUChar("backlight", value) != 1) return false;
+  lastBacklightMode_ = value;
   return true;
 }
 

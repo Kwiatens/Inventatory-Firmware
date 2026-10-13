@@ -4,6 +4,7 @@
 #include "power/battery_monitor.h"
 
 #include "config/config.h"
+#include "config/hardware.h"
 
 namespace inventatory_scan {
 
@@ -20,6 +21,8 @@ static_assert(BATTERY_DIVIDER_BOTTOM_OHMS > 0UL, "BATTERY_DIVIDER_BOTTOM_OHMS mu
 void BatteryMonitor::begin() {
   // 12 dB attenuation covers the divider output for a LiPo (about 2.1 V at 4.2 V with equal resistors).
   analogSetPinAttenuation(BATTERY_ADC_PIN, ADC_11db);
+  // The pull-down reads an unwired or floating charger line as "not charging".
+  pinMode(hardware::kChargerSensePin, INPUT_PULLDOWN);
 }
 
 uint32_t BatteryMonitor::readMillivolts() const {
@@ -31,6 +34,10 @@ uint32_t BatteryMonitor::readMillivolts() const {
   // The pin sees battery * bottom / (top + bottom).
   return static_cast<uint32_t>(pinMillivolts * (BATTERY_DIVIDER_TOP_OHMS + BATTERY_DIVIDER_BOTTOM_OHMS) /
                                BATTERY_DIVIDER_BOTTOM_OHMS);
+}
+
+bool BatteryMonitor::chargerPresent() const {
+  return digitalRead(hardware::kChargerSensePin) == HIGH;
 }
 
 }  // namespace inventatory_scan
