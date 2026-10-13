@@ -570,8 +570,8 @@ void DisplayRenderer::drawLowBattery(const DisplayModel& model) {
 }
 
 // The soft power-off warning: the ›i on the left with no dot, the title and detail beside it, and a bar
-// that empties as the countdown runs down. The bar is the only countdown on the screen.
-void DisplayRenderer::drawPowerWarning(const DisplayModel& model) {
+// that drains as the countdown runs down. The bar is the only countdown on the screen.
+void DisplayRenderer::drawPowerWarning(const DisplayModel& model, const RenderActivity& activity) {
   const int unit = style::kBootMarkUnit;
   const int markY = (style::kScreenH - style::kMarkBodyRows * unit) / 2 - style::kMarkBodyRow * unit;
   drawMark(style::kBootMarkX, markY, unit, 0, false);
@@ -584,9 +584,9 @@ void DisplayRenderer::drawPowerWarning(const DisplayModel& model) {
   drawClipped(textX, style::kPowerDetailY, textW, model.secondary);
 
   lcd_.drawFrame(style::kPowerBarX, style::kPowerBarY, style::kPowerBarW, style::kPowerBarH);
-  const int innerW = style::kPowerBarW - 4;
-  const int fill = innerW * constrain(model.countdownPercent, 0, 100) / 100;
-  if (fill > 0) lcd_.drawBox(style::kPowerBarX + 2, style::kPowerBarY + 2, fill, style::kPowerBarH - 4);
+  if (activity.powerBarFillPx > 0) {
+    lcd_.drawBox(style::kPowerBarX + 2, style::kPowerBarY + 2, activity.powerBarFillPx, style::kPowerBarH - 4);
+  }
 }
 
 // The power-off ending: the ›i, dropped by activity.markOffsetY and cut at the glass edge, with the
@@ -656,7 +656,7 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
       drawLowBattery(model);
       break;
     case DisplayUiMode::PowerWarning:
-      drawPowerWarning(model);
+      drawPowerWarning(model, activity);
       break;
     case DisplayUiMode::PowerOff:
       drawPowerOff(model, activity);
