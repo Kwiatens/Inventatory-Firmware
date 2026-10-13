@@ -86,7 +86,43 @@ void InventatoryScanApp::openQuickLabels() {
 
 void InventatoryScanApp::openQuickSettings() {
   state_ = State::QuickSettings;
-  display_.showQuickSettings(lcdContrast_);
+  display_.showQuickSettings();
+}
+
+void InventatoryScanApp::openDisplaySettings() {
+  state_ = State::DisplaySettings;
+  display_.showDisplaySettings(lcdContrast_, String(backlightModeShortLabel(backlightMode_)));
+}
+
+void InventatoryScanApp::openBacklightSettings() {
+  state_ = State::AdjustBacklight;
+  display_.showBacklight(String(backlightModeLabel(backlightMode_)), String(backlightModeDetail(backlightMode_)),
+                         static_cast<std::size_t>(backlightMode_), kBacklightModeCount);
+}
+
+// A and B move along the list. The change takes effect at once and is saved, like the contrast.
+void InventatoryScanApp::stepBacklightMode(int step) {
+  const int current = static_cast<int>(backlightMode_);
+  const int next = constrain(current + step, 0, static_cast<int>(kBacklightModeCount) - 1);
+  backlightMode_ = static_cast<BacklightMode>(next);
+  persistBacklightMode();
+  noteUserActivity();
+  openBacklightSettings();
+}
+
+void InventatoryScanApp::persistBacklightMode() {
+  if (!deviceSettings_.saveBacklightMode(static_cast<uint8_t>(backlightMode_))) {
+    Serial.println("Could not save backlight mode.");
+  }
+}
+
+// The backlight stays lit for pairing and warnings whatever the setting says, and
+// stays dark in standby, where the panel itself is off.
+void InventatoryScanApp::serviceBacklight() {
+  const bool forced = lowBatteryWarning_ || setupMode_ || otaRequested_ || otaActive_;
+  const bool lit = powerMode_ != PowerMode::Standby &&
+                   backlightLit(backlightMode_, forced, millis(), lastUserActivityAt_);
+  backlight_.setLit(lit);
 }
 
 void InventatoryScanApp::refreshQuickLabels() {

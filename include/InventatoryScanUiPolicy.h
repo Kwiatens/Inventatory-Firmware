@@ -110,33 +110,113 @@ constexpr uint8_t brandDotProgress(int percent, unsigned long now) {
                            ((now / kBrandDotBlinkMs) % 2UL == 0UL ? 1 : 0));
 }
 
-// Boot intro, timed like the website's lockup: the chevron's five pixels top to
-// bottom, the stem's five rows bottom-up, the dot's four slots, then the name.
-constexpr int kBrandIntroChevronCells = 5;
-constexpr int kBrandIntroBodyCells = 10;
-constexpr int kBrandIntroSteps = kBrandIntroBodyCells + 4 + 1;
+// Top bar: the right-hand slot cycles through the status, the battery level and,
+// when a runtime rate is known, the time left. The status alone is shown when
+// there is no battery reading.
+enum class HeaderPage : uint8_t {
+  Status = 0,
+  Battery = 1,
+  Estimate = 2,
+};
 
-// Elapsed time at which the intro reaches `step` (1 .. kBrandIntroSteps).
-constexpr unsigned long brandIntroStepAt(int step) {
-  return step <= kBrandIntroChevronCells
-             ? 150UL + 90UL * static_cast<unsigned long>(step - 1)
-         : step <= kBrandIntroBodyCells
-             ? 700UL + 70UL * static_cast<unsigned long>(step - kBrandIntroChevronCells - 1)
-         : step < kBrandIntroSteps
-             ? 1100UL + 80UL * static_cast<unsigned long>(step - kBrandIntroBodyCells - 1)
-             : 1450UL;
+constexpr uint32_t kHeaderStatusPageMs = 4000UL;
+constexpr uint32_t kHeaderBatteryPageMs = 1500UL;
+constexpr uint32_t kHeaderEstimatePageMs = 2000UL;
+
+// The page shown at `nowMs`. The estimate page is skipped while hasEstimate is false.
+inline HeaderPage headerPageAt(uint32_t nowMs, bool hasEstimate) {
+  const uint32_t cycle =
+      kHeaderStatusPageMs + kHeaderBatteryPageMs + (hasEstimate ? kHeaderEstimatePageMs : 0UL);
+  uint32_t phase = nowMs % cycle;
+  if (phase < kHeaderStatusPageMs) return HeaderPage::Status;
+  phase -= kHeaderStatusPageMs;
+  if (phase < kHeaderBatteryPageMs) return HeaderPage::Battery;
+  return HeaderPage::Estimate;
 }
 
-// Number of intro elements built after `elapsedMs`; kBrandIntroSteps is the full lockup.
-constexpr int brandIntroStepFrom(int step, unsigned long elapsedMs) {
-  return step < kBrandIntroSteps && elapsedMs >= brandIntroStepAt(step + 1)
-             ? brandIntroStepFrom(step + 1, elapsedMs)
-             : step;
+// The battery card fills in steps, one per 100 ms, so each frame is a visible change.
+constexpr uint32_t kBatteryCardFillStepMs = 100UL;
+constexpr uint8_t kBatteryCardFillSteps = 7;
+
+// Fill step for the card, `elapsedMs` after it appeared.
+inline uint8_t batteryCardFillStep(uint32_t elapsedMs) {
+  const uint32_t step = elapsedMs / kBatteryCardFillStepMs;
+  return step >= kBatteryCardFillSteps ? kBatteryCardFillSteps : static_cast<uint8_t>(step);
 }
 
-constexpr int brandIntroStep(unsigned long elapsedMs) { return brandIntroStepFrom(0, elapsedMs); }
+// Backlight setting, stored as its numeric value. `On` is the default: it keeps
+// the screen lit as before. Auto modes switch the backlight off after the idle time.
+enum class BacklightMode : uint8_t {
+  Off = 0,
+  On = 1,
+  Auto1Min = 2,
+  Auto3Min = 3,
+  Auto5Min = 4,
+  Auto10Min = 5,
+};
 
-// Dot slots switched on so far, in reading order.
-constexpr uint8_t brandIntroDot(int step) { return brandDotSlotsUpTo(step - kBrandIntroBodyCells); }
+constexpr uint8_t kBacklightModeCount = 6;
+constexpr uint8_t kBacklightModeDefault = static_cast<uint8_t>(BacklightMode::On);
+
+constexpr uint32_t backlightIdleTimeoutMs(BacklightMode mode) {
+  return mode == BacklightMode::Auto1Min    ? 60000UL
+         : mode == BacklightMode::Auto3Min  ? 180000UL
+         : mode == BacklightMode::Auto5Min  ? 300000UL
+         : mode == BacklightMode::Auto10Min ? 600000UL
+                                            : 0UL;
+}
+
+// A stored value outside the enum falls back to the default instead of
+// selecting an undefined mode.
+inline BacklightMode backlightModeFromStored(uint8_t value) {
+  return value < kBacklightModeCount ? static_cast<BacklightMode>(value)
+                                     : static_cast<BacklightMode>(kBacklightModeDefault);
+}
+
+// `forced` covers screens that must stay readable whatever the setting: the
+// low-battery warning and pairing. Timestamps use unsigned differences, so the
+// idle time survives the millis() wrap.
+inline bool backlightLit(BacklightMode mode, bool forced, uint32_t nowMs, uint32_t lastActivityMs) {
+  if (forced || mode == BacklightMode::On) return true;
+  const uint32_t timeout = backlightIdleTimeoutMs(mode);
+  return timeout != 0U && static_cast<uint32_t>(nowMs - lastActivityMs) < timeout;
+}
+
+// Names for the settings screens. The short form fits a row of the device settings list.
+inline const char* backlightModeLabel(BacklightMode mode) {
+  switch (mode) {
+    case BacklightMode::Off: return "Off";
+    case BacklightMode::On: return "On";
+    case BacklightMode::Auto1Min: return "Auto 1 min";
+    case BacklightMode::Auto3Min: return "Auto 3 min";
+    case BacklightMode::Auto5Min: return "Auto 5 min";
+    case BacklightMode::Auto10Min: return "Auto 10 min";
+  }
+  return "On";
+}
+
+inline const char* backlightModeShortLabel(BacklightMode mode) {
+  switch (mode) {
+    case BacklightMode::Off: return "Off";
+    case BacklightMode::On: return "On";
+    case BacklightMode::Auto1Min: return "Auto 1m";
+    case BacklightMode::Auto3Min: return "Auto 3m";
+    case BacklightMode::Auto5Min: return "Auto 5m";
+    case BacklightMode::Auto10Min: return "Auto 10m";
+  }
+  return "On";
+}
+
+inline const char* backlightModeDetail(BacklightMode mode) {
+  switch (mode) {
+    case BacklightMode::Off: return "Dark, except warnings";
+    case BacklightMode::On: return "Stays lit";
+    case BacklightMode::Auto1Min: return "Dims after 1 min idle";
+    case BacklightMode::Auto3Min: return "Dims after 3 min idle";
+    case BacklightMode::Auto5Min: return "Dims after 5 min idle";
+    case BacklightMode::Auto10Min: return "Dims after 10 min idle";
+  }
+  return "Stays lit";
+}
 
 }  // namespace inventatory_scan

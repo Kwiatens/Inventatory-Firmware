@@ -42,11 +42,14 @@ void DisplayController::markDirty() { dirty_ = true; }
 
 void DisplayController::clearContent() {
   // Every screen change cancels a pending result dwell; the result setters
-  // re-arm it after calling this.
+  // re-arm it after calling this. The battery fields are not content and stay.
   resultUntilMs_ = 0;
   model_.animateEllipsis = false;
-  model_.brandDot = DisplayBrandDot::Full;
-  model_.introStep = kBrandIntroSteps;
+  model_.brandDot = DisplayBrandDot::None;
+  model_.countdownSeconds = -1;
+  model_.countdownPercent = 0;
+  model_.choiceIndex = 0;
+  model_.choiceCount = 0;
   model_.header.clear();
   model_.primary.clear();
   model_.secondary.clear();
@@ -115,27 +118,19 @@ void DisplayController::showSplash() {
   markDirty();
 }
 
-void DisplayController::playBootIntro() {
+// The static boot splash, held for holdMs. Tick keeps the LCD start line
+// refreshed during the hold, as it does on every other screen.
+void DisplayController::playBootSplash(unsigned long holdMs) {
   showSplash();
   const unsigned long start = millis();
-  model_.introStep = -1;
-  for (;;) {
-    const unsigned long now = millis();
-    const int step = brandIntroStep(now - start);
-    if (step != model_.introStep) {
-      model_.introStep = step;
-      lastActivity_ = computeActivity(now);
-      renderer_.render(model_, lastActivity_);
-      lastStartLineRecoveryMs_ = now;
-    }
-    if (step >= kBrandIntroSteps) break;
-    delay(10);
+  while (millis() - start < holdMs) {
+    tick();
+    delay(20);
   }
-  dirty_ = false;
 }
 
-// Boot keeps the splash lockup on screen until the scanner is ready; a failed
-// stage replaces the product name and breaks the dot.
+// Boot keeps the splash on screen until the scanner is ready; a failed stage
+// replaces the product name and shows a static broken dot.
 void DisplayController::showBoot(const String& stage) {
   showSplash();
   model_.mode = DisplayUiMode::Boot;
@@ -150,7 +145,6 @@ void DisplayController::showPowerOff() {
   model_.mode = DisplayUiMode::Boot;
   model_.primary = "Powering off";
   model_.secondary = "Press * to wake";
-  model_.brandDot = DisplayBrandDot::Busy;
 }
 
 void DisplayController::showReady() {
@@ -432,18 +426,47 @@ void DisplayController::showQuickLabels(const String* labels, std::size_t count,
   markDirty();
 }
 
-void DisplayController::showQuickSettings(uint8_t contrast) {
+void DisplayController::showQuickSettings() {
   clearContent();
   model_.mode = DisplayUiMode::QuickSettings;
   model_.bodyKind = DisplayBodyKind::List;
   model_.rail = DisplayRailStyle::None;
   model_.showPcStatus = false;
   model_.header = "Device settings";
-  appendListRow(model_, "1  Display contrast  " + String(contrast));
+  appendListRow(model_, "1  Display");
   appendListRow(model_, "2  Standby");
   appendListRow(model_, "3  Pair with new PC");
   appendListRow(model_, "4  Software update");
   model_.actions = "C Back";
+  markDirty();
+}
+
+void DisplayController::showDisplaySettings(uint8_t contrast, const String& backlightLabel) {
+  clearContent();
+  model_.mode = DisplayUiMode::DisplaySettings;
+  model_.bodyKind = DisplayBodyKind::List;
+  model_.rail = DisplayRailStyle::None;
+  model_.showPcStatus = false;
+  model_.header = "Display";
+  appendListRow(model_, "1  Contrast  " + String(contrast));
+  appendListRow(model_, "2  Backlight  " + backlightLabel);
+  model_.actions = "C Back";
+  markDirty();
+}
+
+void DisplayController::showBacklight(const String& label, const String& detail, std::size_t index,
+                                      std::size_t count) {
+  clearContent();
+  model_.mode = DisplayUiMode::Backlight;
+  model_.bodyKind = DisplayBodyKind::Backlight;
+  model_.rail = DisplayRailStyle::None;
+  model_.showPcStatus = false;
+  model_.header = "Backlight";
+  model_.primary = label;
+  model_.secondary = detail;
+  model_.choiceIndex = index;
+  model_.choiceCount = count;
+  model_.actions = "A - B + C Back";
   markDirty();
 }
 
@@ -525,33 +548,95 @@ void DisplayController::showQuickLabelPrintResult(bool success, const String& me
   markDirty();
 }
 
+void DisplayController::setBatteryStatus(int percent, bool charging, const String& estimate) {
+  if (model_.batteryPercent == percent && model_.batteryCharging == charging &&
+      model_.batteryEstimate == estimate) {
+    return;
+  }
+  model_.batteryPercent = percent;
+  model_.batteryCharging = charging;
+  model_.batteryEstimate = estimate;
+  markDirty();
+}
+
+void DisplayController::showBatteryCard(bool charging, int percent, const String& estimate,
+                                        unsigned long dwellMs) {
+  overlay_ = DisplayModel();
+  overlay_.mode = DisplayUiMode::BatteryCard;
+  overlay_.bodyKind = DisplayBodyKind::Task;
+  overlay_.rail = DisplayRailStyle::None;
+  overlay_.primary = !charging ? "On battery" : percent >= 100 ? "Charged" : "Charging";
+  overlay_.secondary = estimate.length() > 0 ? estimate : String("Estimating time");
+  overlay_.batteryPercent = percent;
+  overlay_.batteryCharging = charging;
+  overlay_.batteryEstimate = estimate;
+  overlayActive_ = true;
+  overlayStartedAt_ = millis();
+  overlayUntilMs_ = overlayStartedAt_ + dwellMs;
+  markDirty();
+}
+
+void DisplayController::showLowBattery(const String& title, const String& detail, const String& note,
+                                       int countdownSeconds, int countdownPercent) {
+  overlay_ = DisplayModel();
+  overlay_.mode = DisplayUiMode::LowBattery;
+  overlay_.bodyKind = DisplayBodyKind::Task;
+  overlay_.rail = DisplayRailStyle::None;
+  overlay_.primary = title;
+  overlay_.secondary = detail;
+  overlay_.tertiary = note;
+  overlay_.countdownSeconds = countdownSeconds;
+  overlay_.countdownPercent = countdownPercent;
+  overlayActive_ = true;
+  overlayStartedAt_ = millis();
+  overlayUntilMs_ = 0;
+  markDirty();
+}
+
+void DisplayController::clearOverlay() {
+  if (!overlayActive_) return;
+  overlayActive_ = false;
+  markDirty();
+}
+
 RenderActivity DisplayController::computeActivity(unsigned long now) const {
+  const DisplayModel& shown = shownModel();
   RenderActivity activity;
-  if (uiActivityEnabled(standby_, model_.rail == DisplayRailStyle::Activity)) {
+  if (uiActivityEnabled(standby_, shown.rail == DisplayRailStyle::Activity)) {
     activity.alternate = uiActivityAlternate(now);
     activity.railActivityOffset = uiRailSweepOffset(
         now, style::kRailActivityStepMs, style::kRailActivityTravel,
         style::kRailActivityStepsPerLeg);
   }
-  if (!standby_ && model_.mode == DisplayUiMode::Quantity) {
+  if (!standby_ && shown.mode == DisplayUiMode::Quantity) {
     activity.quantityCursorVisible = !uiActivityAlternate(now);
   }
   if (!standby_) {
-    switch (model_.brandDot) {
+    switch (shown.brandDot) {
+      case DisplayBrandDot::None: activity.brandDotSlots = 0; break;
       case DisplayBrandDot::Full: activity.brandDotSlots = kBrandDotFull; break;
       case DisplayBrandDot::Busy: activity.brandDotSlots = brandDotBusy(now); break;
       case DisplayBrandDot::Progress:
-        activity.brandDotSlots = brandDotProgress(model_.otaPercent, now);
+        activity.brandDotSlots = brandDotProgress(shown.otaPercent, now);
         break;
       case DisplayBrandDot::Fault: activity.brandDotSlots = kBrandDotFault; break;
     }
+  }
+  // Only the screen that is shown animates: the top bar is hidden under an overlay, and the
+  // card fill belongs to the card alone.
+  if (!overlayActive_) {
+    const bool hasEstimate = model_.batteryPercent >= 0 && model_.batteryEstimate.length() > 0;
+    activity.headerPage = static_cast<uint8_t>(headerPageAt(now, hasEstimate));
+  } else if (overlay_.mode == DisplayUiMode::BatteryCard) {
+    activity.cardFillStep = batteryCardFillStep(now - overlayStartedAt_);
   }
   return activity;
 }
 
 bool DisplayController::activityEquals(const RenderActivity& a, const RenderActivity& b) {
   return a.alternate == b.alternate && a.quantityCursorVisible == b.quantityCursorVisible &&
-         a.railActivityOffset == b.railActivityOffset && a.brandDotSlots == b.brandDotSlots;
+         a.railActivityOffset == b.railActivityOffset && a.brandDotSlots == b.brandDotSlots &&
+         a.headerPage == b.headerPage && a.cardFillStep == b.cardFillStep;
 }
 
 void DisplayController::tick() {
@@ -563,6 +648,10 @@ void DisplayController::tick() {
       showReady();
     }
   }
+  if (overlayActive_ && uiDeadlineReached(now, overlayUntilMs_)) {
+    overlayActive_ = false;
+    markDirty();
+  }
   const RenderActivity activity = computeActivity(now);
   if (!activityEquals(activity, lastActivity_)) dirty_ = true;
   if (!dirty_) {
@@ -573,7 +662,7 @@ void DisplayController::tick() {
     return;
   }
   lastActivity_ = activity;
-  renderer_.render(model_, activity);
+  renderer_.render(shownModel(), activity);
   dirty_ = false;
   lastStartLineRecoveryMs_ = now;
 }

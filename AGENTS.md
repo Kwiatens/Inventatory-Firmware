@@ -100,6 +100,8 @@ Authoritative pin assignments are defined in `src/config/hardware.h` and
 | | Rows 1-4 | `9, 10, 17, 18` (D6-D9) | Scanned and debounced on Core 1; all RTC GPIOs |
 | **Power key (`*`)** | Wake column (column 1) / drive row (row 4) | `5` / `18` | Deep sleep: row 4 held low, other rows held high, column 1 wakes on low (ext1 ANY_LOW) |
 | **LiPo sense** | Divider midpoint (`BATTERY_ADC_PIN`) | `1` (A0, ADC1) | BAT+ -> 100 kOhm -> pin -> 100 kOhm -> GND, 100 nF to GND; ADC2 cannot be used with Wi-Fi |
+| **Dock charger sense** | High while the dock supplies power (`hardware::kChargerSensePin`) | `38` (header MOSI, right pin 14) | The board has no battery charger, so the dock must drive this line. Internal pull-down reads an unwired pad as "not charging". Divide or level-shift signals above 3.3 V |
+| **LCD backlight** | Backlight on/off through an external transistor (`hardware::kBacklightPin`) | `2` (header A1, left pin 5) | Active high (`kBacklightOnLevel`). The board has no backlight driver, so the transistor and its gate pull-down must be added |
 
 GPIO0, GPIO3, GPIO45 and GPIO46 are boot straps or the RGB LED, and GPIO48 drives the board's SCK LED.
 Do not assign them. GPIO19/20 are USB, and GPIO26-37 are flash and in-package PSRAM.
@@ -368,6 +370,16 @@ preserved:
   scanning immediately aborts menu navigation and returns to the inventory workflow.
   Scanning is paused only during BLE pairing, standby, destructive confirmation
   dialogs, OTA updates, or active label printing.
+- **Top bar battery**: The right-hand slot cycles through the status, the battery level and,
+  once a discharge or charge rate has been observed, the runtime estimate (`headerPageAt`).
+  While the dock supplies power the status reads "Charging". The dock connect and disconnect
+  show a short full-screen card (`showBatteryCard`); it appears on the Ready screen only.
+- **Battery safety**: A reading below `kBatteryMinimumValidMv` is an unreadable divider and never
+  warns or powers off. Low and critical thresholds need `kBatteryTripSamples` consecutive
+  one-second samples. The low warning latches and powers off after 60 s unless the dock connects.
+  A low cell that is not docked is refused at boot with a notice, then the chip sleeps again.
+- **Backlight**: `Off`, `On`, or an Auto idle timeout (1, 3, 5, 10 min), set under Device
+  settings / Display. The warnings and pairing keep the backlight on whatever the setting says.
 
 ---
 
