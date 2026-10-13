@@ -5,6 +5,7 @@
 
 #include "setup/ble_provisioning.h"
 
+#include "InventatoryScanBleRequest.h"
 #include "InventatoryScanSecurity.h"
 
 #include <BLE2902.h>
@@ -22,7 +23,6 @@ namespace {
 constexpr char kServiceUuid[] = "d4d4f5b0-4c21-4a7e-a1a1-4b0db2d00001";
 constexpr char kStatusUuid[] = "d4d4f5b0-4c21-4a7e-a1a1-4b0db2d00002";
 constexpr char kRequestUuid[] = "d4d4f5b0-4c21-4a7e-a1a1-4b0db2d00003";
-constexpr uint8_t kProtocolVersion = 1;
 // A failed passkey attempt can leak information about a reused passkey, so the
 // passkey changes after every attempt and repeated failures lock pairing until
 // someone presses a key on the device.
@@ -187,6 +187,7 @@ void BleProvisioning::lockOut() {
 
 void BleProvisioning::service() {
   if (!active_) return;
+  flushStatus();
   const bool failed = authFailed_.exchange(false);
   const bool disconnected = clientDisconnected_.exchange(false);
   if (locked_) return;
@@ -232,39 +233,46 @@ void BleProvisioning::setResult(bool success, const String& publicMessage) {
 }
 
 void BleProvisioning::handleEncryptedWrite(const std::string& value) {
+  // This runs in the BLE stack's callback context, so it only records the outcome. The
+  // status characteristic is updated from Core 1 by service(), which is the only
+  // place the stack is touched after begin().
   ProvisionedSettings parsed;
   if (!parseRequest(value, parsed)) {
-    publishStatus("INVALID REQUEST");
+    queueStatus("INVALID REQUEST");
     return;
   }
   if (requestMutex_ == nullptr || xSemaphoreTake(requestMutex_, portMAX_DELAY) != pdTRUE) {
-    publishStatus("FAILED INTERNAL");
+    queueStatus("FAILED INTERNAL");
     return;
   }
   pending_ = parsed;
   requestPending_ = true;
   xSemaphoreGive(requestMutex_);
-  publishStatus("CONNECTING");
+  queueStatus("CONNECTING");
 }
 
 bool BleProvisioning::parseRequest(const std::string& value, ProvisionedSettings& settings) const {
-  // Format: version,SSID length,password length,token length,then the exact bytes.
-  // It deliberately contains no JSON, delimiters, logging, or secret echo path.
-  if (value.size() < 4 || static_cast<uint8_t>(value[0]) != kProtocolVersion) return false;
-  const auto ssidLength = static_cast<uint8_t>(value[1]);
-  const auto passwordLength = static_cast<uint8_t>(value[2]);
-  const auto tokenLength = static_cast<uint8_t>(value[3]);
-  const size_t expected = 4U + ssidLength + passwordLength + tokenLength;
-  if (ssidLength == 0 || ssidLength > 32 || passwordLength > 63 || tokenLength != 64 ||
-      value.size() != expected) return false;
-  size_t offset = 4;
-  settings.wifiSsid = String(value.data() + offset).substring(0, ssidLength);
-  offset += ssidLength;
-  settings.wifiPassword = String(value.data() + offset).substring(0, passwordLength);
-  offset += passwordLength;
-  settings.deviceToken = String(value.data() + offset).substring(0, tokenLength);
-  return settings.wifiSsid.length() == ssidLength && settings.wifiPassword.length() == passwordLength &&
-         settings.deviceToken.length() == tokenLength && isValidTransportToken(settings.deviceToken);
+  // Format: version, SSID length, password length, token length, then the exact bytes.
+  // The parser is in InventatoryScanBleRequest.h, where the host suite tests it.
+  return parseProvisioningRequest(reinterpret_cast<const uint8_t*>(value.data()), value.size(), settings);
+}
+
+void BleProvisioning::queueStatus(const String& publicMessage) {
+  if (requestMutex_ == nullptr || xSemaphoreTake(requestMutex_, portMAX_DELAY) != pdTRUE) return;
+  pendingStatus_ = publicMessage;
+  statusPending_ = true;
+  xSemaphoreGive(requestMutex_);
+}
+
+void BleProvisioning::flushStatus() {
+  String message;
+  if (requestMutex_ == nullptr || xSemaphoreTake(requestMutex_, portMAX_DELAY) != pdTRUE) return;
+  if (statusPending_) {
+    message = pendingStatus_;
+    statusPending_ = false;
+  }
+  xSemaphoreGive(requestMutex_);
+  if (message.length() > 0) publishStatus(message);
 }
 
 void BleProvisioning::publishStatus(const String& publicMessage) {

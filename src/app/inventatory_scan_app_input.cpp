@@ -236,9 +236,9 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       else if (event.value == '2') openQuickSettings();
       else if (outbox_.unreadable() && event.value == '3') {
         state_ = State::ConfirmRepair;
-        display_.showRepairConfirm();
+        display_.showRepairConfirm(outbox_.incompatible());
       }
-      else if (outboxBlocked_ && event.value == '3') {
+      else if (outboxBlockedHead_.blocked() && event.value == '3') {
         state_ = State::ConfirmDiscard;
         display_.showDiscardConfirm();
       }
@@ -319,13 +319,13 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       else {
         Serial.println("Opening device menu.");
         state_ = State::Menu;
-        display_.showMenu(outboxBlocked_, outbox_.unreadable());
+        display_.showMenu(outboxBlockedHead_.blocked(), outbox_.unreadable());
       }
       return;
     }
     if (state_ == State::ConfirmDiscard || state_ == State::ConfirmRepair) {
       state_ = State::Menu;
-      display_.showMenu(outboxBlocked_, outbox_.unreadable());
+      display_.showMenu(outboxBlockedHead_.blocked(), outbox_.unreadable());
       return;
     }
     if (state_ == State::Menu || state_ == State::QuickLabels || state_ == State::QuickSettings ||
@@ -428,8 +428,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     if (state_ == State::ConfirmDiscard) {
       if (event.type == InventatoryKeyEventType::Add) {
         if (outbox_.pop()) {
-          outboxBlockedStreak_ = 0;
-          outboxBlocked_ = false;
+          outboxBlockedHead_.recordProgress();
           display_.setSyncBlocked(false);
           Serial.println("Discarded the oldest queued scan at the operator request.");
           state_ = State::Idle;
