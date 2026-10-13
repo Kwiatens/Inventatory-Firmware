@@ -20,6 +20,9 @@ namespace {
 constexpr int kChevronColumns[style::kMarkBodyRows] = {0, 1, 2, 1, 0};
 constexpr int kStemColumn = 4;
 
+// Lightning bolt, 5 x 7: one byte per row, bit 0 at the left.
+constexpr uint8_t kBoltRows[style::kBoltH] = {0x18, 0x0C, 0x06, 0x1F, 0x18, 0x0C, 0x06};
+
 }  // namespace
 
 DisplayRenderer::DisplayRenderer()
@@ -91,37 +94,103 @@ String DisplayRenderer::pcStatusText(const DisplayModel& model) const {
   }
 }
 
+// The top bar's right slot for one page. While charging, the status page reads
+// "Charging" in place of the PC status. A page with nothing to show, such as the
+// estimate before a rate is known, returns an empty slot; drawHeader then falls back.
+DisplayRenderer::HeaderSlot DisplayRenderer::headerSlotFor(const DisplayModel& model, HeaderPage page) {
+  HeaderSlot slot;
+  if (model.pageText.length() > 0) {
+    slot.text = model.pageText;
+    slot.font = style::kFontValue;
+  } else if (model.batteryPercent < 0) {
+    if (model.showPcStatus) {
+      slot.text = pcStatusText(model);
+      slot.font = style::kFontRegular;
+    }
+  } else if (page == HeaderPage::Status && model.showPcStatus) {
+    slot.text = !model.batteryCharging ? pcStatusText(model)
+                : model.batteryPercent >= 100 ? String("Charged")
+                                              : String("Charging");
+    slot.font = style::kFontRegular;
+  } else if (page == HeaderPage::Estimate && model.batteryEstimate.length() > 0) {
+    slot.text = model.batteryEstimate;
+    slot.font = style::kFontRegular;
+  } else {
+    slot.battery = true;
+    slot.charging = model.batteryCharging;
+    slot.percent = model.batteryPercent;
+    slot.text = String(model.batteryPercent) + "%";
+    slot.font = style::kFontRegular;
+  }
+
+  if (slot.battery || slot.text.length() > 0) {
+    lcd_.setFont(slot.font != nullptr ? slot.font : style::kFontRegular);
+    slot.width = lcd_.getStrWidth(slot.text.c_str());
+    if (slot.battery) {
+      slot.width += style::kBatteryBodyW + style::kBatteryNubW + style::kBatteryIconGap;
+      if (slot.charging) slot.width += style::kBoltW + style::kBoltGap;
+    }
+  }
+  return slot;
+}
+
+void DisplayRenderer::drawHeaderSlot(const HeaderSlot& slot) {
+  int x = style::kHeaderRightX - slot.width;
+  if (!slot.battery) {
+    lcd_.setFont(slot.font);
+    lcd_.drawStr(x, style::kHeaderBaselineY, slot.text.c_str());
+    return;
+  }
+  if (slot.charging) {
+    drawBolt(x, style::kHeaderIconY);
+    x += style::kBoltW + style::kBoltGap;
+  }
+  drawBatteryIcon(x, style::kHeaderIconY, slot.percent);
+  x += style::kBatteryBodyW + style::kBatteryNubW + style::kBatteryIconGap;
+  lcd_.setFont(style::kFontRegular);
+  lcd_.drawStr(x, style::kHeaderBaselineY, slot.text.c_str());
+}
+
+// A battery outline with its nub, filled from the left in proportion to the
+// charge. The fill is at least one pixel while any charge is left.
+void DisplayRenderer::drawBatteryIcon(int x, int y, int percent) {
+  const int bodyW = style::kBatteryBodyW;
+  const int bodyH = style::kBatteryBodyH;
+  lcd_.drawFrame(x, y, bodyW, bodyH);
+  lcd_.drawBox(x + bodyW, y + (bodyH - style::kBatteryNubH) / 2, style::kBatteryNubW, style::kBatteryNubH);
+  const int innerW = bodyW - 2;
+  const int innerH = bodyH - 2;
+  const int clamped = constrain(percent, 0, 100);
+  int fill = clamped * innerW / 100;
+  if (clamped > 0 && fill == 0) fill = 1;
+  if (fill > 0) lcd_.drawBox(x + 1, y + 1, fill, innerH);
+}
+
+void DisplayRenderer::drawBolt(int x, int y) { lcd_.drawXBMP(x, y, style::kBoltW, style::kBoltH, kBoltRows); }
+
 void DisplayRenderer::drawHeader(const DisplayModel& model, const RenderActivity& activity) {
   const String header = model.animateEllipsis
                             ? model.header + (activity.alternate ? "..." : ".")
                             : model.header;
   lcd_.setFont(style::kFontHeading);
-  const String rightText = model.pageText.length() > 0
-                               ? model.pageText
-                               : (model.showPcStatus ? pcStatusText(model) : String());
   const int titleWidth = lcd_.getStrWidth(header.c_str());
-  bool showRight = rightText.length() > 0;
-  int rightWidth = 0;
-  if (showRight) {
-    lcd_.setFont(model.pageText.length() > 0 ? style::kFontValue : style::kFontRegular);
-    rightWidth = lcd_.getStrWidth(rightText.c_str());
-    showRight = displayHeaderCanShowStatus(
-        titleWidth, rightWidth, style::kHeaderRightX - style::kHeaderLeftX,
-        style::kHeaderStatusGap);
+  const int available = style::kHeaderRightX - style::kHeaderLeftX;
+
+  const auto page = static_cast<HeaderPage>(activity.headerPage);
+  HeaderSlot slot = headerSlotFor(model, page);
+  // A long runtime line gives way to the percentage rather than to nothing.
+  if (page == HeaderPage::Estimate &&
+      !displayHeaderCanShowStatus(titleWidth, slot.width, available, style::kHeaderStatusGap)) {
+    slot = headerSlotFor(model, HeaderPage::Battery);
   }
+  const bool showRight =
+      slot.width > 0 && displayHeaderCanShowStatus(titleWidth, slot.width, available, style::kHeaderStatusGap);
 
   lcd_.setFont(style::kFontHeading);
   drawClipped(style::kHeaderLeftX, style::kHeaderBaselineY,
-              showRight ? style::kHeaderRightX - style::kHeaderLeftX - rightWidth -
-                              style::kHeaderStatusGap
-                        : style::kHeaderRightX - style::kHeaderLeftX,
-              header);
-  if (showRight) {
-    lcd_.setFont(model.pageText.length() > 0 ? style::kFontValue : style::kFontRegular);
-    lcd_.drawStr(style::kHeaderRightX - rightWidth, style::kHeaderBaselineY, rightText.c_str());
-  }
-  lcd_.drawHLine(style::kHeaderLeftX, style::kHeaderDividerY,
-                 style::kHeaderRightX - style::kHeaderLeftX);
+              showRight ? available - slot.width - style::kHeaderStatusGap : available, header);
+  if (showRight) drawHeaderSlot(slot);
+  lcd_.drawHLine(style::kHeaderLeftX, style::kHeaderDividerY, available);
 }
 
 void DisplayRenderer::drawRail(DisplayRailStyle railStyle, const RenderActivity& activity) {
@@ -223,6 +292,30 @@ void DisplayRenderer::drawContrast(const DisplayModel& model) {
   lcd_.drawBox(31, 45, (66 * level) / 63, 1);
 }
 
+// The option name, then one segment per option with the chosen one filled, then
+// what the option does.
+void DisplayRenderer::drawBacklight(const DisplayModel& model) {
+  lcd_.setFont(style::kFontValue);
+  const int labelWidth = lcd_.getStrWidth(model.primary.c_str());
+  lcd_.drawStr((style::kScreenW - labelWidth) / 2, style::kChoiceLabelY, model.primary.c_str());
+
+  const int count = static_cast<int>(model.choiceCount);
+  const int total = count * style::kChoiceSegmentW + (count > 0 ? (count - 1) * style::kChoiceSegmentGap : 0);
+  const int startX = (style::kScreenW - total) / 2;
+  for (int index = 0; index < count; ++index) {
+    const int x = startX + index * (style::kChoiceSegmentW + style::kChoiceSegmentGap);
+    if (static_cast<std::size_t>(index) == model.choiceIndex) {
+      lcd_.drawBox(x, style::kChoiceSegmentY, style::kChoiceSegmentW, style::kChoiceSegmentH);
+    } else {
+      lcd_.drawFrame(x, style::kChoiceSegmentY, style::kChoiceSegmentW, style::kChoiceSegmentH);
+    }
+  }
+
+  lcd_.setFont(style::kFontRegular);
+  const int detailWidth = lcd_.getStrWidth(model.secondary.c_str());
+  lcd_.drawStr((style::kScreenW - detailWidth) / 2, style::kChoiceDetailY, model.secondary.c_str());
+}
+
 void DisplayRenderer::drawConfirm(const DisplayModel& model) {
   lcd_.setFont(style::kFontHeading);
   drawClipped(style::kListX, 28, style::kScreenW - 2 * style::kListX, model.primary);
@@ -300,20 +393,14 @@ void DisplayRenderer::drawActions(const String& actionsText) {
   }
 }
 
-// bodyCells counts the body in build order: chevron pixels top to bottom, then
-// stem rows bottom-up.
-void DisplayRenderer::drawMark(int x, int y, int unit, uint8_t dotSlots, bool showEmptySlots,
-                               int bodyCells) {
+// The ›i mark: the chevron and the stem, with the dot in the four slots that
+// dotSlots selects. showEmptySlots marks the unlit slots with a pixel.
+void DisplayRenderer::drawMark(int x, int y, int unit, uint8_t dotSlots, bool showEmptySlots) {
   const int bodyY = y + style::kMarkBodyRow * unit;
-  const int chevronRows = constrain(bodyCells, 0, style::kMarkBodyRows);
-  for (int row = 0; row < chevronRows; ++row) {
+  for (int row = 0; row < style::kMarkBodyRows; ++row) {
     lcd_.drawBox(x + kChevronColumns[row] * unit, bodyY + row * unit, unit, unit);
   }
-  const int stemRows = constrain(bodyCells - style::kMarkBodyRows, 0, style::kMarkBodyRows);
-  if (stemRows > 0) {
-    lcd_.drawBox(x + kStemColumn * unit, bodyY + (style::kMarkBodyRows - stemRows) * unit, unit,
-                 stemRows * unit);
-  }
+  lcd_.drawBox(x + kStemColumn * unit, bodyY, unit, style::kMarkBodyRows * unit);
 
   // The dot is one cell split into four slots; with an odd unit the left and
   // top slots take the extra pixel so a full dot matches the stem's width.
@@ -333,16 +420,14 @@ void DisplayRenderer::drawMark(int x, int y, int unit, uint8_t dotSlots, bool sh
   }
 }
 
-// Boot: the mark on the left with its body, without the dot, centred on the
-// screen; the name beside it, centred on that body; the flashed firmware version
-// in the bottom-right corner.
+// Boot: the mark on the left, centred vertically, with the name beside it and
+// the flashed firmware version in the bottom-right corner. The normal boot draws
+// no dot; a fault draws its static broken dot.
 void DisplayRenderer::drawBoot(const DisplayModel& model, const RenderActivity& activity) {
   const int unit = style::kBootMarkUnit;
   const int markY =
       (style::kScreenH - style::kMarkBodyRows * unit) / 2 - style::kMarkBodyRow * unit;
-  drawMark(style::kBootMarkX, markY, unit,
-           activity.brandDotSlots & brandIntroDot(model.introStep), false, model.introStep);
-  if (model.introStep < kBrandIntroSteps) return;
+  drawMark(style::kBootMarkX, markY, unit, activity.brandDotSlots, false);
 
   const int textX = style::kBootMarkX + style::kMarkCols * unit + style::kBootColumnGap;
   const int textW = style::kHeaderRightX - textX;
@@ -413,26 +498,101 @@ void DisplayRenderer::drawUpdate(const DisplayModel& model, const RenderActivity
   drawClipped(textX, titleY, style::kUpdateColumnW, model.primary);
 }
 
+// The full-screen card that appears when the dock is connected or removed. The
+// fill rises in steps, and a bolt marks charging.
+void DisplayRenderer::drawBatteryCard(const DisplayModel& model, const RenderActivity& activity) {
+  const int x = style::kCardBatteryX;
+  const int y = style::kCardBatteryY;
+  const int w = style::kCardBatteryW;
+  const int h = style::kCardBatteryH;
+  lcd_.drawFrame(x, y, w, h);
+  lcd_.drawBox(x + w, y + (h - style::kCardNubH) / 2, style::kCardNubW, style::kCardNubH);
+
+  const int innerX = x + 3;
+  const int innerY = y + 3;
+  const int innerW = w - 6;
+  const int innerH = h - 6;
+  const int percent = constrain(model.batteryPercent, 0, 100);
+  const int fill = innerW * percent * activity.cardFillStep / (100 * kBatteryCardFillSteps);
+  if (fill > 0) lcd_.drawBox(innerX, innerY, fill, innerH);
+  if (model.batteryCharging) {
+    // XOR, so the bolt reads over both the fill and the empty body.
+    lcd_.setDrawColor(2);
+    lcd_.drawXBMP(x + (w - style::kBoltW) / 2, y + (h - style::kBoltH) / 2, style::kBoltW, style::kBoltH,
+                  kBoltRows);
+    lcd_.setDrawColor(1);
+  }
+
+  const int textW = style::kHeaderRightX - style::kCardTextX;
+  lcd_.setFont(style::kFontHeading);
+  drawClipped(style::kCardTextX, style::kCardTitleY, textW, model.primary);
+  lcd_.setFont(style::kFontRegular);
+  drawClipped(style::kCardTextX, style::kCardDetailY, textW, model.secondary);
+  lcd_.setFont(style::kFontValue);
+  const String percentText = model.batteryPercent >= 0 ? String(model.batteryPercent) + "%" : String("--%");
+  drawClipped(style::kCardTextX, style::kCardValueY, textW, percentText);
+}
+
+// The low-battery warning: a triangle, the title, the detail, and a countdown
+// line with a bar that empties as the shutdown nears.
+void DisplayRenderer::drawLowBattery(const DisplayModel& model) {
+  const int x = style::kWarnIconX;
+  const int y = style::kWarnIconY;
+  const int w = style::kWarnIconW;
+  const int h = style::kWarnIconH;
+  lcd_.drawTriangle(x + w / 2, y, x, y + h, x + w, y + h);
+  lcd_.setDrawColor(0);
+  lcd_.drawBox(x + w / 2 - 1, y + 4, 2, 6);
+  lcd_.drawBox(x + w / 2 - 1, y + 11, 2, 2);
+  lcd_.setDrawColor(1);
+
+  const int textW = style::kHeaderRightX - style::kWarnTextX;
+  lcd_.setFont(style::kFontHeading);
+  drawClipped(style::kWarnTextX, style::kWarnTitleY, textW, model.primary);
+  lcd_.setFont(style::kFontRegular);
+  drawClipped(style::kWarnTextX, style::kWarnDetailY, textW, model.secondary);
+  drawClipped(style::kWarnBarX, style::kWarnCountdownY, style::kWarnBarW, model.tertiary);
+
+  if (model.countdownSeconds >= 0) {
+    lcd_.drawFrame(style::kWarnBarX, style::kWarnBarY, style::kWarnBarW, style::kWarnBarH);
+    const int innerW = style::kWarnBarW - 4;
+    const int fill = innerW * constrain(model.countdownPercent, 0, 100) / 100;
+    if (fill > 0) lcd_.drawBox(style::kWarnBarX + 2, style::kWarnBarY + 2, fill, style::kWarnBarH - 4);
+  }
+}
+
 void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& activity) {
   lcd_.clearBuffer();
   lcd_.setDrawColor(1);
-  if (model.mode == DisplayUiMode::Splash || model.mode == DisplayUiMode::Boot) {
-    drawBoot(model, activity);
-  } else if (model.mode == DisplayUiMode::Ota) {
-    drawUpdate(model, activity);
-  } else {
-    drawHeader(model, activity);
-    drawRail(model.rail, activity);
-    switch (model.bodyKind) {
-      case DisplayBodyKind::Task: drawTask(model, activity); break;
-      case DisplayBodyKind::Quantity: drawQuantity(model, activity); break;
-      case DisplayBodyKind::Result: drawResult(model); break;
-      case DisplayBodyKind::List: drawList(model); break;
-      case DisplayBodyKind::Contrast: drawContrast(model); break;
-      case DisplayBodyKind::Confirm: drawConfirm(model); break;
-      case DisplayBodyKind::Setup: drawSetup(model); break;
-    }
-    drawActions(model.actions);
+  switch (model.mode) {
+    case DisplayUiMode::Splash:
+    case DisplayUiMode::Boot:
+      drawBoot(model, activity);
+      break;
+    case DisplayUiMode::Ota:
+      drawUpdate(model, activity);
+      break;
+    case DisplayUiMode::BatteryCard:
+      drawBatteryCard(model, activity);
+      break;
+    case DisplayUiMode::LowBattery:
+      drawLowBattery(model);
+      break;
+    default:
+      drawHeader(model, activity);
+      drawRail(model.rail, activity);
+      switch (model.bodyKind) {
+        case DisplayBodyKind::Task: drawTask(model, activity); break;
+        case DisplayBodyKind::Quantity: drawQuantity(model, activity); break;
+        case DisplayBodyKind::Result: drawResult(model); break;
+        case DisplayBodyKind::List: drawList(model); break;
+        case DisplayBodyKind::Contrast: drawContrast(model); break;
+        case DisplayBodyKind::Backlight: drawBacklight(model); break;
+        case DisplayBodyKind::Confirm: drawConfirm(model); break;
+        case DisplayBodyKind::Setup: drawSetup(model); break;
+      }
+      drawActions(model.actions);
+      break;
   }
   lcd_.sendBuffer();
   normalizeStartLine();

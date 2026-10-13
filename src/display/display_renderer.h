@@ -19,20 +19,36 @@ class DisplayRenderer {
   void render(const DisplayModel& model, const RenderActivity& activity);
 
  private:
+  // What the top bar's right-hand slot shows. An empty slot has width 0.
+  struct HeaderSlot {
+    String text;
+    const uint8_t* font = nullptr;
+    bool battery = false;
+    bool charging = false;
+    int percent = 0;
+    int width = 0;
+  };
+
   void drawHeader(const DisplayModel& model, const RenderActivity& activity);
+  HeaderSlot headerSlotFor(const DisplayModel& model, HeaderPage page);
+  void drawHeaderSlot(const HeaderSlot& slot);
+  void drawBatteryIcon(int x, int y, int percent);
+  void drawBolt(int x, int y);
   void drawRail(DisplayRailStyle rail, const RenderActivity& activity);
   void drawTask(const DisplayModel& model, const RenderActivity& activity);
   void drawQuantity(const DisplayModel& model, const RenderActivity& activity);
   void drawResult(const DisplayModel& model);
   void drawList(const DisplayModel& model);
   void drawContrast(const DisplayModel& model);
+  void drawBacklight(const DisplayModel& model);
   void drawConfirm(const DisplayModel& model);
   void drawSetup(const DisplayModel& model);
   void drawActions(const String& actions);
-  void drawMark(int x, int y, int unit, uint8_t dotSlots, bool showEmptySlots,
-                int bodyCells = kBrandIntroBodyCells);
+  void drawMark(int x, int y, int unit, uint8_t dotSlots, bool showEmptySlots);
   void drawBoot(const DisplayModel& model, const RenderActivity& activity);
   void drawUpdate(const DisplayModel& model, const RenderActivity& activity);
+  void drawBatteryCard(const DisplayModel& model, const RenderActivity& activity);
+  void drawLowBattery(const DisplayModel& model);
   void drawClipped(int x, int y, int maxWidth, const String& text);
   void drawWrapped(int x, int firstBaselineY, int maxWidth, const String& text,
                    std::size_t maxLines, int lineStep);

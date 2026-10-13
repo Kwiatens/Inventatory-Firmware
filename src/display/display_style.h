@@ -90,6 +90,52 @@ constexpr int kUpdateBarBlockW = 4;
 constexpr int kUpdateBarBlockH = 5;
 constexpr int kUpdateColumnW = kUpdateBarBlocks * (kUpdateBarBlockW + 1) - 1;
 
+// Top bar battery: an 11 x 7 body with a 1 x 3 nub, then a bolt for charging. The
+// icon sits above the header baseline, and the bolt sits left of the icon.
+constexpr int kHeaderIconY = 2;
+constexpr int kBatteryBodyW = 11;
+constexpr int kBatteryBodyH = 7;
+constexpr int kBatteryNubW = 1;
+constexpr int kBatteryNubH = 3;
+constexpr int kBatteryIconGap = 3;
+constexpr int kBoltW = 5;
+constexpr int kBoltH = 7;
+constexpr int kBoltGap = 2;
+
+// Battery card: a battery at the left, the text column beside it.
+constexpr int kCardBatteryX = 5;
+constexpr int kCardBatteryY = 23;
+constexpr int kCardBatteryW = 30;
+constexpr int kCardBatteryH = 18;
+constexpr int kCardNubW = 2;
+constexpr int kCardNubH = 8;
+constexpr int kCardTextX = 44;
+constexpr int kCardTitleY = 28;
+constexpr int kCardDetailY = 39;
+constexpr int kCardValueY = 58;
+
+// Low-battery warning: a warning triangle, the title beside it, and the countdown bar.
+constexpr int kWarnIconX = 7;
+constexpr int kWarnIconY = 9;
+constexpr int kWarnIconW = 16;
+constexpr int kWarnIconH = 14;
+constexpr int kWarnTextX = 31;
+constexpr int kWarnTitleY = 20;
+constexpr int kWarnDetailY = 31;
+constexpr int kWarnCountdownY = 44;
+constexpr int kWarnBarX = 7;
+constexpr int kWarnBarY = 50;
+constexpr int kWarnBarW = 114;
+constexpr int kWarnBarH = 6;
+
+// Backlight picker: one segment per option, the chosen one filled.
+constexpr int kChoiceSegmentW = 12;
+constexpr int kChoiceSegmentGap = 3;
+constexpr int kChoiceLabelY = 24;
+constexpr int kChoiceSegmentY = 31;
+constexpr int kChoiceDetailY = 47;
+constexpr int kChoiceSegmentH = 6;
+
 // Three bitmap fonts for the workflow screens: warm sans body, strong sans
 // headings, and monospace values/codes. All are designed for small monochrome
 // displays. The product name on the boot screen uses one larger bold face,
