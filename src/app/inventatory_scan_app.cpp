@@ -137,7 +137,6 @@ bool InventatoryScanApp::begin() {
 
 void InventatoryScanApp::loop() {
   serviceBattery();
-  updatePowerOffWarning();
   serviceBacklight();
   if (setupMode_) {
     InventatoryKeyEvent event;

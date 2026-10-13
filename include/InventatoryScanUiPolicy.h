@@ -223,8 +223,8 @@ inline const char* backlightModeDetail(BacklightMode mode) {
 // kPowerOffCommitMs. Releasing '*', or pressing D or # while it is held, cancels before the commit.
 constexpr unsigned long kPowerOffWarnMs = 1000UL;
 constexpr unsigned long kPowerOffCommitMs = 4000UL;
-constexpr int kPowerOffCountdownSeconds = 3;
-constexpr unsigned long kPowerOffCountdownStepMs = 1000UL;
+// The countdown runs from the warning to the commit; its bar drains across that window.
+constexpr unsigned long kPowerOffCountdownMs = kPowerOffCommitMs - kPowerOffWarnMs;
 
 // The ›i sinks behind the glass in kPowerOffSinkSteps steps of kPowerOffSinkStepPx rows, one every
 // kPowerOffSinkStepMs. It then rests for kPowerOffRestMs before the panel goes dark.
@@ -233,18 +233,14 @@ constexpr int kPowerOffSinkStepPx = 8;
 constexpr unsigned long kPowerOffSinkStepMs = 60UL;
 constexpr unsigned long kPowerOffRestMs = 700UL;
 
-// Seconds left on the countdown, measured from the warning: 3, then 2, then 1.
-constexpr int powerOffCountdownSeconds(unsigned long sinceWarningMs) {
-  return sinceWarningMs < kPowerOffCountdownStepMs
-             ? kPowerOffCountdownSeconds
-             : sinceWarningMs < 2UL * kPowerOffCountdownStepMs ? kPowerOffCountdownSeconds - 1 : 1;
-}
-
-// The countdown bar: full at the first count, a third at the last.
-constexpr int powerOffCountdownPercent(int seconds) {
-  return seconds <= 0 ? 0
-         : seconds >= kPowerOffCountdownSeconds ? 100
-                                                : seconds * 100 / kPowerOffCountdownSeconds;
+// Filled width of the countdown bar, `sinceWarningMs` after the warning: all of fullWidthPx at the
+// warning, none from the commit on. It drains a pixel at a time, so the screen is redrawn only when
+// this changes.
+constexpr int powerOffBarFillPx(unsigned long sinceWarningMs, int fullWidthPx) {
+  return sinceWarningMs >= kPowerOffCountdownMs
+             ? 0
+             : static_cast<int>((kPowerOffCountdownMs - sinceWarningMs) * static_cast<unsigned long>(fullWidthPx) /
+                                kPowerOffCountdownMs);
 }
 
 // How far the mark has dropped at a sink step. Step 0 is the commit, where the mark still stands.

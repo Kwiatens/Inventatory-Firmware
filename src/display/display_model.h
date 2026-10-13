@@ -91,6 +91,8 @@ struct RenderActivity {
   int bloomStage = kBootBloomStages;
   // Rows the mark has dropped behind the glass during the power-off sink.
   int markOffsetY = 0;
+  // Filled width of the power-off countdown bar, in pixels.
+  int powerBarFillPx = 0;
 };
 
 struct DisplayModel {
