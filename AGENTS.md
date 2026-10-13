@@ -240,8 +240,8 @@ The firmware utilizes both ESP32-S3 cores using FreeRTOS:
    are protected by `networkMutex_`. Lock contention must be minimal; do not hold
    `networkMutex_` during network I/O or display rendering.
 4. **Atomic flags**: Single-variable state (`networkStarted_`, `networkPaused_`,
-   `networkPauseAcknowledged_`, `powerMode_`, `wifiStarted_`) uses
-   `std::atomic<T>`.
+   `networkPauseAcknowledged_`, `powerMode_`, `wifiStarted_`, `lastSyncAttempt_`,
+   `networkMutex_`) uses `std::atomic<T>`.
 5. **Task lifecycle handshake**: When entering BLE provisioning or ArduinoOTA,
    Core 1 signals `networkPaused_ = true` and must await `networkPauseAcknowledged_`
    before touching shared NVS namespaces or modifying radio states.
@@ -263,6 +263,13 @@ Storage (NVS) partition (`0x5000` / 20 KiB).
 - **Per-record keys**: To avoid multi-page NVS chunk churn that rapidly exhausts
   the 20 KiB partition, each event is stored under its own key (`e0` through `e15`),
   coordinated by a small header (`hdr`).
+- **Event ids**: `<device id>-<sequence>`. The desktop deduplicates on this id, so a
+  sequence must never restart at a value already used. A new outbox (no `hdr`) starts
+  at `freshOutboxSequenceStart(esp_random())`, which is a random odd value below 2^31.
+- **Header validation**: A header is trusted only when its size, magic, version and
+  every field are in range (`outboxHeaderFieldsValid`). Out-of-range values are never
+  clamped. A header this firmware cannot read is left untouched, the queue is marked
+  unreadable, and the repair menu is the only way to remove it.
 
 ### Outbox failure handling and persistence guarantees
 Agents must observe the three distinct failure domains:
@@ -291,8 +298,8 @@ Agents must observe the three distinct failure domains:
      errors, authentication rejections, malformed server responses, unexpected
      MCUs resets, and NVS write errors.
    - **Blocked head**: if the desktop keeps rejecting the oldest event (authenticated
-     4xx, or the head never appears in `acceptedEventIds`, five times in a row), the
-     Ready screen shows "Sync blocked". Only an operator-confirmed Menu action
+     4xx or 5xx, or the head never appears in `acceptedEventIds`, five times in a row),
+     the Ready screen shows "Sync blocked". The rule is `BlockedHeadTracker`. Only an operator-confirmed Menu action
      (`3  Discard stuck scan`, then `A`) removes it, through the same staged `pop()`.
      Events are never dropped automatically.
 4. **Power-loss recovery**:
@@ -302,6 +309,8 @@ Agents must observe the three distinct failure domains:
    - Pop writes the header **first** and erases the slot **second**. A power cut
      leaves an orphaned slot outside the queue range, safely ignored on reboot.
    - Calling `prefs_.clear()` on `inv_outbox` is strictly prohibited.
+   - Operator-confirmed repair of a queue that cannot be read writes the empty header
+     first and erases the orphaned slots afterwards. It does not clear the namespace.
 
 ---
 

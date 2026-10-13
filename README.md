@@ -38,14 +38,17 @@ Use PlatformIO. Create the private configuration from the tracked example, then 
 
 ```bash
 cp src/config/config.example.h src/config/config.h
-pio run -e tenstar_esp32s3_zero_usb
+pio run -e waveshare_esp32s3_nano_usb
 ```
 
 ## Test
 
+The host suite runs on any machine with a C++17 compiler and OpenSSL headers. It needs no device.
+The layers, the commands and how to add a test are in [docs/testing.md](docs/testing.md).
+
 ```bash
 make -C host-tests test
-pio test -e tenstar_esp32s3_zero_usb --without-uploading --without-testing
+pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
 ```
 
 ## Documentation

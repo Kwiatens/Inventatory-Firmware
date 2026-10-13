@@ -27,7 +27,7 @@ hardware or production provisioning evidence.
 | FW-008 | P2 | Implemented; hardware verification pending | HTTP headers (1,024 bytes), bodies (8,192 bytes), and total response bytes are bounded before append; decimal `Content-Length` is mandatory and exact; transfer encoding is rejected; HMAC remains before parsing/state mutation. The desktop now shares the 8 KiB body limit, bounds optional response text, rejects any callback response that still exceeds the limit with an authenticated retryable error, and covers realistic/maximum serialized responses. Authenticated desktop 5xx failures retain a pending quick-label request so an idempotent cached result can be delivered on retry. Boundary tests compile. | Execute the firmware parser against the released desktop and representative maximum inventory data; add live rogue-endpoint coverage when hardware is available. |
 | FW-009 | P2 | Implemented | Scanner bytes accumulated during setup are flushed immediately before normal runtime starts. | Hardware pairing test with injected setup-mode barcode bytes. |
 | FW-010 | P2 | Partially implemented | Cross-core flags and the task handle use atomics; failed worker startup releases resources before clearing the handle; runtime retries preserve ready-worker state and wait for pause acknowledgement before BLE/NVS transitions. Provisioning reset also pauses before clearing shared NVS. USB firmware build passes. | FreeRTOS stress/TSAN-equivalent review and reset-during-sync hardware test. |
-| FW-011 | P2 | Implemented | GM65 boot-profile write failures now propagate from `begin()` and stop startup with an explicit scanner error. | Disconnect/fault GM65 UART on hardware and verify recovery behavior. |
+| FW-011 | P2 | Implemented | A GM65 boot-profile write failure shows "Scanner error" on the boot screen for two seconds, and startup continues. This matches the later remediation entry below. | Disconnect/fault GM65 UART on hardware and verify recovery behavior. |
 | FW-012 | P2 | Implemented | Raw-byte, assembled barcode, code-bearing debug, and event-identifier serial logs were removed while scan/outbox/sync data flows remain intact. | Capture USB/UART during valid, invalid, and oversized scans. |
 | FW-013 | P2 | Implemented | PlatformIO platform and direct libraries are exact-version pinned; USB is the default; OTA is isolated and reads its password from ignored configuration. | Reproduce USB and OTA image builds on clean Linux and Windows hosts. |
 | FW-014 | P2 | Implemented | CI builds USB/OTA firmware, the test image, and display example; an opt-in self-hosted job executes hardware tests. README documents build, test, documentation, and license; the hardware pinout and dependency pins are in AGENTS.md and platformio.ini. | First CI run and configured self-hosted hardware runner. |
@@ -62,12 +62,15 @@ the hardware release gates listed below.
 
 ## Build and test evidence
 
-- USB firmware: `pio run -e tenstar_esp32s3_zero_usb` — passed.
-- Embedded test image compile-only command: `pio test -e tenstar_esp32s3_zero_usb
-  --without-uploading --without-testing`: compiles the Unity image; it does not
-  execute assertions.
-- Hardware assertion command: `pio test -e tenstar_esp32s3_zero_usb`: uploads the
-  image and executes assertions on an attached board; this command was not run.
+- The board is the Waveshare ESP32-S3-Nano (`waveshare_esp32s3_nano_*` in `platformio.ini`). The
+  `tenstar_esp32s3_zero_usb` environment in the 5a35df1 evidence below was removed when the firmware
+  moved to that board.
+- USB firmware: `pio run -e waveshare_esp32s3_nano_usb` — passed (rebuilt after the review changes in
+  the section below).
+- Embedded test image compile-only command: `pio test -e waveshare_esp32s3_nano_usb
+  --without-uploading --without-testing`: compiles the Unity image; it does not execute assertions.
+- Hardware assertion command: `pio test -e waveshare_esp32s3_nano_usb`: uploads the image and
+  executes assertions on an attached board; this command was not run.
 - Verified USB image from `5a35df1`: 77,300 bytes RAM (23.6%) and 1,450,997
   bytes flash (88.6% of the configured application partition). The OTA image
   uses the same RAM and flash size. Both builds completed successfully without
@@ -88,3 +91,35 @@ The source is not yet declared release-ready. Required physical evidence is:
    desktop application and representative maximum inventory data.
 5. Record production flash-encryption, secure-boot, JTAG, and eFuse policy; the
    repository cannot prove those device-provisioning controls.
+
+## Review follow-up (test-suite work, October 2026)
+
+A read-only review of the firmware and its test suite, followed by fixes. The
+analysis and the plan are in `docs/testing.md`. Verification levels: **host** means
+the host suite (`make -C host-tests test`) exercises the change; **compiled** means
+the USB and OTA images and the Unity image build for the ESP32-S3; **hardware
+pending** means the change needs a board run before the release gate can close.
+
+| Item | Change | Verification |
+| --- | --- | --- |
+| Outbox header that is another layout or damaged | Refused and kept byte-for-byte, reported as an unreadable queue. The operator's confirmed repair discards it; the device then works again. Before this, scanning stayed refused until erased. | host, compiled |
+| Out-of-range outbox head, count or sequence | Refused instead of clamped into a different queue, for the current layout and for legacy blobs. | host, compiled |
+| Event id after an erased outbox | A new outbox starts its event sequence at a random point, so ids cannot repeat ids the desktop already holds. Existing queues are unchanged. | host, compiled |
+| Legacy outbox layouts v2 and v4 | Migration covered by fixed-layout tests, including a power cut at every write. The migration code is kept. | host |
+| UTF-8 in stored text | Text is cut at a character boundary, never inside a multi-byte sequence. | host, compiled |
+| Sync response with a NUL escape (`\u0000`) | Refused whether or not the field is read, matching the desktop parser. | host, compiled |
+| Repeated name in a sync response object | Refused for every member, not only the members the parser reads. | host, compiled |
+| GM65 partial frame after a pause | Dropped and never reported as a scan. The frame logic is in `include/InventatoryScanGm65Frame.h`. | host, compiled, hardware pending |
+| Pause acknowledgement for OTA | Cleared before a new pause is requested, so a stale acknowledgement cannot satisfy it. | compiled, hardware pending |
+| Shared state across cores | Sync timestamp and mutex handle are atomic. The mutex is never freed while the app runs. | compiled, hardware pending |
+| BLE provisioning status | Written only from Core 1; the BLE callback queues the text. | compiled, hardware pending |
+| BLE provisioning request | Parsed by length; a NUL byte in any field is refused. | host, compiled |
+| "Sync blocked" rule | 5xx responses for the head event count toward it, as 4xx responses and unacknowledged 200 responses already did. | host, compiled |
+| HTTP response framing | The body is copied by its declared length; a repeated framing header is refused. The real client runs on the host against a scripted server. | host, compiled, hardware pending |
+| Replay counter (provisioning store) | Covered by host tests for monotonic, skip-not-reuse, power cut and missing-key behaviour. No code change. | host |
+
+Image size after this review (`pio run -e waveshare_esp32s3_nano_usb`): RAM 79,476 bytes
+(24.3% of 327,680) and flash 1,495,753 bytes (91.3% of the 1,638,400-byte application
+partition). The earlier figures in this file were for `5a35df1`. The flash headroom is
+now about 143 KB, which the release notes should mention when the OTA partitions are reviewed.
+

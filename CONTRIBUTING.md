@@ -48,6 +48,9 @@ pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
 Running the assertions on a board is a manual step, which needs an attached Scan R1 and is recorded in the
 pull request.
 
+[docs/testing.md](docs/testing.md) explains the test layers, how to add a test, the known-defect convention and
+the coverage report (`make -C host-tests coverage`).
+
 ## Code
 
 - Follow the code around your change and the ownership and invariant rules in [AGENTS.md](AGENTS.md).
