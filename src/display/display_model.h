@@ -21,6 +21,7 @@ enum class DisplayUiMode {
   Ota,
   Setup,
   Menu,
+  FaultDetail,
   QuickLabels,
   QuickSettings,
   Sending,
@@ -49,6 +50,7 @@ enum class DisplayBodyKind {
   Quantity,
   Result,
   List,
+  Fault,
   Contrast,
   Confirm,
   Setup,
@@ -109,6 +111,8 @@ struct DisplayModel {
   String primary;
   String secondary;
   String tertiary;
+  // The scanner's error code. The body draws it as "Error code" with the code in bold.
+  String errorCode;
   String actions;
   String pageText;
   String quantityPrompt;
@@ -118,6 +122,8 @@ struct DisplayModel {
   uint32_t setupCode = 0;
   String listRows[5];
   std::size_t listRowCount = 0;
+  // The top bar's fault mark. It is not content, so clearContent() leaves it alone.
+  bool scannerFault = false;
   // Battery in the top bar and on the battery cards. batteryPercent < 0 means unknown.
   int batteryPercent = -1;
   bool batteryCharging = false;

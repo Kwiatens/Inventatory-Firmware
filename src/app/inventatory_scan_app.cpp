@@ -140,6 +140,8 @@ bool InventatoryScanApp::begin() {
 void InventatoryScanApp::loop() {
   serviceBattery();
   serviceBacklight();
+  // Every screen, including setup, shows the fault mark while the scanner is not running.
+  display_.setScannerFault(scannerFaulted());
   if (setupMode_) {
     InventatoryKeyEvent event;
     while (keypadPoll(event)) handleKey(event);
