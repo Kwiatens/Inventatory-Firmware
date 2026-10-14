@@ -49,6 +49,9 @@ class DisplayController {
   void showQuickSettings();
   void showDisplaySettings(uint8_t contrast, const String& backlightLabel);
   void showBacklight(const String& label, const String& detail, std::size_t index, std::size_t count);
+  void showEnergySaving(bool enabled, const String& sleepLabel, const String& powerOffLabel);
+  void showSleepAfter(const String& label, const String& detail, std::size_t index, std::size_t count);
+  void showPowerOffAfter(const String& label, const String& detail, std::size_t index, std::size_t count);
   void showContrast(uint8_t contrast);
   void showResetConfirm();
   void showDiscardConfirm();
@@ -64,9 +67,10 @@ class DisplayController {
   // Overlays cover the screen beneath them and leave it intact, so the screen is
   // back as it was when the overlay ends.
   void showBatteryCard(bool charging, int percent, const String& estimate, unsigned long dwellMs);
+  // A warning with a countdown: the low battery, and the energy saving steps before sleep and power off.
   // countdownSeconds < 0 hides the countdown line and bar.
-  void showLowBattery(const String& title, const String& detail, const String& note, int countdownSeconds,
-                      int countdownPercent);
+  void showCountdownWarning(const String& title, const String& detail, const String& note, int countdownSeconds,
+                            int countdownPercent);
   void clearOverlay();
 
   bool errorVisible() const {
@@ -82,6 +86,8 @@ class DisplayController {
   void markDirty();
   void applyResult(const SyncResult& result);
   void clearContent();
+  void showChoice(DisplayUiMode mode, const char* header, const String& label, const String& detail,
+                  std::size_t index, std::size_t count);
   void refreshReadyContent();
   // Fills codes with the codes of the problems that stand, in the order the screens take turns, and
   // returns how many there are.

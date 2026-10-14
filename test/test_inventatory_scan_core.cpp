@@ -668,6 +668,139 @@ void test_backlight_policy() {
   TEST_ASSERT_EQUAL_STRING("Auto 3m", backlightModeShortLabel(BacklightMode::Auto3Min));
 }
 
+static EnergyInputs energyCase(bool enabled, bool powerOffSet, bool idleReady, bool updating, uint32_t sleepLeftMs,
+                               uint32_t offLeftMs) {
+  EnergyInputs in{enabled, powerOffSet, idleReady, updating, sleepLeftMs, offLeftMs};
+  return in;
+}
+
+void test_energy_saving_policy() {
+  // Stored values outside the enums fall back to the defaults (Min5 and Min30).
+  TEST_ASSERT_TRUE(sleepDelayFromStored(0) == SleepDelay::Min1);
+  TEST_ASSERT_TRUE(sleepDelayFromStored(4) == SleepDelay::Min30);
+  TEST_ASSERT_TRUE(sleepDelayFromStored(5) == SleepDelay::Min5);
+  TEST_ASSERT_TRUE(powerOffDelayFromStored(5) == PowerOffDelay::Never);
+  TEST_ASSERT_TRUE(powerOffDelayFromStored(6) == PowerOffDelay::Min30);
+  TEST_ASSERT_EQUAL_UINT32(60000, sleepDelayMs(SleepDelay::Min1));
+  TEST_ASSERT_EQUAL_UINT32(3600000, powerOffDelayMs(PowerOffDelay::Hour1));
+  TEST_ASSERT_FALSE(powerOffEnabled(PowerOffDelay::Never));
+  TEST_ASSERT_TRUE(powerOffEnabled(PowerOffDelay::Min1));
+
+  // A countdown runs down from its span to zero, and the unsigned difference survives the millis() wrap.
+  TEST_ASSERT_EQUAL_UINT32(60000, energyRemainingMs(0, 0, 60000));
+  TEST_ASSERT_EQUAL_UINT32(30000, energyRemainingMs(30000, 0, 60000));
+  TEST_ASSERT_EQUAL_UINT32(0, energyRemainingMs(60000, 0, 60000));
+  TEST_ASSERT_EQUAL_UINT32(0, energyRemainingMs(70000, 0, 60000));
+  // Started 1000 ms before the wrap: 58000 ms later 1000 ms are left, 59000 ms later none.
+  TEST_ASSERT_EQUAL_UINT32(1000, energyRemainingMs(58000, 0xFFFFFC18UL, 60000));
+  TEST_ASSERT_EQUAL_UINT32(0, energyRemainingMs(59000, 0xFFFFFC18UL, 60000));
+
+  // The warning appears with 30 s left, and the countdown reads 30 down to 1 in whole seconds.
+  TEST_ASSERT_FALSE(energyWarningDue(30001));
+  TEST_ASSERT_TRUE(energyWarningDue(30000));
+  TEST_ASSERT_TRUE(energyWarningDue(0));
+  TEST_ASSERT_EQUAL_UINT32(30, energyCountdownSeconds(30000));
+  TEST_ASSERT_EQUAL_UINT32(30, energyCountdownSeconds(29001));
+  TEST_ASSERT_EQUAL_UINT32(29, energyCountdownSeconds(29000));
+  TEST_ASSERT_EQUAL_UINT32(1, energyCountdownSeconds(1));
+  TEST_ASSERT_EQUAL_UINT32(0, energyCountdownSeconds(0));
+  TEST_ASSERT_EQUAL_INT(100, energyCountdownPercent(30000));
+  TEST_ASSERT_EQUAL_INT(50, energyCountdownPercent(15000));
+  TEST_ASSERT_EQUAL_INT(0, energyCountdownPercent(0));
+
+  // Awake: nothing until the sleep warning is due, then sleep when the time runs out.
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Awake, energyCase(true, true, true, false, 31000, 0)) ==
+                   EnergyAction::None);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Awake, energyCase(true, true, true, false, 30000, 0)) ==
+                   EnergyAction::StartSleepWarning);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Awake, energyCase(true, true, true, false, 0, 0)) ==
+                   EnergyAction::Sleep);
+  // Off, not ready (a menu, error, warning or manual standby) or updating: the device stays awake.
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Awake, energyCase(false, true, true, false, 0, 0)) ==
+                   EnergyAction::None);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Awake, energyCase(true, true, false, false, 0, 0)) ==
+                   EnergyAction::None);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Awake, energyCase(true, true, true, true, 0, 0)) ==
+                   EnergyAction::None);
+
+  // A sleep warning that can no longer run is dropped, and otherwise it sleeps when its time is up.
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::SleepWarning, energyCase(true, true, false, false, 10000, 0)) ==
+                   EnergyAction::CancelWarning);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::SleepWarning, energyCase(true, true, true, true, 10000, 0)) ==
+                   EnergyAction::CancelWarning);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::SleepWarning, energyCase(true, true, true, false, 10000, 0)) ==
+                   EnergyAction::None);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::SleepWarning, energyCase(true, true, true, false, 0, 0)) ==
+                   EnergyAction::Sleep);
+
+  // Asleep: the power-off warning comes 30 s before the power-off. Never keeps it asleep.
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Asleep, energyCase(true, true, true, false, 0, 60000)) ==
+                   EnergyAction::None);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Asleep, energyCase(true, true, true, false, 0, 30000)) ==
+                   EnergyAction::StartOffWarning);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Asleep, energyCase(true, true, true, false, 0, 0)) ==
+                   EnergyAction::StartOffWarning);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Asleep, energyCase(true, false, true, false, 0, 0)) ==
+                   EnergyAction::None);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Asleep, energyCase(true, true, true, true, 0, 0)) ==
+                   EnergyAction::None);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Asleep, energyCase(false, true, true, false, 0, 0)) ==
+                   EnergyAction::None);
+
+  // The power-off warning powers off when its time is up, and is dropped if the update or the setting changes.
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::OffWarning, energyCase(true, true, true, false, 0, 5000)) ==
+                   EnergyAction::None);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::OffWarning, energyCase(true, true, true, false, 0, 0)) ==
+                   EnergyAction::PowerOff);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::OffWarning, energyCase(true, true, true, true, 0, 5000)) ==
+                   EnergyAction::CancelWarning);
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::OffWarning, energyCase(false, true, true, false, 0, 0)) ==
+                   EnergyAction::CancelWarning);
+
+  // A full run from a key press at t = 0 with 1 min sleep and 1 min power off, nothing else happening.
+  // The warnings come 30 s before each step: sleep at 60 s, power off 60 s after sleeping.
+  EnergyPhase phase = EnergyPhase::Awake;
+  uint32_t warnSleepAt = 0;
+  uint32_t sleptAt = 0;
+  uint32_t warnOffAt = 0;
+  uint32_t offAt = 0;
+  for (uint32_t now = 1000; now <= 200000 && offAt == 0; now += 1000) {
+    const uint32_t sleepLeft = energyRemainingMs(now, 0, sleepDelayMs(SleepDelay::Min1));
+    const uint32_t offLeft = energyRemainingMs(now, sleptAt, powerOffDelayMs(PowerOffDelay::Min1));
+    switch (energyNextAction(phase, energyCase(true, true, true, false, sleepLeft, offLeft))) {
+      case EnergyAction::None:
+        break;
+      case EnergyAction::StartSleepWarning:
+        phase = EnergyPhase::SleepWarning;
+        warnSleepAt = now;
+        break;
+      case EnergyAction::Sleep:
+        phase = EnergyPhase::Asleep;
+        sleptAt = now;
+        break;
+      case EnergyAction::StartOffWarning:
+        phase = EnergyPhase::OffWarning;
+        warnOffAt = now;
+        break;
+      case EnergyAction::PowerOff:
+        offAt = now;
+        break;
+      case EnergyAction::CancelWarning:
+        phase = EnergyPhase::Awake;
+        break;
+    }
+  }
+  TEST_ASSERT_EQUAL_UINT32(30000, warnSleepAt);
+  TEST_ASSERT_EQUAL_UINT32(60000, sleptAt);
+  TEST_ASSERT_EQUAL_UINT32(90000, warnOffAt);
+  TEST_ASSERT_EQUAL_UINT32(120000, offAt);
+
+  TEST_ASSERT_EQUAL_STRING("10 min", sleepDelayLabel(SleepDelay::Min10));
+  TEST_ASSERT_EQUAL_STRING("Never", powerOffDelayShortLabel(PowerOffDelay::Never));
+  TEST_ASSERT_EQUAL_STRING("1h", powerOffDelayShortLabel(PowerOffDelay::Hour1));
+  TEST_ASSERT_EQUAL_STRING("Stays asleep", powerOffDelayDetail(PowerOffDelay::Never));
+}
+
 void test_battery_curve_policy() {
   TEST_ASSERT_EQUAL_UINT8(100, batteryPercentFromMillivolts(4300));
   TEST_ASSERT_EQUAL_UINT8(100, batteryPercentFromMillivolts(4200));
@@ -986,6 +1119,7 @@ void setup() {
   RUN_TEST(test_header_page_cycle_policy);
   RUN_TEST(test_battery_card_fill_steps);
   RUN_TEST(test_backlight_policy);
+  RUN_TEST(test_energy_saving_policy);
   RUN_TEST(test_battery_curve_policy);
   RUN_TEST(test_battery_tracker_guards_and_debounce);
   RUN_TEST(test_battery_tracker_learns_runtime);
