@@ -40,7 +40,7 @@ class DisplayRenderer {
   void drawResult(const DisplayModel& model);
   void drawList(const DisplayModel& model);
   void drawContrast(const DisplayModel& model);
-  void drawBacklight(const DisplayModel& model);
+  void drawChoice(const DisplayModel& model);
   void drawConfirm(const DisplayModel& model);
   void drawSetup(const DisplayModel& model);
   void drawActions(const String& actions);
@@ -48,7 +48,7 @@ class DisplayRenderer {
   void drawBoot(const DisplayModel& model, const RenderActivity& activity);
   void drawUpdate(const DisplayModel& model, const RenderActivity& activity);
   void drawBatteryCard(const DisplayModel& model, const RenderActivity& activity);
-  void drawLowBattery(const DisplayModel& model);
+  void drawCountdownWarning(const DisplayModel& model);
   void drawPowerWarning(const DisplayModel& model, const RenderActivity& activity);
   void drawPowerOff(const DisplayModel& model, const RenderActivity& activity);
   void drawMarkBloom(int x, int y, int unit, int stage);
