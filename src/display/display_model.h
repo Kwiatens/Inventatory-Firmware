@@ -122,8 +122,10 @@ struct DisplayModel {
   uint32_t setupCode = 0;
   String listRows[5];
   std::size_t listRowCount = 0;
-  // The top bar's fault mark. It is not content, so clearContent() leaves it alone.
+  // The scanner is not running. Not content, so clearContent() leaves it alone.
   bool scannerFault = false;
+  // A standing problem of any kind is on show, so the top bar's warning mark is drawn. Not content either.
+  bool problemMark = false;
   // Battery in the top bar and on the battery cards. batteryPercent < 0 means unknown.
   int batteryPercent = -1;
   bool batteryCharging = false;

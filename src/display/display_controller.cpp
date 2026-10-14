@@ -4,7 +4,9 @@
 #include "display/display_controller.h"
 
 #include <algorithm>
+#include <cstring>
 
+#include "InventatoryScanErrorCodes.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/hardware.h"
 #include "config/version.h"
@@ -62,22 +64,31 @@ void DisplayController::clearContent() {
   for (auto& row : model_.listRows) row.clear();
 }
 
+// The codes of the standing problems, in the order the screens take turns at them.
+std::size_t DisplayController::standingProblemCodes(const char* (&codes)[kStandingProblemCount]) const {
+  std::size_t count = 0;
+  if (model_.scannerFault) codes[count++] = kScannerFaultCode;
+  if (queueUnreadable_) codes[count++] = kQueueUnreadableCode;
+  if (syncBlocked_) codes[count++] = kSyncBlockedCode;
+  return count;
+}
+
+bool DisplayController::hasProblem() const { return model_.scannerFault || queueUnreadable_ || syncBlocked_; }
+
 void DisplayController::refreshReadyContent() {
   model_.header = "Inventatory";
-  // With a scanner fault the device is not ready to scan, so the screen says so and gives the code
-  // instead of the ready text.
-  if (model_.scannerFault) {
+  const char* codes[kStandingProblemCount];
+  const std::size_t problems = standingProblemCodes(codes);
+  // With a standing problem the device is not ready to scan, so the screen says so and gives the code
+  // of the problem on show instead of the ready text.
+  if (problems > 0) {
     model_.primary = "There is a problem";
     model_.secondary.clear();
-    model_.errorCode = kScannerFaultCode;
+    model_.errorCode = codes[faultRotationIndex(millis(), problems, kFaultRotateMs)];
   } else {
     model_.errorCode.clear();
     model_.primary = "Ready to scan";
-    if (queueUnreadable_) {
-      model_.secondary = "Queue unreadable: C, 3";
-    } else if (syncBlocked_) {
-      model_.secondary = "Sync blocked: C, 3";
-    } else if (displayQueueDepth(model_.queueDepth)) {
+    if (displayQueueDepth(model_.queueDepth)) {
       model_.secondary = String(model_.queueDepth) + " scans safely queued";
     } else if (model_.connectivity == DisplayConnectivityState::Syncing) {
       model_.secondary = "Sending saved work";
@@ -90,13 +101,14 @@ void DisplayController::refreshReadyContent() {
   model_.rail = model_.connectivity == DisplayConnectivityState::Syncing
                     ? DisplayRailStyle::Activity
                     : DisplayRailStyle::Static;
-  // A scanner fault is explained under the # key, from the main screen as from the menu.
-  model_.actions = model_.scannerFault ? String("# Fault info C Menu") : String("C Menu");
+  // A problem is explained under the # key, from the main screen as from the menu.
+  model_.actions = problems > 0 ? String("# Fault info C Menu") : String("C Menu");
 }
 
 void DisplayController::setSyncBlocked(bool blocked) {
   if (syncBlocked_ == blocked) return;
   syncBlocked_ = blocked;
+  model_.problemMark = hasProblem();
   if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
   markDirty();
 }
@@ -104,6 +116,7 @@ void DisplayController::setSyncBlocked(bool blocked) {
 void DisplayController::setQueueUnreadable(bool unreadable) {
   if (queueUnreadable_ == unreadable) return;
   queueUnreadable_ = unreadable;
+  model_.problemMark = hasProblem();
   if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
   markDirty();
 }
@@ -146,12 +159,12 @@ void DisplayController::playBootSplash(unsigned long holdMs) {
 
 // Boot keeps the splash on screen until the scanner is ready; a failed stage
 // replaces the product name and shows a static broken dot.
-void DisplayController::showBoot(const String& stage) {
+void DisplayController::showBoot(const String& stage, const String& code) {
   showSplash();
   model_.mode = DisplayUiMode::Boot;
   if (stage.length() == 0) return;
   model_.primary = stage;
-  model_.secondary = "See USB serial";
+  model_.secondary = code.length() > 0 ? code : String("See USB serial");
   model_.brandDot = DisplayBrandDot::Fault;
 }
 
@@ -384,6 +397,14 @@ void DisplayController::showOta(const String& text, int percent) {
   markDirty();
 }
 
+// The code a failed setup step shows under its message. A step with no code shows none.
+static String setupFailureCode(const String& status) {
+  if (status == "SAVE FAILED") return kSetupNotSavedCode;
+  if (status == "WIFI FAILED") return kWifiNotJoinedCode;
+  if (status == "NETWORK ERROR") return kNetworkStartFailedCode;
+  return String();
+}
+
 void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
   clearContent();
   standby_ = false;
@@ -403,6 +424,7 @@ void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
     model_.header = "Pairing locked";
     model_.primary = "Press A to try again";
     model_.secondary = "Only if you started it";
+    model_.tertiary = kPairingLockedCode;
   } else if (status == "CONNECTING WIFI") {
     model_.bodyKind = DisplayBodyKind::Task;
     model_.rail = DisplayRailStyle::Activity;
@@ -415,6 +437,7 @@ void DisplayController::showSetup(uint32_t pairingCode, const String& status) {
     model_.header = "Pairing failed";
     model_.primary = status == "SAVE FAILED" ? "Could not save setup" : "Could not connect";
     model_.secondary = status == "WIFI FAILED" ? "Check Wi-Fi details" : "Try pairing again";
+    model_.tertiary = setupFailureCode(status);
   }
   markDirty();
 }
@@ -434,28 +457,50 @@ void DisplayController::showMenu(bool blocked, bool unreadable) {
     appendListRow(model_, "3  Discard stuck scan");
   }
   // A scanner fault is explained under the # key, which the menu offers only while there is one.
-  model_.actions = model_.scannerFault ? String("# Fault info C Back") : String("C Back");
+  model_.actions = hasProblem() ? String("# Fault info C Back") : String("C Back");
   markDirty();
 }
 
 // The error code on the first line, then what it means and what to check on the last two lines.
 void DisplayController::showFaultDetail() {
+  const char* codes[kStandingProblemCount];
+  const std::size_t problems = standingProblemCodes(codes);
+  if (problems == 0) {
+    showReady();
+    return;
+  }
   clearContent();
   model_.mode = DisplayUiMode::FaultDetail;
   model_.bodyKind = DisplayBodyKind::Fault;
   model_.rail = DisplayRailStyle::None;
   model_.showPcStatus = false;
-  model_.header = "Scanner fault";
-  model_.errorCode = kScannerFaultCode;
-  model_.secondary = "Scanner not replying";
-  model_.tertiary = "Check cable, restart.";
+  applyFaultDetail(codes[faultRotationIndex(millis(), problems, kFaultRotateMs)]);
   model_.actions = "C Back";
   markDirty();
+}
+
+// What each standing problem means and what to check, in the two lines under its code.
+void DisplayController::applyFaultDetail(const char* code) {
+  model_.errorCode = code;
+  if (std::strcmp(code, kQueueUnreadableCode) == 0) {
+    model_.header = "Queue unreadable";
+    model_.secondary = "Queue cannot be read";
+    model_.tertiary = "Menu, 3: repair it";
+  } else if (std::strcmp(code, kSyncBlockedCode) == 0) {
+    model_.header = "Sync blocked";
+    model_.secondary = "PC keeps refusing";
+    model_.tertiary = "Menu, 3: discard it";
+  } else {
+    model_.header = "Scanner fault";
+    model_.secondary = "Scanner not replying";
+    model_.tertiary = "Check cable, restart.";
+  }
 }
 
 void DisplayController::setScannerFault(bool fault) {
   if (model_.scannerFault == fault) return;
   model_.scannerFault = fault;
+  model_.problemMark = hasProblem();
   // The main screen's footer offers the # action only while there is a fault.
   if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
   markDirty();
@@ -605,7 +650,7 @@ void DisplayController::showPrinting(const String& label) {
   markDirty();
 }
 
-void DisplayController::showQuickLabelPrintResult(bool success, const String& message) {
+void DisplayController::showQuickLabelPrintResult(bool success, const String& message, const String& code) {
   clearContent();
   model_.mode = success ? DisplayUiMode::Success : DisplayUiMode::Error;
   model_.bodyKind = DisplayBodyKind::Result;
@@ -613,7 +658,8 @@ void DisplayController::showQuickLabelPrintResult(bool success, const String& me
   model_.showPcStatus = true;
   model_.header = success ? "Done" : "Print failed";
   model_.primary = success ? String("Label sent") : message;
-  model_.secondary = success ? message : String("Check it on your PC");
+  // The code takes the place of the hint: a long message wraps over the line that would hold a third line.
+  model_.secondary = success ? message : (code.length() > 0 ? code : String("Check it on your PC"));
   model_.actions = success ? String() : String("C Dismiss");
   resultUntilMs_ = success ? millis() + kUiSuccessDwellMs : 0;
   markDirty();
@@ -726,6 +772,20 @@ void DisplayController::tick() {
   if (overlayActive_ && uiDeadlineReached(now, overlayUntilMs_)) {
     overlayActive_ = false;
     markDirty();
+  }
+  // Standing problems take turns on the Ready and fault screens, one code every kFaultRotateMs.
+  const char* codes[kStandingProblemCount];
+  const std::size_t problems = standingProblemCodes(codes);
+  if (problems > 0 && (model_.mode == DisplayUiMode::Ready || model_.mode == DisplayUiMode::FaultDetail)) {
+    const char* code = codes[faultRotationIndex(now, problems, kFaultRotateMs)];
+    if (model_.errorCode != code) {
+      if (model_.mode == DisplayUiMode::Ready) {
+        refreshReadyContent();
+      } else {
+        applyFaultDetail(code);
+      }
+      markDirty();
+    }
   }
   const RenderActivity activity = computeActivity(now);
   if (!activityEquals(activity, lastActivity_)) dirty_ = true;
