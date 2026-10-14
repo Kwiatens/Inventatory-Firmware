@@ -8,8 +8,12 @@
 //
 // The battery is read here too: a low cell gets a warning and a shutdown, a critical one shuts
 // down at once, and a low cell at boot is refused.
+//
+// Energy saving sleeps the device after an idle time and turns it off after a further time asleep.
+// Each step is preceded by a countdown on screen, so the scanner never switches off without warning.
 
 #include "app/inventatory_scan_app.h"
+#include "InventatoryScanUiPolicy.h"
 
 #include <esp_sleep.h>
 
@@ -32,7 +36,7 @@ constexpr unsigned long kBatteryCardMs = 2500UL;
 
 void InventatoryScanApp::enterPowerOff() {
   const bool fromStandby = powerMode_ == PowerMode::Standby;
-  Serial.println("Power off requested with the * key.");
+  Serial.println("Power off requested.");
   powerOffWarning_ = false;
   display_.clearOverlay();
   // Standby has already paused the network worker and suspended the scanner. A worker still in a
@@ -87,6 +91,7 @@ void InventatoryScanApp::enterPowerOff() {
 // the panel out of standby, so the countdown is always visible while it runs. The display drains the
 // bar itself from here, one pixel at a time, until the commit or a release.
 void InventatoryScanApp::startPowerOffWarning() {
+  dismissEnergyWarning();
   if (powerMode_ == PowerMode::Standby) exitStandby();
   Serial.println("Power off warning: release * to stay on.");
   powerOffWarning_ = true;
@@ -159,6 +164,7 @@ void InventatoryScanApp::startLowBatteryWarning() {
   Serial.println("Battery low: dock the scanner, or it powers off in 60 s.");
   // The low-battery overlay replaces any power-off countdown on screen, so that countdown ends here.
   powerOffWarning_ = false;
+  dismissEnergyWarning();
   if (powerMode_ == PowerMode::Standby) exitStandby();
   lowBatteryWarning_ = true;
   lowBatteryWarningAt_ = millis();
@@ -178,7 +184,7 @@ void InventatoryScanApp::updateLowBatteryWarning(unsigned long now) {
   if (seconds == lowBatteryShownSeconds_) return;
   lowBatteryShownSeconds_ = seconds;
   const int barPercent = static_cast<int>((kLowBatteryShutdownMs - elapsed) * 100UL / kLowBatteryShutdownMs);
-  display_.showLowBattery(String("Battery low"), String("Dock to charge"),
+  display_.showCountdownWarning(String("Battery low"), String("Dock to charge"),
                           String("Powering off in ") + String(seconds) + " s", seconds, barPercent);
 }
 
@@ -200,13 +206,100 @@ void InventatoryScanApp::powerOffForBattery() {
 void InventatoryScanApp::powerOffWithNotice(const String& title, const String& detail) {
   if (powerMode_ == PowerMode::Standby) exitStandby();
   noteUserActivity();
-  display_.showLowBattery(title, detail, String("Powering off"), -1, 0);
+  display_.showCountdownWarning(title, detail, String("Powering off"), -1, 0);
   const unsigned long until = millis() + kBatteryNoticeMs;
   while (static_cast<long>(until - millis()) > 0) {
     display_.tick();
     delay(20);
   }
   powerOffForBattery();
+}
+
+// Energy saving. Idle time on the Ready screen sleeps the device (standby): the screen goes dark, sync
+// pauses and the scanner switches off. Asleep for the set time, it turns off (deep sleep). A countdown
+// on screen comes before each step, and a key press or a scan cancels it. energyNextAction() decides
+// the step from the phase and the time left; this code carries the step out.
+void InventatoryScanApp::serviceEnergySaving() {
+  const unsigned long now = millis();
+  EnergyInputs in;
+  in.enabled = energySavingOn_;
+  in.powerOffSet = powerOffEnabled(powerOffDelay_);
+  in.idleReady = powerMode_ == PowerMode::Normal && state_ == State::Idle && !setupMode_ &&
+                 !lowBatteryWarning_ && !powerOffWarning_ && !display_.errorVisible();
+  in.updating = otaRequested_ || otaActive_;
+  in.sleepRemainingMs = energyRemainingMs(now, lastUserActivityAt_, sleepDelayMs(sleepDelay_));
+  in.offRemainingMs = energyRemainingMs(now, sleepStartedAt_, powerOffDelayMs(powerOffDelay_));
+
+  switch (energyNextAction(energyPhase_, in)) {
+    case EnergyAction::None:
+      break;
+    case EnergyAction::StartSleepWarning:
+      startEnergySleepWarning();
+      break;
+    case EnergyAction::Sleep:
+      enterEnergySleep();
+      return;
+    case EnergyAction::StartOffWarning:
+      startEnergyOffWarning();
+      break;
+    case EnergyAction::PowerOff:
+      powerOffForEnergySaving();
+      return;
+    case EnergyAction::CancelWarning:
+      dismissEnergyWarning();
+      return;
+  }
+  if (energyWarningShown()) updateEnergyWarning(now);
+}
+
+void InventatoryScanApp::startEnergySleepWarning() {
+  Serial.println("Energy saving: sleep countdown started; a key or scan keeps the device on.");
+  energyPhase_ = EnergyPhase::SleepWarning;
+  energyShownSeconds_ = -1;
+}
+
+void InventatoryScanApp::enterEnergySleep() {
+  Serial.println("Energy saving: idle for the set time, entering standby.");
+  dismissEnergyWarning();
+  enterStandby();
+  energyPhase_ = EnergyPhase::Asleep;
+  sleepStartedAt_ = millis();
+}
+
+// The power-off countdown wakes the panel, scanner and network first, so the device is awake when it
+// turns off and the warning can be seen.
+void InventatoryScanApp::startEnergyOffWarning() {
+  Serial.println("Energy saving: power off countdown started; a key keeps the device on.");
+  exitStandby();
+  energyPhase_ = EnergyPhase::OffWarning;
+  energyShownSeconds_ = -1;
+}
+
+// The countdown is drawn in whole seconds. It is redrawn only when the count changes, not on every loop.
+void InventatoryScanApp::updateEnergyWarning(unsigned long now) {
+  const bool sleeping = energyPhase_ == EnergyPhase::SleepWarning;
+  const uint32_t remainingMs =
+      sleeping ? energyRemainingMs(now, lastUserActivityAt_, sleepDelayMs(sleepDelay_))
+               : energyRemainingMs(now, sleepStartedAt_, powerOffDelayMs(powerOffDelay_));
+  const int seconds = static_cast<int>(energyCountdownSeconds(remainingMs));
+  if (seconds == energyShownSeconds_) return;
+  energyShownSeconds_ = seconds;
+  display_.showCountdownWarning(String(sleeping ? "Going to sleep" : "Turning off"), String("Any key stays on"),
+                                String(sleeping ? "Sleeping in " : "Powering off in ") + String(seconds) + " s",
+                                seconds, energyCountdownPercent(remainingMs));
+}
+
+void InventatoryScanApp::dismissEnergyWarning() {
+  if (!energyWarningShown()) return;
+  energyPhase_ = EnergyPhase::Awake;
+  energyShownSeconds_ = -1;
+  display_.clearOverlay();
+}
+
+void InventatoryScanApp::powerOffForEnergySaving() {
+  Serial.println("Energy saving: powering off.");
+  dismissEnergyWarning();
+  enterPowerOff();
 }
 
 }  // namespace inventatory_scan

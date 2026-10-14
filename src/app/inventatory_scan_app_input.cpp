@@ -57,6 +57,15 @@ bool isQrScan(const String& value) {
   return hasAimPrefix(value, 'q');
 }
 
+// The short key presses. They wake a device asleep on its energy saving timer and dismiss a countdown
+// warning. Holds keep their own meaning: '*' still warns and powers off, D still toggles standby, and
+// '*' with D still starts an update.
+bool isShortKeyPress(InventatoryKeyEventType type) {
+  return type == InventatoryKeyEventType::Digit || type == InventatoryKeyEventType::Add ||
+         type == InventatoryKeyEventType::Subtract || type == InventatoryKeyEventType::Cancel ||
+         type == InventatoryKeyEventType::CycleCursor || type == InventatoryKeyEventType::DeleteDigit;
+}
+
 
 }  // namespace
 
@@ -90,6 +99,8 @@ void InventatoryScanApp::handleScan(const String& code) {
     return;
   }
   noteUserActivity();
+  // A scan cancels a countdown warning, and is then handled as usual.
+  dismissEnergyWarning();
   if (!scanMayInterruptUi(setupMode_, powerMode_ == PowerMode::Standby,
                           otaRequested_ || otaActive_,
                           state_ == State::ConfirmReprovision || state_ == State::ConfirmDiscard || state_ == State::ConfirmRepair,
@@ -171,6 +182,22 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
   noteUserActivity();
   // While the low-battery warning is up only the power-off hold is honoured.
   if (lowBatteryWarning_ && event.type != InventatoryKeyEventType::PowerOff) return;
+  // A countdown warning is dismissed by a key press, and that press does nothing else. A D hold or a
+  // reset hold is used up the same way. '*' and the update gesture still act, and they dismiss it too.
+  if (energyWarningShown()) {
+    const bool used = isShortKeyPress(event.type) || event.type == InventatoryKeyEventType::PowerToggle ||
+                      event.type == InventatoryKeyEventType::ProvisioningReset;
+    dismissEnergyWarning();
+    if (used) return;
+  }
+  // A short press wakes a device that slept on its energy saving timer, and that press does nothing else.
+  // An update request runs inside standby, so its cancel and upload keep their own handling.
+  if (energyPhase_ == EnergyPhase::Asleep && powerMode_ == PowerMode::Standby && !otaRequested_ && !otaActive_ &&
+      isShortKeyPress(event.type)) {
+    Serial.println("Woke from energy saving sleep.");
+    exitStandby();
+    return;
+  }
   if (event.type == InventatoryKeyEventType::ProvisioningReset) {
     // Holding # only opens the confirmation screen; the wipe itself needs A.
     if (setupMode_ || state_ != State::Idle || powerMode_ == PowerMode::Standby || otaRequested_ ||
@@ -257,8 +284,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       if (event.value == '1') {
         openDisplaySettings();
       } else if (event.value == '2') {
-        state_ = State::Idle;
-        enterStandby();
+        openEnergySaving();
       } else if (event.value == '3') {
         state_ = State::ConfirmReprovision;
         reprovisionFromHold_ = false;
@@ -278,8 +304,21 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       }
       return;
     }
-    // The contrast and backlight screens take no digits.
-    if (state_ == State::AdjustContrast || state_ == State::AdjustBacklight) return;
+    if (state_ == State::EnergySaving) {
+      if (event.value == '1') {
+        toggleEnergySaving();
+      } else if (event.value == '2') {
+        openSleepAfterSettings();
+      } else if (event.value == '3') {
+        openPowerOffSettings();
+      }
+      return;
+    }
+    // The contrast, backlight and energy saving pickers take no digits.
+    if (state_ == State::AdjustContrast || state_ == State::AdjustBacklight || state_ == State::AdjustSleepAfter ||
+        state_ == State::AdjustPowerOff) {
+      return;
+    }
     if (state_ == State::Idle) {
       Serial.println("Digit ignored, scan a code first.");
       return;
@@ -365,6 +404,15 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       openDisplaySettings();
       return;
     }
+    if (state_ == State::AdjustSleepAfter || state_ == State::AdjustPowerOff) {
+      // Each change is already saved; C only leaves the picker.
+      openEnergySaving();
+      return;
+    }
+    if (state_ == State::EnergySaving) {
+      openQuickSettings();
+      return;
+    }
     if (state_ == State::DisplaySettings) {
       openQuickSettings();
       return;
@@ -397,6 +445,16 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     if (state_ == State::AdjustBacklight) {
       // A moves towards Off, B towards the longest timeout.
       stepBacklightMode(event.type == InventatoryKeyEventType::Add ? -1 : 1);
+      return;
+    }
+    if (state_ == State::AdjustSleepAfter) {
+      // A moves towards the shortest delay, B towards the longest.
+      stepSleepDelay(event.type == InventatoryKeyEventType::Add ? -1 : 1);
+      return;
+    }
+    if (state_ == State::AdjustPowerOff) {
+      // A moves towards the shortest delay, B towards Never.
+      stepPowerOffDelay(event.type == InventatoryKeyEventType::Add ? -1 : 1);
       return;
     }
     if (state_ == State::ConfirmReprovision && event.type == InventatoryKeyEventType::Add) {
