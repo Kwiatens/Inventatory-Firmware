@@ -447,7 +447,7 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
     // Results for other events are acknowledged and dropped as before.
     // A menu or confirmation owns the screen: leave the result unacknowledged so
     // the desktop delivers it again once the operator is back at the ready screen.
-    const bool screenBusy = state_ == State::Menu || state_ == State::QuickLabels ||
+    const bool screenBusy = state_ == State::Menu || state_ == State::FaultDetail || state_ == State::QuickLabels ||
                             state_ == State::QuickSettings || state_ == State::AdjustContrast ||
                             state_ == State::ConfirmReprovision || state_ == State::ConfirmDiscard ||
                             state_ == State::PrintingLabel;

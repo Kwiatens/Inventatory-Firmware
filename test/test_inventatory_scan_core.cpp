@@ -497,6 +497,15 @@ void test_scan_preemption_policy() {
   TEST_ASSERT_FALSE(scanMayInterruptUi(false, false, false, false, true));
 }
 
+void test_scanner_fault_warning_policy() {
+  // A scanner that is not running is a fault, except in standby, where it is off on purpose.
+  TEST_ASSERT_TRUE(scannerFaultShown(false, false));
+  TEST_ASSERT_FALSE(scannerFaultShown(false, true));
+  TEST_ASSERT_FALSE(scannerFaultShown(true, false));
+  TEST_ASSERT_FALSE(scannerFaultShown(true, true));
+  TEST_ASSERT_EQUAL_STRING("SCN-01", kScannerFaultCode);
+}
+
 void test_brand_dot_policy() {
   // Busy: one slot travels clockwise TL -> TR -> BR -> BL in 200 ms steps.
   TEST_ASSERT_EQUAL_HEX8(0x01, brandDotBusy(0));
@@ -921,6 +930,7 @@ void setup() {
   RUN_TEST(test_ui_clipping_and_queue_boundaries);
   RUN_TEST(test_ui_timing_and_activity_policy);
   RUN_TEST(test_scan_preemption_policy);
+  RUN_TEST(test_scanner_fault_warning_policy);
   RUN_TEST(test_brand_dot_policy);
   RUN_TEST(test_soft_power_off_policy);
   RUN_TEST(test_boot_bloom_policy);
