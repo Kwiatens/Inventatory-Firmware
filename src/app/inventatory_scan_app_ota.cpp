@@ -6,6 +6,7 @@
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
+#include "InventatoryScanErrorCodes.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/version.h"
@@ -171,7 +172,7 @@ bool InventatoryScanApp::startOtaService() {
     }
     SyncResult result;
     result.status = "failed";
-    result.code = "OTA ERROR";
+    result.code = kUpdateFailedCode;
     result.message = "Update failed";
     result.resultId = "local-ota";
     result.eventId = "local-ota";
@@ -198,7 +199,7 @@ void InventatoryScanApp::abandonOtaWait(const char* reason, bool showFailure) {
   if (showFailure) {
     SyncResult result;
     result.status = "failed";
-    result.code = "OTA TIMEOUT";
+    result.code = kNoUpdateCode;
     result.message = "No update received";
     result.resultId = "local-ota";
     result.eventId = "local-ota";

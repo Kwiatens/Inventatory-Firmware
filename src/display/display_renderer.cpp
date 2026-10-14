@@ -186,7 +186,7 @@ void DisplayRenderer::drawHeader(const DisplayModel& model, const RenderActivity
                             : model.header;
   lcd_.setFont(style::kFontHeading);
   const int titleWidth = lcd_.getStrWidth(header.c_str());
-  const int markWidth = model.scannerFault ? style::kFaultMarkW : 0;
+  const int markWidth = model.problemMark ? style::kFaultMarkW : 0;
   const int slotRight = style::kHeaderRightX - (markWidth > 0 ? markWidth + style::kHeaderStatusGap : 0);
   const int available = slotRight - style::kHeaderLeftX;
 
