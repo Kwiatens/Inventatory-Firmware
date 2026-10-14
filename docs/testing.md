@@ -50,6 +50,11 @@ Running the assertions on a board uploads the image. That needs an explicit requ
 4. Use the fake clock and fixed inputs. No real time, no sockets, no randomness without a seed.
 5. For a bug fix, write the test first and check that it fails without the fix. Run the mutant
    by reverting the change in a scratch copy.
+6. A test in `test/` runs on the board's 8 KiB Arduino loop stack. Keep its locals small. One
+   `SyncResponse` is about half a kilobyte, and a test that kept several alive overflowed the
+   stack and reset the board. To check a test's stack use, run `xtensa-esp32s3-elf-objdump -d`
+   on its object under `.pio/build/waveshare_esp32s3_nano_usb/test/` and read the `entry a1, N`
+   line. `N` is the frame size in bytes.
 
 ## Known defects
 
