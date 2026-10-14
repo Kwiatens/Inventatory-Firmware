@@ -219,6 +219,213 @@ inline const char* backlightModeDetail(BacklightMode mode) {
   return "Stays lit";
 }
 
+// Energy saving. The device sleeps (standby) after an idle time, then turns off (deep sleep) after a
+// further time asleep. A countdown warns before each step. Both delays are stored as their index.
+enum class SleepDelay : uint8_t {
+  Min1 = 0,
+  Min3 = 1,
+  Min5 = 2,
+  Min10 = 3,
+  Min30 = 4,
+};
+
+constexpr uint8_t kSleepDelayCount = 5;
+constexpr uint8_t kSleepDelayDefault = static_cast<uint8_t>(SleepDelay::Min5);
+
+// Time asleep before the device turns off. `Never` keeps it asleep until '*' wakes it.
+enum class PowerOffDelay : uint8_t {
+  Min1 = 0,
+  Min5 = 1,
+  Min10 = 2,
+  Min30 = 3,
+  Hour1 = 4,
+  Never = 5,
+};
+
+constexpr uint8_t kPowerOffDelayCount = 6;
+constexpr uint8_t kPowerOffDelayDefault = static_cast<uint8_t>(PowerOffDelay::Min30);
+
+// Each warning countdown runs this long before the step it warns about.
+constexpr uint32_t kEnergyWarningLeadMs = 30000UL;
+
+constexpr uint32_t sleepDelayMs(SleepDelay delay) {
+  return delay == SleepDelay::Min1    ? 60000UL
+         : delay == SleepDelay::Min3  ? 180000UL
+         : delay == SleepDelay::Min5  ? 300000UL
+         : delay == SleepDelay::Min10 ? 600000UL
+                                      : 1800000UL;
+}
+
+// Zero for Never; check powerOffEnabled() first.
+constexpr uint32_t powerOffDelayMs(PowerOffDelay delay) {
+  return delay == PowerOffDelay::Min1    ? 60000UL
+         : delay == PowerOffDelay::Min5  ? 300000UL
+         : delay == PowerOffDelay::Min10 ? 600000UL
+         : delay == PowerOffDelay::Min30 ? 1800000UL
+         : delay == PowerOffDelay::Hour1 ? 3600000UL
+                                         : 0UL;
+}
+
+constexpr bool powerOffEnabled(PowerOffDelay delay) { return delay != PowerOffDelay::Never; }
+
+// A countdown must be longer than its warning, or the warning would start before the countdown does.
+static_assert(kEnergyWarningLeadMs < sleepDelayMs(SleepDelay::Min1), "sleep warning longer than the sleep delay");
+static_assert(kEnergyWarningLeadMs < powerOffDelayMs(PowerOffDelay::Min1),
+              "power-off warning longer than the power-off delay");
+
+// A stored value outside the enum falls back to the default instead of selecting an undefined delay.
+inline SleepDelay sleepDelayFromStored(uint8_t value) {
+  return value < kSleepDelayCount ? static_cast<SleepDelay>(value) : static_cast<SleepDelay>(kSleepDelayDefault);
+}
+
+inline PowerOffDelay powerOffDelayFromStored(uint8_t value) {
+  return value < kPowerOffDelayCount ? static_cast<PowerOffDelay>(value)
+                                     : static_cast<PowerOffDelay>(kPowerOffDelayDefault);
+}
+
+// Names for the settings screens. The short form fits a row of the energy saving list.
+inline const char* sleepDelayLabel(SleepDelay delay) {
+  switch (delay) {
+    case SleepDelay::Min1: return "1 min";
+    case SleepDelay::Min3: return "3 min";
+    case SleepDelay::Min5: return "5 min";
+    case SleepDelay::Min10: return "10 min";
+    case SleepDelay::Min30: return "30 min";
+  }
+  return "5 min";
+}
+
+inline const char* sleepDelayShortLabel(SleepDelay delay) {
+  switch (delay) {
+    case SleepDelay::Min1: return "1m";
+    case SleepDelay::Min3: return "3m";
+    case SleepDelay::Min5: return "5m";
+    case SleepDelay::Min10: return "10m";
+    case SleepDelay::Min30: return "30m";
+  }
+  return "5m";
+}
+
+inline const char* sleepDelayDetail(SleepDelay delay) {
+  switch (delay) {
+    case SleepDelay::Min1: return "Sleeps after 1 min";
+    case SleepDelay::Min3: return "Sleeps after 3 min";
+    case SleepDelay::Min5: return "Sleeps after 5 min";
+    case SleepDelay::Min10: return "Sleeps after 10 min";
+    case SleepDelay::Min30: return "Sleeps after 30 min";
+  }
+  return "Sleeps after 5 min";
+}
+
+inline const char* powerOffDelayLabel(PowerOffDelay delay) {
+  switch (delay) {
+    case PowerOffDelay::Min1: return "1 min";
+    case PowerOffDelay::Min5: return "5 min";
+    case PowerOffDelay::Min10: return "10 min";
+    case PowerOffDelay::Min30: return "30 min";
+    case PowerOffDelay::Hour1: return "1 hour";
+    case PowerOffDelay::Never: return "Never";
+  }
+  return "Never";
+}
+
+inline const char* powerOffDelayShortLabel(PowerOffDelay delay) {
+  switch (delay) {
+    case PowerOffDelay::Min1: return "1m";
+    case PowerOffDelay::Min5: return "5m";
+    case PowerOffDelay::Min10: return "10m";
+    case PowerOffDelay::Min30: return "30m";
+    case PowerOffDelay::Hour1: return "1h";
+    case PowerOffDelay::Never: return "Never";
+  }
+  return "Never";
+}
+
+inline const char* powerOffDelayDetail(PowerOffDelay delay) {
+  switch (delay) {
+    case PowerOffDelay::Min1: return "Off 1 min after sleep";
+    case PowerOffDelay::Min5: return "Off 5 min after sleep";
+    case PowerOffDelay::Min10: return "Off 10 min after sleep";
+    case PowerOffDelay::Min30: return "Off 30 min after sleep";
+    case PowerOffDelay::Hour1: return "Off 1 hour after sleep";
+    case PowerOffDelay::Never: return "Stays asleep";
+  }
+  return "Stays asleep";
+}
+
+// Time left on a countdown that began at startMs and lasts spanMs, zero once it has run out. The
+// unsigned difference keeps the count correct across the millis() wrap.
+inline uint32_t energyRemainingMs(uint32_t nowMs, uint32_t startMs, uint32_t spanMs) {
+  const uint32_t elapsed = nowMs - startMs;
+  return elapsed >= spanMs ? 0U : spanMs - elapsed;
+}
+
+// The warning appears once the countdown has no more than the lead time left.
+inline bool energyWarningDue(uint32_t remainingMs) { return remainingMs <= kEnergyWarningLeadMs; }
+
+// Whole seconds for the countdown line, rounded up so it reads 30 down to 1.
+inline uint32_t energyCountdownSeconds(uint32_t remainingMs) { return (remainingMs + 999U) / 1000U; }
+
+// Fill of the countdown bar, 100 at the start of the warning and 0 when it runs out.
+inline int energyCountdownPercent(uint32_t remainingMs) {
+  return remainingMs >= kEnergyWarningLeadMs ? 100 : static_cast<int>(remainingMs * 100U / kEnergyWarningLeadMs);
+}
+
+// Where the energy saving sequence stands. `Asleep` is the standby that the sequence started; a manual
+// standby never enters it, so it never powers off by itself.
+enum class EnergyPhase : uint8_t {
+  Awake,
+  SleepWarning,
+  Asleep,
+  OffWarning,
+};
+
+// What the sequence does next. `CancelWarning` drops a warning that can no longer run.
+enum class EnergyAction : uint8_t {
+  None,
+  StartSleepWarning,
+  Sleep,
+  StartOffWarning,
+  PowerOff,
+  CancelWarning,
+};
+
+struct EnergyInputs {
+  // Energy saving is switched on.
+  bool enabled;
+  // Power off after sleep is not Never.
+  bool powerOffSet;
+  // The Ready screen with nothing in progress: no menu, quantity, error, warning or manual standby.
+  bool idleReady;
+  // An update is requested or running. Nothing sleeps or powers off during one.
+  bool updating;
+  // Time left before the device sleeps, counted from the last key press or scan.
+  uint32_t sleepRemainingMs;
+  // Time left before the device turns off, counted from the moment it slept.
+  uint32_t offRemainingMs;
+};
+
+// The energy saving sequence: awake, warned, asleep, warned again, then powered off. A key press or a
+// scan during a warning drops it back to awake, and the idle time starts again.
+inline EnergyAction energyNextAction(EnergyPhase phase, const EnergyInputs& in) {
+  switch (phase) {
+    case EnergyPhase::Awake:
+      if (!in.enabled || !in.idleReady || in.updating) return EnergyAction::None;
+      if (in.sleepRemainingMs == 0U) return EnergyAction::Sleep;
+      return energyWarningDue(in.sleepRemainingMs) ? EnergyAction::StartSleepWarning : EnergyAction::None;
+    case EnergyPhase::SleepWarning:
+      if (!in.enabled || !in.idleReady || in.updating) return EnergyAction::CancelWarning;
+      return in.sleepRemainingMs == 0U ? EnergyAction::Sleep : EnergyAction::None;
+    case EnergyPhase::Asleep:
+      if (!in.enabled || !in.powerOffSet || in.updating) return EnergyAction::None;
+      return energyWarningDue(in.offRemainingMs) ? EnergyAction::StartOffWarning : EnergyAction::None;
+    case EnergyPhase::OffWarning:
+      if (!in.enabled || in.updating) return EnergyAction::CancelWarning;
+      return in.offRemainingMs == 0U ? EnergyAction::PowerOff : EnergyAction::None;
+  }
+  return EnergyAction::None;
+}
+
 // Soft power-off. Holding '*' alone for kPowerOffWarnMs shows a countdown; the power-off commits at
 // kPowerOffCommitMs. Releasing '*', or pressing D or # while it is held, cancels before the commit.
 constexpr unsigned long kPowerOffWarnMs = 1000UL;
