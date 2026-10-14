@@ -317,19 +317,10 @@ void InventatoryScanApp::processNetworkResult() {
       state_ = State::Idle;
       display_.showQuickLabelPrintResult(false, "PC OR PRINTER OFFLINE", kPrintNoReplyCode);
     }
-    if ((status == 401 || status == 426) && !outbox_.empty()) {
-      SyncResult result;
-      result.resultId = "local-protocol";
-      result.eventId = "local-protocol";
-      result.status = "failed";
-      result.code = status == 426 ? String(kPcTooOldCode) : String(kDeviceRejectedCode);
-      result.message = status == 426 ? "Protocol v1 required" : "Check device token";
-      display_.showResult(result);
-    }
     // An authenticated 4xx or 5xx refuses the head event. Both count toward "Sync
     // blocked", so a server that keeps failing on the same event is visible to the
     // operator instead of retrying silently forever.
-    if (sent && status >= 400 && status <= 599 && status != 401 && status != 426) {
+    if (sent && status >= 400 && status <= 599) {
       DeviceEventRecord front;
       if (!outbox_.empty() && outbox_.peek(0, front) && front.eventId == lastSyncHeadEventId_) {
         if (outboxBlockedHead_.recordRefusal()) display_.setSyncBlocked(true);

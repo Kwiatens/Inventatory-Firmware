@@ -70,10 +70,13 @@ std::size_t DisplayController::standingProblemCodes(const char* (&codes)[kStandi
   if (model_.scannerFault) codes[count++] = kScannerFaultCode;
   if (queueUnreadable_) codes[count++] = kQueueUnreadableCode;
   if (syncBlocked_) codes[count++] = kSyncBlockedCode;
+  if (batteryUnreadable_) codes[count++] = kBatteryUnreadableCode;
   return count;
 }
 
-bool DisplayController::hasProblem() const { return model_.scannerFault || queueUnreadable_ || syncBlocked_; }
+bool DisplayController::hasProblem() const {
+  return model_.scannerFault || queueUnreadable_ || syncBlocked_ || batteryUnreadable_;
+}
 
 void DisplayController::refreshReadyContent() {
   model_.header = "Inventatory";
@@ -116,6 +119,14 @@ void DisplayController::setSyncBlocked(bool blocked) {
 void DisplayController::setQueueUnreadable(bool unreadable) {
   if (queueUnreadable_ == unreadable) return;
   queueUnreadable_ = unreadable;
+  model_.problemMark = hasProblem();
+  if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
+  markDirty();
+}
+
+void DisplayController::setBatteryUnreadable(bool unreadable) {
+  if (batteryUnreadable_ == unreadable) return;
+  batteryUnreadable_ = unreadable;
   model_.problemMark = hasProblem();
   if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
   markDirty();
@@ -490,6 +501,10 @@ void DisplayController::applyFaultDetail(const char* code) {
     model_.header = "Sync blocked";
     model_.secondary = "PC keeps refusing";
     model_.tertiary = "Menu, 3: discard it";
+  } else if (std::strcmp(code, kBatteryUnreadableCode) == 0) {
+    model_.header = "Battery not read";
+    model_.secondary = "Voltage not valid";
+    model_.tertiary = "Check battery wiring";
   } else {
     model_.header = "Scanner fault";
     model_.secondary = "Scanner not replying";

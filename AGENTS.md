@@ -391,12 +391,15 @@ preserved:
   running (`scannerFaultShown`). It is hidden in standby. While it shows, the main screen and the menu
   offer `# Fault info`, and that screen gives the code (`kScannerFaultCode`, `SCN-01`) and what to check.
   The mark is drawn for any standing problem (`problemMark`), not only the scanner.
-- **Standing problems**: The scanner, an unreadable queue (`STO-03`) and a blocked sync (`SYN-03`) each
-  have a code. While several stand, the main screen and the fault screen show one code at a time and move
-  to the next every `kFaultRotateMs` (`faultRotationIndex`). `#` explains the code on show.
-- **Battery safety**: A reading below `kBatteryMinimumValidMv` is an unreadable divider and never
-  warns or powers off. Low and critical thresholds need `kBatteryTripSamples` consecutive
-  one-second samples. The low warning latches and powers off after 60 s unless the dock connects.
+- **Standing problems**: The scanner, an unreadable queue (`STO-03`), a blocked sync (`SYN-03`) and a
+  battery reading that cannot be trusted (`PWR-03`) each have a code. While several stand, the main screen
+  and the fault screen show one code at a time and move to the next every `kFaultRotateMs`
+  (`faultRotationIndex`). `#` explains the code on show.
+- **Battery safety**: A reading outside `kBatteryMinimumValidMv` to `kBatteryMaximumValidMv` is an
+  unreadable divider or a wrong reading and never warns or powers off. After `kBatteryTripSamples`
+  such readings in a row it is a standing problem (`PWR-03`). A low or empty battery is a warning with no
+  code: `PWR-01` and `PWR-02` are retired. Low and critical thresholds need `kBatteryTripSamples`
+  consecutive one-second samples. The low warning latches and powers off after 60 s unless the dock connects.
   A low cell that is not docked is refused at boot with a notice, then the chip sleeps again.
 - **Backlight**: `Off`, `On`, or an Auto idle timeout (1, 3, 5, 10 min), set under Device
   settings / Display. The warnings and pairing keep the backlight on whatever the setting says.
