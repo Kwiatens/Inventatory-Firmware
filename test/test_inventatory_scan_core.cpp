@@ -3,8 +3,12 @@
 
 #include <unity.h>
 
+#include <cstddef>
+#include <cstring>
+
 #include "InventatoryScanBattery.h"
 #include "InventatoryScanCore.h"
+#include "InventatoryScanErrorCodes.h"
 #include "InventatoryScanHttp.h"
 #include "InventatoryScanOutbox.h"
 #include "InventatoryScanSync.h"
@@ -506,6 +510,49 @@ void test_scanner_fault_warning_policy() {
   TEST_ASSERT_EQUAL_STRING("SCN-01", kScannerFaultCode);
 }
 
+void test_error_code_catalogue_is_well_formed_and_unique() {
+  // Every code is three capital letters, a dash and two digits, and no two codes are the same.
+  const char* const codes[] = {
+      kScannerFaultCode,         kBarcodeNotRecognisedCode, kScanRejectedCode,        kQueueFullCode,
+      kScanNotSavedCode,         kQueueUnreadableCode,      kRepairFailedCode,        kDiscardFailedCode,
+      kPcTooOldCode,             kDeviceRejectedCode,       kSyncBlockedCode,         kPairingLockedCode,
+      kSetupNotSavedCode,        kWifiNotJoinedCode,        kPairingClearFailedCode,  kNetworkStartFailedCode,
+      kBluetoothStartFailedCode, kUpdateFailedCode,         kNoUpdateCode,            kPrintNoReplyCode,
+      kPrintPcOfflineCode,       kPresetsNotLoadedCode,     kBatteryLowCode,          kBatteryEmptyCode,
+      kBatteryUnreadableCode,
+  };
+  const std::size_t count = sizeof(codes) / sizeof(codes[0]);
+  TEST_ASSERT_EQUAL_UINT(25U, count);
+  for (std::size_t index = 0; index < count; ++index) {
+    const char* code = codes[index];
+    TEST_ASSERT_EQUAL_UINT(6U, std::strlen(code));
+    TEST_ASSERT_TRUE(code[0] >= 'A' && code[0] <= 'Z');
+    TEST_ASSERT_TRUE(code[1] >= 'A' && code[1] <= 'Z');
+    TEST_ASSERT_TRUE(code[2] >= 'A' && code[2] <= 'Z');
+    TEST_ASSERT_EQUAL_CHAR('-', code[3]);
+    TEST_ASSERT_TRUE(code[4] >= '0' && code[4] <= '9');
+    TEST_ASSERT_TRUE(code[5] >= '0' && code[5] <= '9');
+    for (std::size_t other = index + 1; other < count; ++other) {
+      TEST_ASSERT_TRUE(std::strcmp(code, codes[other]) != 0);
+    }
+  }
+}
+
+void test_fault_rotation_takes_turns() {
+  // One problem, or none, never moves.
+  TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(0, 0, kFaultRotateMs));
+  TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(10UL * kFaultRotateMs, 1, kFaultRotateMs));
+  // Several problems take turns, each for kFaultRotateMs, and then the first comes round again.
+  TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(0, 3, kFaultRotateMs));
+  TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(kFaultRotateMs - 1, 3, kFaultRotateMs));
+  TEST_ASSERT_EQUAL_UINT(1U, faultRotationIndex(kFaultRotateMs, 3, kFaultRotateMs));
+  TEST_ASSERT_EQUAL_UINT(1U, faultRotationIndex(2UL * kFaultRotateMs - 1, 3, kFaultRotateMs));
+  TEST_ASSERT_EQUAL_UINT(2U, faultRotationIndex(2UL * kFaultRotateMs, 3, kFaultRotateMs));
+  TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(3UL * kFaultRotateMs, 3, kFaultRotateMs));
+  TEST_ASSERT_EQUAL_UINT(1U, faultRotationIndex(kFaultRotateMs, 2, kFaultRotateMs));
+  TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(2UL * kFaultRotateMs, 2, kFaultRotateMs));
+}
+
 void test_brand_dot_policy() {
   // Busy: one slot travels clockwise TL -> TR -> BR -> BL in 200 ms steps.
   TEST_ASSERT_EQUAL_HEX8(0x01, brandDotBusy(0));
@@ -931,6 +978,8 @@ void setup() {
   RUN_TEST(test_ui_timing_and_activity_policy);
   RUN_TEST(test_scan_preemption_policy);
   RUN_TEST(test_scanner_fault_warning_policy);
+  RUN_TEST(test_error_code_catalogue_is_well_formed_and_unique);
+  RUN_TEST(test_fault_rotation_takes_turns);
   RUN_TEST(test_brand_dot_policy);
   RUN_TEST(test_soft_power_off_policy);
   RUN_TEST(test_boot_bloom_policy);

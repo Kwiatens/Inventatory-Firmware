@@ -6,6 +6,7 @@
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
+#include "InventatoryScanErrorCodes.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/version.h"
@@ -314,14 +315,14 @@ void InventatoryScanApp::processNetworkResult() {
       pendingQuickLabelPrintId_.clear();
       pendingQuickLabelPresetIndex_ = 0;
       state_ = State::Idle;
-      display_.showQuickLabelPrintResult(false, "PC OR PRINTER OFFLINE");
+      display_.showQuickLabelPrintResult(false, "PC OR PRINTER OFFLINE", kPrintNoReplyCode);
     }
     if ((status == 401 || status == 426) && !outbox_.empty()) {
       SyncResult result;
       result.resultId = "local-protocol";
       result.eventId = "local-protocol";
       result.status = "failed";
-      result.code = status == 426 ? "UPDATE PC" : "PAIRING ERROR";
+      result.code = status == 426 ? String(kPcTooOldCode) : String(kDeviceRejectedCode);
       result.message = status == 426 ? "Protocol v1 required" : "Check device token";
       display_.showResult(result);
     }

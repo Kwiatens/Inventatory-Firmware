@@ -6,6 +6,7 @@
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
+#include "InventatoryScanErrorCodes.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/version.h"
@@ -311,8 +312,8 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
       Serial.print("Quantity: ");
       Serial.println(quantity_.displayText().c_str());
-    } else if ((state_ == State::Idle || state_ == State::Menu) && scannerFaulted()) {
-      // A short # explains a scanner fault, from the main screen or the menu, when there is one.
+    } else if ((state_ == State::Idle || state_ == State::Menu) && display_.hasProblem()) {
+      // A short # explains the problem on show, from the main screen or the menu, when there is one.
       faultDetailReturn_ = state_;
       state_ = State::FaultDetail;
       display_.showFaultDetail();
@@ -409,7 +410,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       failure.resultId = "local-reset";
       failure.eventId = "local-reset";
       failure.status = "failed";
-      failure.code = "RESET FAILED";
+      failure.code = kPairingClearFailedCode;
       failure.message = "Could not clear pairing";
       display_.showLocalFailure(failure);
       state_ = State::Idle;
@@ -432,7 +433,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
           sr.resultId = "local-queue";
           sr.eventId = "local-queue";
           sr.status = "failed";
-          sr.code = "STORAGE ERROR";
+          sr.code = kRepairFailedCode;
           sr.message = "Could not repair queue";
           display_.showLocalFailure(sr);
           state_ = State::Idle;
@@ -456,7 +457,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
           result.resultId = "local-queue";
           result.eventId = "local-queue";
           result.status = "failed";
-          result.code = "STORAGE ERROR";
+          result.code = kDiscardFailedCode;
           result.message = "Could not discard scan";
           display_.showLocalFailure(result);
           state_ = State::Idle;
@@ -517,15 +518,15 @@ bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, in
     result.status = "failed";
     switch (queueResult) {
       case OutboxStore::EnqueueResult::QueueFull:
-        result.code = "QUEUE FULL";
+        result.code = kQueueFullCode;
         result.message = "Sync PC before scanning";
         break;
       case OutboxStore::EnqueueResult::StorageFailed:
-        result.code = "STORAGE ERROR";
+        result.code = kScanNotSavedCode;
         result.message = "Scan storage write failed";
         break;
       default:
-        result.code = "SCAN ERROR";
+        result.code = kScanRejectedCode;
         result.message = "Scan data cannot be saved";
         break;
     }
