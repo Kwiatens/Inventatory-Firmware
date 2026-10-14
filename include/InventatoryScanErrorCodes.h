@@ -10,10 +10,13 @@ namespace inventatory_scan {
 // reference, so never renumber one or reuse its number. Retire it and take the next free number.
 //
 // Format: three letters for the area, a dash, two digits.
+//
+// Only a code the device can actually show is listed here. Retired numbers are never reused:
+// SCN-02 (never shown: an unrecognised barcode is ignored), SYN-01 and SYN-02 (the PC's
+// replies that would show them never reach the device), PWR-01 and PWR-02 (warnings, not faults).
 
 // Scanner.
 constexpr char kScannerFaultCode[] = "SCN-01";
-constexpr char kBarcodeNotRecognisedCode[] = "SCN-02";
 constexpr char kScanRejectedCode[] = "SCN-03";
 
 // Offline queue and storage.
@@ -24,8 +27,6 @@ constexpr char kRepairFailedCode[] = "STO-04";
 constexpr char kDiscardFailedCode[] = "STO-05";
 
 // Sync with the PC.
-constexpr char kPcTooOldCode[] = "SYN-01";
-constexpr char kDeviceRejectedCode[] = "SYN-02";
 constexpr char kSyncBlockedCode[] = "SYN-03";
 
 // Pairing and Wi-Fi setup.
@@ -47,9 +48,8 @@ constexpr char kPrintNoReplyCode[] = "PRT-01";
 constexpr char kPrintPcOfflineCode[] = "PRT-02";
 constexpr char kPresetsNotLoadedCode[] = "PRT-03";
 
-// Battery.
-constexpr char kBatteryLowCode[] = "PWR-01";
-constexpr char kBatteryEmptyCode[] = "PWR-02";
+// Battery. A low or empty battery is a warning, not a fault, so it has no code. Only a reading
+// that cannot be trusted does. PWR-01 and PWR-02 were retired for that reason and are never reused.
 constexpr char kBatteryUnreadableCode[] = "PWR-03";
 
 }  // namespace inventatory_scan

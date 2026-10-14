@@ -513,16 +513,14 @@ void test_scanner_fault_warning_policy() {
 void test_error_code_catalogue_is_well_formed_and_unique() {
   // Every code is three capital letters, a dash and two digits, and no two codes are the same.
   const char* const codes[] = {
-      kScannerFaultCode,         kBarcodeNotRecognisedCode, kScanRejectedCode,        kQueueFullCode,
-      kScanNotSavedCode,         kQueueUnreadableCode,      kRepairFailedCode,        kDiscardFailedCode,
-      kPcTooOldCode,             kDeviceRejectedCode,       kSyncBlockedCode,         kPairingLockedCode,
-      kSetupNotSavedCode,        kWifiNotJoinedCode,        kPairingClearFailedCode,  kNetworkStartFailedCode,
-      kBluetoothStartFailedCode, kUpdateFailedCode,         kNoUpdateCode,            kPrintNoReplyCode,
-      kPrintPcOfflineCode,       kPresetsNotLoadedCode,     kBatteryLowCode,          kBatteryEmptyCode,
-      kBatteryUnreadableCode,
+      kScannerFaultCode,         kScanRejectedCode,         kQueueFullCode,           kScanNotSavedCode,
+      kQueueUnreadableCode,      kRepairFailedCode,         kDiscardFailedCode,       kSyncBlockedCode,
+      kPairingLockedCode,        kSetupNotSavedCode,        kWifiNotJoinedCode,       kPairingClearFailedCode,
+      kNetworkStartFailedCode,   kBluetoothStartFailedCode, kUpdateFailedCode,        kNoUpdateCode,
+      kPrintNoReplyCode,         kPrintPcOfflineCode,       kPresetsNotLoadedCode,    kBatteryUnreadableCode,
   };
   const std::size_t count = sizeof(codes) / sizeof(codes[0]);
-  TEST_ASSERT_EQUAL_UINT(25U, count);
+  TEST_ASSERT_EQUAL_UINT(20U, count);
   for (std::size_t index = 0; index < count; ++index) {
     const char* code = codes[index];
     TEST_ASSERT_EQUAL_UINT(6U, std::strlen(code));
@@ -860,6 +858,39 @@ void test_battery_tracker_guards_and_debounce() {
   TEST_ASSERT_TRUE(bounce.charging());
 }
 
+void test_battery_unreadable_needs_four_bad_readings_in_a_row() {
+  // A reading above the range is a wrong sense, the same as a missing divider.
+  BatteryTracker high;
+  high.update(kBatteryMaximumValidMv + 1U, false, 0);
+  TEST_ASSERT_FALSE(high.valid());
+  TEST_ASSERT_EQUAL_INT(-1, high.percent());
+  // The top of the range is still a cell.
+  BatteryTracker full;
+  full.update(kBatteryMaximumValidMv, false, 0);
+  TEST_ASSERT_TRUE(full.valid());
+
+  // Unreadable shows only after kBatteryTripSamples bad readings in a row.
+  BatteryTracker tracker;
+  for (uint32_t second = 0; second < kBatteryTripSamples - 1U; ++second) {
+    tracker.update(0, false, second * 1000UL);
+  }
+  TEST_ASSERT_FALSE(tracker.unreadable());
+  tracker.update(0, false, 3000);
+  TEST_ASSERT_TRUE(tracker.unreadable());
+
+  // One good reading clears it at once.
+  tracker.update(3900, false, 4000);
+  TEST_ASSERT_FALSE(tracker.unreadable());
+
+  // A single bad sample between good ones never counts.
+  BatteryTracker blip;
+  blip.update(3900, false, 0);
+  blip.update(0, false, 1000);
+  blip.update(3900, false, 2000);
+  blip.update(0, false, 3000);
+  TEST_ASSERT_FALSE(blip.unreadable());
+}
+
 void test_battery_tracker_learns_runtime() {
   // A steady discharge from 4.00 V (78%) to 3.90 V (62%) over 20 minutes is about
   // 75 s per percent, so about 77 minutes remain at the end.
@@ -1122,6 +1153,7 @@ void setup() {
   RUN_TEST(test_energy_saving_policy);
   RUN_TEST(test_battery_curve_policy);
   RUN_TEST(test_battery_tracker_guards_and_debounce);
+  RUN_TEST(test_battery_unreadable_needs_four_bad_readings_in_a_row);
   RUN_TEST(test_battery_tracker_learns_runtime);
   RUN_TEST(test_battery_estimate_text);
   RUN_TEST(test_datamatrix_size_guard_is_exact_at_512_bytes);

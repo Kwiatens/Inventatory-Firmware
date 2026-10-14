@@ -38,9 +38,11 @@ constexpr bool batteryCurveStepFalls(std::size_t index) {
 }
 static_assert(batteryCurveStepFalls(0), "battery curve must fall in both voltage and percent");
 
-// A reading below this is an unconnected or unreadable divider, not a cell. Such
-// readings never warn or power off, so a board without the divider still boots.
+// A reading outside this range is an unconnected or unreadable divider, or a wrong
+// reading, not a cell. Such readings never warn or power off, so a board without the
+// divider still boots. A LiPo cell tops out at 4.2 V (4.35 V for high-voltage cells).
 constexpr uint32_t kBatteryMinimumValidMv = 2500;
+constexpr uint32_t kBatteryMaximumValidMv = 4500;
 constexpr uint8_t kBatteryLowPercent = 10;
 constexpr uint8_t kBatteryCriticalPercent = 3;
 // Consecutive one-second samples below a threshold before it counts. Radio
@@ -83,12 +85,14 @@ enum class BatteryLevel : uint8_t {
 class BatteryTracker {
  public:
   void update(uint32_t millivolts, bool charging, uint32_t nowMs) {
-    if (millivolts < kBatteryMinimumValidMv) {
+    if (millivolts < kBatteryMinimumValidMv || millivolts > kBatteryMaximumValidMv) {
       valid_ = false;
+      if (invalidSamples_ < 255U) ++invalidSamples_;
       lowSamples_ = 0;
       criticalSamples_ = 0;
       return;
     }
+    invalidSamples_ = 0;
     const bool firstSample = !valid_;
     if (firstSample) {
       smoothedMv_ = millivolts;
@@ -119,6 +123,9 @@ class BatteryTracker {
   }
 
   bool valid() const { return valid_; }
+  // True only after kBatteryTripSamples readings in a row were outside the valid range, so a
+  // single bad sample never shows a fault.
+  bool unreadable() const { return invalidSamples_ >= kBatteryTripSamples; }
   bool charging() const { return valid_ && charging_; }
   // -1 while no reading has been taken.
   int percent() const { return valid_ ? static_cast<int>(percent_) : -1; }
@@ -187,6 +194,7 @@ class BatteryTracker {
   uint8_t lowSamples_ = 0;
   uint8_t criticalSamples_ = 0;
   uint8_t chargerFlipSamples_ = 0;
+  uint8_t invalidSamples_ = 0;
 };
 
 // "42 min", or "1h 05m" from 60 minutes. Returns false if the text does not fit.
