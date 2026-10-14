@@ -131,6 +131,7 @@ void InventatoryScanApp::serviceBattery() {
   lastBatterySampleAt_ = now;
 
   batteryTracker_.update(battery_.readMillivolts(), battery_.chargerPresent(), now);
+  display_.setBatteryUnreadable(batteryTracker_.unreadable());
   const bool charging = batteryTracker_.charging();
   const int percent = batteryTracker_.percent();
   const String estimate = batteryEstimateText();
