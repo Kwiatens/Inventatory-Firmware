@@ -400,6 +400,15 @@ preserved:
   A low cell that is not docked is refused at boot with a notice, then the chip sleeps again.
 - **Backlight**: `Off`, `On`, or an Auto idle timeout (1, 3, 5, 10 min), set under Device
   settings / Display. The warnings and pairing keep the backlight on whatever the setting says.
+- **Energy saving**: a switch under Device settings / Energy saving, off by default. When on, the device
+  sleeps (standby) after 1, 3, 5, 10 or 30 min idle, and turns off (deep sleep) after 1, 5, 10 or
+  30 min or 1 hour asleep, or never. The delays are counted from the last key press or scan and
+  from the moment it sleeps. Only the Ready screen with nothing in progress starts the sequence, so
+  a menu, a quantity being typed, an error, a warning or an update keeps the device awake. Before
+  each step a 30 s countdown shows on screen. A key press or a scan cancels it: a key press does
+  nothing else, a scan is handled as usual. A device asleep on this timer wakes on a short key press.
+  After the automatic power off only `*` wakes it, and it restarts. Holding `D` still toggles
+  standby as before.
 
 ---
 

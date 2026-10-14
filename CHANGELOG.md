@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The battery level shows in the top bar, in turn with the status and the time left. While the dock supplies power it shows "Charging" with a bolt and the time to full.
 - A card appears when the dock is connected or removed.
 - A backlight setting under Device settings / Display: Off, On, or Auto after 1, 3, 5 or 10 minutes idle. Warnings and pairing keep it lit.
+- Energy saving under Device settings, off by default. When on, the device sleeps after 1, 3, 5, 10 or 30 minutes idle, then turns off after 1, 5, 10 or 30 minutes or 1 hour asleep, or never. A 30-second countdown on screen comes before each step, and a key press or scan cancels it. Asleep, the screen is dark, sync pauses and the scanner is off, and a short key press wakes it. After the automatic power off, only `*` wakes the device.
 - A low-battery warning counts down 60 seconds, then powers the device off. A cell too low to run is refused at boot with a notice, and the device sleeps again.
 - The operator can discard a queue that this firmware cannot read. The repair menu offers it after a confirmation, and the device works again straight away.
 
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The power-off hold is four seconds of `*`, not 1.8 s. The first second opens the countdown, so a short press does nothing.
 - The boot screen is the logo with the name and version and no animated dot. On wake the mark blooms in over the first 0.9 s of the 1.2 s splash hold, and the name appears once it is whole.
 - Device settings opens Display, which holds the contrast and the backlight.
+- Device settings lists Energy saving in place of Standby. Holding `D` still toggles standby.
 - The firmware targets the Waveshare ESP32-S3-Nano (16 MB flash) instead of the Tenstar ESP32-S3-Zero. The LCD, keypad and scanner pins moved to match.
 - A result message no longer closes a screen that you have moved on to.
 - The pairing passkey changes after every attempt. Three failed attempts, or five minutes of advertising, lock pairing until `A` is pressed on the device.

@@ -45,6 +45,9 @@ class InventatoryScanApp {
     DisplaySettings,
     AdjustContrast,
     AdjustBacklight,
+    EnergySaving,
+    AdjustSleepAfter,
+    AdjustPowerOff,
     ConfirmReprovision,
     ConfirmDiscard,
     ConfirmRepair,
@@ -87,6 +90,16 @@ class InventatoryScanApp {
   void noteUserActivity();
   void serviceBattery();
   void serviceBacklight();
+  void serviceEnergySaving();
+  void startEnergySleepWarning();
+  void enterEnergySleep();
+  void startEnergyOffWarning();
+  void updateEnergyWarning(unsigned long now);
+  void dismissEnergyWarning();
+  void powerOffForEnergySaving();
+  bool energyWarningShown() const {
+    return energyPhase_ == EnergyPhase::SleepWarning || energyPhase_ == EnergyPhase::OffWarning;
+  }
   void startLowBatteryWarning();
   void updateLowBatteryWarning(unsigned long now);
   void cancelLowBatteryWarning();
@@ -113,6 +126,15 @@ class InventatoryScanApp {
   void openBacklightSettings();
   void stepBacklightMode(int step);
   void persistBacklightMode();
+  void openEnergySaving();
+  void toggleEnergySaving();
+  void persistEnergySaving();
+  void openSleepAfterSettings();
+  void stepSleepDelay(int step);
+  void persistSleepDelay();
+  void openPowerOffSettings();
+  void stepPowerOffDelay(int step);
+  void persistPowerOffDelay();
   void requestQuickLabelPrint(uint8_t presetIndex);
   void refreshQuickLabels();
   void persistContrast();
@@ -133,6 +155,15 @@ class InventatoryScanApp {
   BatteryTracker batteryTracker_;
   Backlight backlight_;
   BacklightMode backlightMode_ = BacklightMode::On;
+  // Energy saving: off by default. The delays apply only while it is on.
+  bool energySavingOn_ = false;
+  SleepDelay sleepDelay_ = SleepDelay::Min5;
+  PowerOffDelay powerOffDelay_ = PowerOffDelay::Min30;
+  EnergyPhase energyPhase_ = EnergyPhase::Awake;
+  // When the device went to sleep. The power-off countdown runs from here.
+  unsigned long sleepStartedAt_ = 0;
+  // Whole seconds last shown on a warning, so the screen is redrawn only when the count changes.
+  int energyShownSeconds_ = -1;
   bool batterySampled_ = false;
   unsigned long lastBatterySampleAt_ = 0;
   bool lastCharging_ = false;
