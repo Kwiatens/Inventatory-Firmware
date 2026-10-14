@@ -102,6 +102,14 @@ constexpr int kBoltW = 5;
 constexpr int kBoltH = 7;
 constexpr int kBoltGap = 2;
 
+// Top bar fault mark: a "!" two pixels wide, drawn in pixels. The bar covers rows 1 to 5, one row of
+// gap follows, and the dot is a square of rows 7 and 8, so the mark spans the header's cap height.
+constexpr int kFaultMarkW = 2;
+constexpr int kFaultMarkY = 1;
+constexpr int kFaultMarkBarH = 5;
+constexpr int kFaultMarkGapH = 1;
+constexpr int kFaultMarkDotH = 2;
+
 // Battery card: a battery at the left, the text column beside it.
 constexpr int kCardBatteryX = 5;
 constexpr int kCardBatteryY = 23;
