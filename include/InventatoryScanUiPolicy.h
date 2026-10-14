@@ -39,6 +39,22 @@ constexpr bool scanMayInterruptUi(bool setupMode, bool standby, bool otaActive,
   return !setupMode && !standby && !otaActive && !destructiveConfirmation && !printing;
 }
 
+// The fault mark shows while the scanner is not running. Standby switches the scanner off on
+// purpose, so that is not a fault.
+constexpr bool scannerFaultShown(bool standby, bool scannerActive) {
+  return !standby && !scannerActive;
+}
+
+// When several problems stand at once, the Ready and fault screens show one code at a time and
+// move to the next code every kFaultRotateMs.
+constexpr uint32_t kFaultRotateMs = 3000UL;
+
+// The position of the problem on show at nowMs, when count problems take turns. A single problem
+// never moves, so the result is zero for one problem or none.
+inline std::size_t faultRotationIndex(uint32_t nowMs, std::size_t count, uint32_t periodMs) {
+  return count < 2 || periodMs == 0 ? 0 : (nowMs / periodMs) % count;
+}
+
 constexpr bool uiActivityAlternate(uint32_t now) {
   return ((now / kUiActivityPeriodMs) % 2U) != 0U;
 }

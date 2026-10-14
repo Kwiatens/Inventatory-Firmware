@@ -6,6 +6,7 @@
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
+#include "InventatoryScanErrorCodes.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/version.h"
@@ -56,7 +57,7 @@ void InventatoryScanApp::exitStandby() {
     result.resultId = "local-scanner";
     result.eventId = "local-scanner";
     result.status = "failed";
-    result.code = "SCANNER ERROR";
+    result.code = kScannerFaultCode;
     result.message = "Check scanner cable";
     display_.showLocalFailure(result);
   }
@@ -132,12 +133,12 @@ void InventatoryScanApp::refreshQuickLabels() {
 void InventatoryScanApp::requestQuickLabelPrint(uint8_t presetIndex) {
   if (!quickLabelSnapshotReceived_ || !pcSupportsQuickLabels_ || presetIndex < 1 ||
       presetIndex > quickLabelPresetCount_ || quickLabelRevision_ == 0) {
-    display_.showQuickLabelPrintResult(false, "REFRESH PRESETS FIRST");
+    display_.showQuickLabelPrintResult(false, "REFRESH PRESETS FIRST", kPresetsNotLoadedCode);
     state_ = State::Idle;
     return;
   }
   if (!WiFi.isConnected()) {
-    display_.showQuickLabelPrintResult(false, "PC OFFLINE");
+    display_.showQuickLabelPrintResult(false, "PC OFFLINE", kPrintPcOfflineCode);
     state_ = State::Idle;
     return;
   }
@@ -168,6 +169,12 @@ DisplayConnectivityState InventatoryScanApp::connectivityState() const {
     return DisplayConnectivityState::Syncing;
   }
   return DisplayConnectivityState::Online;
+}
+
+// The scanner is off on purpose in standby. Otherwise it is faulted when its boot profile was not
+// acknowledged, or when it did not wake.
+bool InventatoryScanApp::scannerFaulted() const {
+  return scannerFaultShown(powerMode_ == PowerMode::Standby, scanner_.active());
 }
 
 void InventatoryScanApp::updateConnectivityDisplay() {
