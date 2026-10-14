@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The LiPo voltage is read on GPIO1 through a resistor divider and logged at boot.
 - Operator-confirmed repair of an unreadable offline queue. Readable scans are kept.
 - A faulty barcode scanner no longer stops the device from starting.
+- An exclamation mark shows in the top bar while the barcode scanner is not replying. The main screen and the menu then offer `# Fault info`, which shows the code (`SCN-01`), what it means and what to check. While the fault shows, the main screen reads "There is a problem" with the code below it, in place of "Ready to scan".
 - New firmware is confirmed only after 30 seconds of healthy running. A crash or reset before that, including powering the device off straight after an update, returns it to the previous firmware.
 - Holding `#` opens the re-pair confirmation (idle only); `C` returns to Ready.
 - The battery level shows in the top bar, in turn with the status and the time left. While the dock supplies power it shows "Charging" with a bolt and the time to full.
@@ -33,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new outbox starts its event numbering at a random point, so the desktop never receives an event id it has already stored for the device.
 - A 5xx response for the head event counts toward the "Sync blocked" warning, as a 4xx response already did.
 - A partial barcode is dropped if its end does not arrive, instead of being reported as a scan.
+- The scanner failure notice after standby quotes the code `SCN-01`, not `SCANNER ERROR`.
+- The top bar's status gives way to the battery when the title leaves no room for it, as the runtime estimate already did.
 - The host test suite covers the queue migrations, the replay counter and the provisioning parser. A coverage report is available with `make -C host-tests coverage`.
 
 ### Fixed

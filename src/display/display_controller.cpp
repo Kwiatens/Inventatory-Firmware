@@ -58,28 +58,40 @@ void DisplayController::clearContent() {
   model_.pageText.clear();
   model_.quantityPrompt.clear();
   model_.listRowCount = 0;
+  model_.errorCode.clear();
   for (auto& row : model_.listRows) row.clear();
 }
 
 void DisplayController::refreshReadyContent() {
   model_.header = "Inventatory";
-  model_.primary = "Ready to scan";
-  if (queueUnreadable_) {
-    model_.secondary = "Queue unreadable: C, 3";
-  } else if (syncBlocked_) {
-    model_.secondary = "Sync blocked: C, 3";
-  } else if (displayQueueDepth(model_.queueDepth)) {
-    model_.secondary = String(model_.queueDepth) + " scans safely queued";
-  } else if (model_.connectivity == DisplayConnectivityState::Syncing) {
-    model_.secondary = "Sending saved work";
-  } else if (model_.connectivity == DisplayConnectivityState::Online) {
-    model_.secondary = "Point at a label";
+  // With a scanner fault the device is not ready to scan, so the screen says so and gives the code
+  // instead of the ready text.
+  if (model_.scannerFault) {
+    model_.primary = "There is a problem";
+    model_.secondary.clear();
+    model_.errorCode = kScannerFaultCode;
   } else {
-    model_.secondary = "Scans save on device";
+    model_.errorCode.clear();
+    model_.primary = "Ready to scan";
+    if (queueUnreadable_) {
+      model_.secondary = "Queue unreadable: C, 3";
+    } else if (syncBlocked_) {
+      model_.secondary = "Sync blocked: C, 3";
+    } else if (displayQueueDepth(model_.queueDepth)) {
+      model_.secondary = String(model_.queueDepth) + " scans safely queued";
+    } else if (model_.connectivity == DisplayConnectivityState::Syncing) {
+      model_.secondary = "Sending saved work";
+    } else if (model_.connectivity == DisplayConnectivityState::Online) {
+      model_.secondary = "Point at a label";
+    } else {
+      model_.secondary = "Scans save on device";
+    }
   }
   model_.rail = model_.connectivity == DisplayConnectivityState::Syncing
                     ? DisplayRailStyle::Activity
                     : DisplayRailStyle::Static;
+  // A scanner fault is explained under the # key, from the main screen as from the menu.
+  model_.actions = model_.scannerFault ? String("# Fault info C Menu") : String("C Menu");
 }
 
 void DisplayController::setSyncBlocked(bool blocked) {
@@ -188,7 +200,6 @@ void DisplayController::showReady() {
   model_.mode = DisplayUiMode::Ready;
   model_.bodyKind = DisplayBodyKind::Task;
   model_.showPcStatus = true;
-  model_.actions = "C Menu";
   resultUntilMs_ = 0;
   refreshReadyContent();
   markDirty();
@@ -422,7 +433,31 @@ void DisplayController::showMenu(bool blocked, bool unreadable) {
   } else if (blocked) {
     appendListRow(model_, "3  Discard stuck scan");
   }
+  // A scanner fault is explained under the # key, which the menu offers only while there is one.
+  model_.actions = model_.scannerFault ? String("# Fault info C Back") : String("C Back");
+  markDirty();
+}
+
+// The error code on the first line, then what it means and what to check on the last two lines.
+void DisplayController::showFaultDetail() {
+  clearContent();
+  model_.mode = DisplayUiMode::FaultDetail;
+  model_.bodyKind = DisplayBodyKind::Fault;
+  model_.rail = DisplayRailStyle::None;
+  model_.showPcStatus = false;
+  model_.header = "Scanner fault";
+  model_.errorCode = kScannerFaultCode;
+  model_.secondary = "Scanner not replying";
+  model_.tertiary = "Check cable, restart.";
   model_.actions = "C Back";
+  markDirty();
+}
+
+void DisplayController::setScannerFault(bool fault) {
+  if (model_.scannerFault == fault) return;
+  model_.scannerFault = fault;
+  // The main screen's footer offers the # action only while there is a fault.
+  if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
   markDirty();
 }
 

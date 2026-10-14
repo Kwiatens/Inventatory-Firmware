@@ -39,6 +39,16 @@ constexpr bool scanMayInterruptUi(bool setupMode, bool standby, bool otaActive,
   return !setupMode && !standby && !otaActive && !destructiveConfirmation && !printing;
 }
 
+// The code that the top bar's fault mark, the menu's # action and the failure notice quote for a
+// scanner that is not replying.
+constexpr char kScannerFaultCode[] = "SCN-01";
+
+// The fault mark shows while the scanner is not running. Standby switches the scanner off on
+// purpose, so that is not a fault.
+constexpr bool scannerFaultShown(bool standby, bool scannerActive) {
+  return !standby && !scannerActive;
+}
+
 constexpr bool uiActivityAlternate(uint32_t now) {
   return ((now / kUiActivityPeriodMs) % 2U) != 0U;
 }

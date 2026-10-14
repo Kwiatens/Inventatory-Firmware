@@ -39,6 +39,10 @@ class DisplayController {
   void showOta(const String& text, int percent = 0);
   void showSetup(uint32_t pairingCode, const String& status = "BLE READY");
   void showMenu(bool blocked = false, bool unreadable = false);
+  // The scanner fault screen, opened from the menu's # action.
+  void showFaultDetail();
+  // Shows or hides the warning mark in the top bar.
+  void setScannerFault(bool fault);
   void showQuickLabels(const String* labels, std::size_t count, std::size_t page, bool snapshotReceived,
                        bool pcSupportsQuickLabels);
   void showQuickSettings();

@@ -56,7 +56,7 @@ void InventatoryScanApp::exitStandby() {
     result.resultId = "local-scanner";
     result.eventId = "local-scanner";
     result.status = "failed";
-    result.code = "SCANNER ERROR";
+    result.code = kScannerFaultCode;
     result.message = "Check scanner cable";
     display_.showLocalFailure(result);
   }
@@ -168,6 +168,12 @@ DisplayConnectivityState InventatoryScanApp::connectivityState() const {
     return DisplayConnectivityState::Syncing;
   }
   return DisplayConnectivityState::Online;
+}
+
+// The scanner is off on purpose in standby. Otherwise it is faulted when its boot profile was not
+// acknowledged, or when it did not wake.
+bool InventatoryScanApp::scannerFaulted() const {
+  return scannerFaultShown(powerMode_ == PowerMode::Standby, scanner_.active());
 }
 
 void InventatoryScanApp::updateConnectivityDisplay() {
