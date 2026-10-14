@@ -6,6 +6,7 @@
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
+#include "InventatoryScanErrorCodes.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/hardware.h"
@@ -83,7 +84,7 @@ bool InventatoryScanApp::begin() {
   }
   if (!scanner_.begin(9600)) {
     Serial.println("Scanner initialization failed; verify the GM65 connection and profile.");
-    display_.showBoot("Scanner error");
+    display_.showBoot("Scanner error", kScannerFaultCode);
     display_.tick();
     delay(2000);
   }
@@ -124,7 +125,7 @@ bool InventatoryScanApp::begin() {
     setupMode_ = true;
     if (!provisioning_.begin(clientConfig_.deviceId)) {
       Serial.println("BLE provisioning could not start");
-      display_.showBoot("Bluetooth error");
+      display_.showBoot("Bluetooth error", kBluetoothStartFailedCode);
       display_.tick();
       return false;
     }
@@ -140,6 +141,8 @@ bool InventatoryScanApp::begin() {
 void InventatoryScanApp::loop() {
   serviceBattery();
   serviceBacklight();
+  // Every screen, including setup, shows the fault mark while the scanner is not running.
+  display_.setScannerFault(scannerFaulted());
   if (setupMode_) {
     InventatoryKeyEvent event;
     while (keypadPoll(event)) handleKey(event);
@@ -259,7 +262,7 @@ bool InventatoryScanApp::enterSetupAfterRuntimeFailure() {
   setupRestartPending_ = false;
   if (!provisioning_.begin(clientConfig_.deviceId)) {
     Serial.println("BLE provisioning could not restart after runtime failure");
-    display_.showBoot("Bluetooth error");
+    display_.showBoot("Bluetooth error", kBluetoothStartFailedCode);
     display_.tick();
     return false;
   }

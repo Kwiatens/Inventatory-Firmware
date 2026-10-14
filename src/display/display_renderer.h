@@ -31,7 +31,8 @@ class DisplayRenderer {
 
   void drawHeader(const DisplayModel& model, const RenderActivity& activity);
   HeaderSlot headerSlotFor(const DisplayModel& model, HeaderPage page);
-  void drawHeaderSlot(const HeaderSlot& slot);
+  void drawHeaderSlot(const HeaderSlot& slot, int rightX);
+  void drawFaultMark(int rightX);
   void drawBatteryIcon(int x, int y, int percent);
   void drawBolt(int x, int y);
   void drawRail(DisplayRailStyle rail, const RenderActivity& activity);
@@ -39,6 +40,8 @@ class DisplayRenderer {
   void drawQuantity(const DisplayModel& model, const RenderActivity& activity);
   void drawResult(const DisplayModel& model);
   void drawList(const DisplayModel& model);
+  void drawFault(const DisplayModel& model);
+  void drawErrorCodeLine(int x, int baselineY, const String& code);
   void drawContrast(const DisplayModel& model);
   void drawBacklight(const DisplayModel& model);
   void drawConfirm(const DisplayModel& model);

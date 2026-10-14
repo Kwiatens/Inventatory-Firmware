@@ -137,8 +137,8 @@ DisplayRenderer::HeaderSlot DisplayRenderer::headerSlotFor(const DisplayModel& m
   return slot;
 }
 
-void DisplayRenderer::drawHeaderSlot(const HeaderSlot& slot) {
-  int x = style::kHeaderRightX - slot.width;
+void DisplayRenderer::drawHeaderSlot(const HeaderSlot& slot, int rightX) {
+  int x = rightX - slot.width;
   if (!slot.battery) {
     lcd_.setFont(slot.font);
     lcd_.drawStr(x, style::kHeaderBaselineY, slot.text.c_str());
@@ -171,18 +171,30 @@ void DisplayRenderer::drawBatteryIcon(int x, int y, int percent) {
 
 void DisplayRenderer::drawBolt(int x, int y) { lcd_.drawXBMP(x, y, style::kBoltW, style::kBoltH, kBoltRows); }
 
+// The top bar's fault mark: a "!" two pixels wide, drawn in pixels so that no font glyph can clip it. The
+// status slot ends just left of it.
+void DisplayRenderer::drawFaultMark(int rightX) {
+  const int x = rightX - style::kFaultMarkW + 1;
+  lcd_.drawBox(x, style::kFaultMarkY, style::kFaultMarkW, style::kFaultMarkBarH);
+  lcd_.drawBox(x, style::kFaultMarkY + style::kFaultMarkBarH + style::kFaultMarkGapH, style::kFaultMarkW,
+               style::kFaultMarkDotH);
+}
+
 void DisplayRenderer::drawHeader(const DisplayModel& model, const RenderActivity& activity) {
   const String header = model.animateEllipsis
                             ? model.header + (activity.alternate ? "..." : ".")
                             : model.header;
   lcd_.setFont(style::kFontHeading);
   const int titleWidth = lcd_.getStrWidth(header.c_str());
-  const int available = style::kHeaderRightX - style::kHeaderLeftX;
+  const int markWidth = model.problemMark ? style::kFaultMarkW : 0;
+  const int slotRight = style::kHeaderRightX - (markWidth > 0 ? markWidth + style::kHeaderStatusGap : 0);
+  const int available = slotRight - style::kHeaderLeftX;
 
   const auto page = static_cast<HeaderPage>(activity.headerPage);
   HeaderSlot slot = headerSlotFor(model, page);
-  // A long runtime line gives way to the percentage rather than to nothing.
-  if (page == HeaderPage::Estimate &&
+  // A long runtime line or status gives way to the percentage rather than to nothing. The fault
+  // mark leaves less room, so the status is the line that most often has to give way.
+  if ((page == HeaderPage::Estimate || page == HeaderPage::Status) &&
       !displayHeaderCanShowStatus(titleWidth, slot.width, available, style::kHeaderStatusGap)) {
     slot = headerSlotFor(model, HeaderPage::Battery);
   }
@@ -192,8 +204,10 @@ void DisplayRenderer::drawHeader(const DisplayModel& model, const RenderActivity
   lcd_.setFont(style::kFontHeading);
   drawClipped(style::kHeaderLeftX, style::kHeaderBaselineY,
               showRight ? available - slot.width - style::kHeaderStatusGap : available, header);
-  if (showRight) drawHeaderSlot(slot);
-  lcd_.drawHLine(style::kHeaderLeftX, style::kHeaderDividerY, available);
+  if (showRight) drawHeaderSlot(slot, slotRight);
+  if (markWidth > 0) drawFaultMark(style::kHeaderRightX);
+  // The divider always spans the whole bar, under the fault mark as well.
+  lcd_.drawHLine(style::kHeaderLeftX, style::kHeaderDividerY, style::kHeaderRightX - style::kHeaderLeftX);
 }
 
 void DisplayRenderer::drawRail(DisplayRailStyle railStyle, const RenderActivity& activity) {
@@ -223,9 +237,14 @@ void DisplayRenderer::drawTask(const DisplayModel& model, const RenderActivity& 
     lcd_.setFont(style::kFontRegular);
     drawWrapped(style::kContentX, 25, style::kContentW, primary, 2, 9);
   }
+  const int secondaryY = primaryFits ? style::kTaskSecondaryY : 48;
+  // A fault puts its error code on the line below the problem, in place of the normal text.
+  if (model.errorCode.length() > 0) {
+    drawErrorCodeLine(style::kContentX, secondaryY, model.errorCode);
+    return;
+  }
   lcd_.setFont(style::kFontRegular);
-  drawWrapped(style::kContentX, primaryFits ? style::kTaskSecondaryY : 48, style::kContentW,
-              model.secondary, 1, 9);
+  drawWrapped(style::kContentX, secondaryY, style::kContentW, model.secondary, 1, 9);
 }
 
 void DisplayRenderer::drawQuantity(const DisplayModel& model, const RenderActivity& activity) {
@@ -284,6 +303,27 @@ void DisplayRenderer::drawList(const DisplayModel& model) {
                 style::kListFirstY + static_cast<int>(index) * style::kListRowStep,
                 style::kScreenW - 2 * style::kListX, model.listRows[index]);
   }
+}
+
+// "Error code" in the regular face, with the code after it in bold, on one baseline.
+void DisplayRenderer::drawErrorCodeLine(int x, int baselineY, const String& code) {
+  static const char kLabel[] = "Error code ";
+  lcd_.setFont(style::kFontRegular);
+  lcd_.drawStr(x, baselineY, kLabel);
+  const int labelWidth = lcd_.getStrWidth(kLabel);
+  lcd_.setFont(style::kFontHeading);
+  drawClipped(x + labelWidth, baselineY, style::kHeaderRightX - x - labelWidth, code);
+}
+
+// The fault screen: the error code on the first line, and the explanation on the last two lines of the
+// list.
+void DisplayRenderer::drawFault(const DisplayModel& model) {
+  const int width = style::kScreenW - 2 * style::kListX;
+  drawErrorCodeLine(style::kListX, style::kListFirstY, model.errorCode);
+  const int messageY = style::kListFirstY + (static_cast<int>(style::kListMaxRows) - 2) * style::kListRowStep;
+  lcd_.setFont(style::kFontRegular);
+  drawClipped(style::kListX, messageY, width, model.secondary);
+  drawClipped(style::kListX, messageY + style::kListRowStep, width, model.tertiary);
 }
 
 void DisplayRenderer::drawContrast(const DisplayModel& model) {
@@ -671,6 +711,7 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
         case DisplayBodyKind::Quantity: drawQuantity(model, activity); break;
         case DisplayBodyKind::Result: drawResult(model); break;
         case DisplayBodyKind::List: drawList(model); break;
+        case DisplayBodyKind::Fault: drawFault(model); break;
         case DisplayBodyKind::Contrast: drawContrast(model); break;
         case DisplayBodyKind::Backlight: drawBacklight(model); break;
         case DisplayBodyKind::Confirm: drawConfirm(model); break;

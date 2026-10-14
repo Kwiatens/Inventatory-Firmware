@@ -161,6 +161,7 @@ agents must distinguish between immutable invariants and mutable implementation 
 │   └── gmg12864_spi_test/      # Independent SPI display verification
 ├── include/                    # Protocol definitions and core parsing algorithms
 │   ├── InventatoryScanCore.h   # Barcode parsing, AIM stripping, DataMatrix decoding
+│   ├── InventatoryScanErrorCodes.h # Error codes shown on the LCD (numbers are public, never reused)
 │   ├── InventatoryScanHttp.h   # HTTP status constants and bounding limits
 │   ├── InventatoryScanOutbox.h # Outbox serialization structures and queue models
 │   ├── InventatoryScanSecurity.h # HMAC-SHA-256 and directional key derivation
@@ -367,8 +368,9 @@ preserved:
   - `B`: Remove stock (-qty), or raise display contrast.
   - `C`: Menu toggle from Ready; Back, Cancel, or Dismiss elsewhere.
   - `D`: Move quantity cursor; advance to next Quick Labels page.
-  - `#`: Short press deletes selected quantity digit; holding `#` (from the idle screen only) opens
-    the "Pair with new PC?" confirmation; `A` confirms the reset.
+  - `#`: Short press deletes selected quantity digit, and on the main screen or in the menu opens the
+    scanner fault screen while the fault mark shows; holding `#` (from the idle screen only) opens the "Pair with new PC?"
+    confirmation; `A` confirms the reset.
   - `D` hold (about 1.8 s, `*` not pressed): toggles standby; ignored unless on the idle screen.
   - `*` hold (`D` not pressed): after 1 s a warning shows a countdown bar, and releasing `*`
     or pressing `D` or `#` cancels it. Holding to 4 s powers off into deep sleep: the `›i` sinks behind the
@@ -385,6 +387,13 @@ preserved:
   once a discharge or charge rate has been observed, the runtime estimate (`headerPageAt`).
   While the dock supplies power the status reads "Charging". The dock connect and disconnect
   show a short full-screen card (`showBatteryCard`); it appears on the Ready screen only.
+- **Top bar fault mark**: A two-pixel `!` sits at the right corner of the top bar while the scanner is not
+  running (`scannerFaultShown`). It is hidden in standby. While it shows, the main screen and the menu
+  offer `# Fault info`, and that screen gives the code (`kScannerFaultCode`, `SCN-01`) and what to check.
+  The mark is drawn for any standing problem (`problemMark`), not only the scanner.
+- **Standing problems**: The scanner, an unreadable queue (`STO-03`) and a blocked sync (`SYN-03`) each
+  have a code. While several stand, the main screen and the fault screen show one code at a time and move
+  to the next every `kFaultRotateMs` (`faultRotationIndex`). `#` explains the code on show.
 - **Battery safety**: A reading below `kBatteryMinimumValidMv` is an unreadable divider and never
   warns or powers off. Low and critical thresholds need `kBatteryTripSamples` consecutive
   one-second samples. The low warning latches and powers off after 60 s unless the dock connects.

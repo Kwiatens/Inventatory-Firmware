@@ -39,6 +39,7 @@ class InventatoryScanApp {
     AwaitQuantity,
     WaitingForResult,
     Menu,
+    FaultDetail,
     QuickLabels,
     QuickSettings,
     DisplaySettings,
@@ -99,6 +100,7 @@ class InventatoryScanApp {
   void maybeSync();
   void handleSyncResponse(const SyncResponse& response);
   void updateConnectivityDisplay();
+  bool scannerFaulted() const;
   DisplayConnectivityState connectivityState() const;
   String syncMode() const;
   void reconnectWiFiWorker();
@@ -151,6 +153,8 @@ class InventatoryScanApp {
   String scannedPartName_;
   String deferredScan_;
   State state_ = State::Idle;
+  // The screen the fault details were opened from, so C returns to it.
+  State faultDetailReturn_ = State::Idle;
   PendingScanType pendingScanType_ = PendingScanType::None;
   std::atomic<PowerMode> powerMode_{PowerMode::Normal};
   std::atomic_bool wifiStarted_{false};
