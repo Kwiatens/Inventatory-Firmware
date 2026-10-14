@@ -18,7 +18,8 @@ class DisplayController {
   void showSplash();
   // Shows the splash for holdMs, with the mark blooming in first, and keeps the LCD refreshed meanwhile.
   void playBootSplash(unsigned long holdMs);
-  void showBoot(const String& stage);
+  // A start-up stage. The error code, when there is one, replaces "See USB serial" under it.
+  void showBoot(const String& stage, const String& code = String());
   // The soft power-off warning: a countdown bar overlay. The bar drains by itself from the moment it appears.
   void showPowerWarning();
   // Runs the power-off ending to its end: the mark sinks behind the glass, the text rests, and the
@@ -39,6 +40,10 @@ class DisplayController {
   void showOta(const String& text, int percent = 0);
   void showSetup(uint32_t pairingCode, const String& status = "BLE READY");
   void showMenu(bool blocked = false, bool unreadable = false);
+  // The fault screen for the problem on show, opened from the # action.
+  void showFaultDetail();
+  // Shows or hides the warning mark in the top bar.
+  void setScannerFault(bool fault);
   void showQuickLabels(const String* labels, std::size_t count, std::size_t page, bool snapshotReceived,
                        bool pcSupportsQuickLabels);
   void showQuickSettings();
@@ -49,7 +54,8 @@ class DisplayController {
   void showDiscardConfirm();
   void showRepairConfirm(bool everyScanLost = false);
   void showPrinting(const String& label);
-  void showQuickLabelPrintResult(bool success, const String& message);
+  // A failed print shows its code under the message, in place of the hint, when there is one.
+  void showQuickLabelPrintResult(bool success, const String& message, const String& code = String());
   void setSyncBlocked(bool blocked);
   void setQueueUnreadable(bool unreadable);
 
@@ -66,12 +72,22 @@ class DisplayController {
   bool errorVisible() const {
     return model_.mode == DisplayUiMode::Error || model_.mode == DisplayUiMode::Warning;
   }
+  // True while the scanner, the queue or the sync stands in the way of scanning.
+  bool hasProblem() const;
 
  private:
+  // The most problems that can stand at once: the scanner, the unreadable queue and the blocked sync.
+  static constexpr std::size_t kStandingProblemCount = 3;
+
   void markDirty();
   void applyResult(const SyncResult& result);
   void clearContent();
   void refreshReadyContent();
+  // Fills codes with the codes of the problems that stand, in the order the screens take turns, and
+  // returns how many there are.
+  std::size_t standingProblemCodes(const char* (&codes)[kStandingProblemCount]) const;
+  // Shows the name, the code and the explanation of one standing problem on the fault screen.
+  void applyFaultDetail(const char* code);
   const DisplayModel& shownModel() const { return overlayActive_ ? overlay_ : model_; }
   RenderActivity computeActivity(unsigned long now) const;
   void renderPowerOffFrame(int markOffsetY);

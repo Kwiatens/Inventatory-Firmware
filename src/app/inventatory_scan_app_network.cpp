@@ -6,6 +6,7 @@
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
+#include "InventatoryScanErrorCodes.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/version.h"
@@ -314,14 +315,14 @@ void InventatoryScanApp::processNetworkResult() {
       pendingQuickLabelPrintId_.clear();
       pendingQuickLabelPresetIndex_ = 0;
       state_ = State::Idle;
-      display_.showQuickLabelPrintResult(false, "PC OR PRINTER OFFLINE");
+      display_.showQuickLabelPrintResult(false, "PC OR PRINTER OFFLINE", kPrintNoReplyCode);
     }
     if ((status == 401 || status == 426) && !outbox_.empty()) {
       SyncResult result;
       result.resultId = "local-protocol";
       result.eventId = "local-protocol";
       result.status = "failed";
-      result.code = status == 426 ? "UPDATE PC" : "PAIRING ERROR";
+      result.code = status == 426 ? String(kPcTooOldCode) : String(kDeviceRejectedCode);
       result.message = status == 426 ? "Protocol v1 required" : "Check device token";
       display_.showResult(result);
     }
@@ -447,7 +448,7 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
     // Results for other events are acknowledged and dropped as before.
     // A menu or confirmation owns the screen: leave the result unacknowledged so
     // the desktop delivers it again once the operator is back at the ready screen.
-    const bool screenBusy = state_ == State::Menu || state_ == State::QuickLabels ||
+    const bool screenBusy = state_ == State::Menu || state_ == State::FaultDetail || state_ == State::QuickLabels ||
                             state_ == State::QuickSettings || state_ == State::AdjustContrast ||
                             state_ == State::ConfirmReprovision || state_ == State::ConfirmDiscard ||
                             state_ == State::PrintingLabel;
