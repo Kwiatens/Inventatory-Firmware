@@ -61,6 +61,7 @@ class DisplayController {
   void showQuickLabelPrintResult(bool success, const String& message, const String& code = String());
   void setSyncBlocked(bool blocked);
   void setQueueUnreadable(bool unreadable);
+  void setBatteryUnreadable(bool unreadable);
 
   // Battery in the top bar. percent < 0 means unknown.
   void setBatteryStatus(int percent, bool charging, const String& estimate);
@@ -80,8 +81,9 @@ class DisplayController {
   bool hasProblem() const;
 
  private:
-  // The most problems that can stand at once: the scanner, the unreadable queue and the blocked sync.
-  static constexpr std::size_t kStandingProblemCount = 3;
+  // The most problems that can stand at once: the scanner, the unreadable queue, the blocked sync
+  // and the unreadable battery.
+  static constexpr std::size_t kStandingProblemCount = 4;
 
   void markDirty();
   void applyResult(const SyncResult& result);
@@ -115,6 +117,7 @@ class DisplayController {
   bool standby_ = false;
   bool syncBlocked_ = false;
   bool queueUnreadable_ = false;
+  bool batteryUnreadable_ = false;
   // The boot mark's bloom stage while the splash plays; the full mark otherwise.
   int bootBloomStage_ = kBootBloomStages;
 };
