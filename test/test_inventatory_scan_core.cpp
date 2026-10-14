@@ -354,30 +354,33 @@ void test_unknown_result_status_is_rejected() {
   TEST_ASSERT_FALSE(unknownPrint.valid);
 }
 
+// A parsed response holds about thirty String fields. The device runs each test on the 8 KiB
+// Arduino loop stack. A test that kept many responses as locals overflowed it, and the board
+// reset at that test. Validity checks therefore parse inside this helper, so only one response
+// is live in the test's own frame.
+static bool syncResponseIsValid(const String& body) {
+  return parseSyncResponseJson(body).valid;
+}
+
 void test_sync_response_json_is_strictly_parsed() {
   const String valid =
       R"json({"protocolVersion":1,"requestId":"sync-9","acceptedEventIds":[],"results":[]})json";
-  TEST_ASSERT_FALSE(parseSyncResponseJson(valid + " trailing").valid);
+  TEST_ASSERT_FALSE(syncResponseIsValid(valid + " trailing"));
 
-  const auto fieldLikeText = parseSyncResponseJson(
-      R"json({"requestId":"sync-evil, \"protocolVersion\":1","protocolVersion":0,"acceptedEventIds":[],"results":[]})json");
-  TEST_ASSERT_FALSE(fieldLikeText.valid);
+  TEST_ASSERT_FALSE(syncResponseIsValid(
+      R"json({"requestId":"sync-evil, \"protocolVersion\":1","protocolVersion":0,"acceptedEventIds":[],"results":[]})json"));
 
-  const auto wrongType = parseSyncResponseJson(
-      R"json({"protocolVersion":"1","requestId":"sync-10","acceptedEventIds":[],"results":[]})json");
-  TEST_ASSERT_FALSE(wrongType.valid);
+  TEST_ASSERT_FALSE(syncResponseIsValid(
+      R"json({"protocolVersion":"1","requestId":"sync-10","acceptedEventIds":[],"results":[]})json"));
 
-  const auto malformedEscape = parseSyncResponseJson(
-      R"json({"protocolVersion":1,"requestId":"sync-\q","acceptedEventIds":[],"results":[]})json");
-  TEST_ASSERT_FALSE(malformedEscape.valid);
+  TEST_ASSERT_FALSE(syncResponseIsValid(
+      R"json({"protocolVersion":1,"requestId":"sync-\q","acceptedEventIds":[],"results":[]})json"));
 
-  const auto nonStringAcknowledgement = parseSyncResponseJson(
-      R"json({"protocolVersion":1,"requestId":"sync-11","acceptedEventIds":[true],"results":[]})json");
-  TEST_ASSERT_FALSE(nonStringAcknowledgement.valid);
+  TEST_ASSERT_FALSE(syncResponseIsValid(
+      R"json({"protocolVersion":1,"requestId":"sync-11","acceptedEventIds":[true],"results":[]})json"));
 
-  const auto laterUnknownStatus = parseSyncResponseJson(
-      R"json({"protocolVersion":1,"requestId":"sync-12","acceptedEventIds":[],"results":[{"resultId":"r1","eventId":"e1","status":"completed"},{"resultId":"r2","eventId":"e2","status":"pending"}]})json");
-  TEST_ASSERT_FALSE(laterUnknownStatus.valid);
+  TEST_ASSERT_FALSE(syncResponseIsValid(
+      R"json({"protocolVersion":1,"requestId":"sync-12","acceptedEventIds":[],"results":[{"resultId":"r1","eventId":"e1","status":"completed"},{"resultId":"r2","eventId":"e2","status":"pending"}]})json"));
 
   // Optional objects serialised as null are treated as absent; other kinds stay invalid.
   const auto nullOptionals = parseSyncResponseJson(
@@ -386,18 +389,17 @@ void test_sync_response_json_is_strictly_parsed() {
   TEST_ASSERT_FALSE(nullOptionals.hasLookupResult);
   TEST_ASSERT_FALSE(nullOptionals.hasQuickLabels);
   TEST_ASSERT_FALSE(nullOptionals.hasQuickLabelPrintResult);
-  TEST_ASSERT_FALSE(parseSyncResponseJson(
-      R"json({"protocolVersion":1,"requestId":"sync-15","acceptedEventIds":[],"results":[],"lookupResult":"found"})json").valid);
-  TEST_ASSERT_FALSE(parseSyncResponseJson(
-      R"json({"protocolVersion":1,"requestId":"sync-16","acceptedEventIds":[],"results":[],"quickLabels":[]})json").valid);
-  TEST_ASSERT_FALSE(parseSyncResponseJson(
-      R"json({"protocolVersion":1,"requestId":"sync-17","acceptedEventIds":[],"results":[],"quickLabelPrintResult":true})json").valid);
-  TEST_ASSERT_FALSE(parseSyncResponseJson(
-      R"json({"protocolVersion":null,"requestId":"sync-18","acceptedEventIds":[],"results":[]})json").valid);
+  TEST_ASSERT_FALSE(syncResponseIsValid(
+      R"json({"protocolVersion":1,"requestId":"sync-15","acceptedEventIds":[],"results":[],"lookupResult":"found"})json"));
+  TEST_ASSERT_FALSE(syncResponseIsValid(
+      R"json({"protocolVersion":1,"requestId":"sync-16","acceptedEventIds":[],"results":[],"quickLabels":[]})json"));
+  TEST_ASSERT_FALSE(syncResponseIsValid(
+      R"json({"protocolVersion":1,"requestId":"sync-17","acceptedEventIds":[],"results":[],"quickLabelPrintResult":true})json"));
+  TEST_ASSERT_FALSE(syncResponseIsValid(
+      R"json({"protocolVersion":null,"requestId":"sync-18","acceptedEventIds":[],"results":[]})json"));
 
-  const auto malformedNumber = parseSyncResponseJson(
-      R"json({"protocolVersion":1,"requestId":"sync-13","acceptedEventIds":[],"results":[{"resultId":"r1","eventId":"e1","status":"completed","quantity":7tail}]})json");
-  TEST_ASSERT_FALSE(malformedNumber.valid);
+  TEST_ASSERT_FALSE(syncResponseIsValid(
+      R"json({"protocolVersion":1,"requestId":"sync-13","acceptedEventIds":[],"results":[{"resultId":"r1","eventId":"e1","status":"completed","quantity":7tail}]})json"));
 
   const auto unicodeEscape = parseSyncResponseJson(
       R"json({"protocolVersion":1,"requestId":"sync-\u0041","acceptedEventIds":[],"results":[]})json");
@@ -406,11 +408,11 @@ void test_sync_response_json_is_strictly_parsed() {
 
   const String validUtf8 = String(R"json({"protocolVersion":1,"requestId":"sync-)json") +
       static_cast<char>(0xC3) + static_cast<char>(0xBC) + R"json(","acceptedEventIds":[],"results":[]})json";
-  TEST_ASSERT_TRUE(parseSyncResponseJson(validUtf8).valid);
+  TEST_ASSERT_TRUE(syncResponseIsValid(validUtf8));
 
   const String malformedUtf8 = String(R"json({"protocolVersion":1,"requestId":"sync-)json") +
       static_cast<char>(0xC0) + static_cast<char>(0xAF) + R"json(","acceptedEventIds":[],"results":[]})json";
-  TEST_ASSERT_FALSE(parseSyncResponseJson(malformedUtf8).valid);
+  TEST_ASSERT_FALSE(syncResponseIsValid(malformedUtf8));
 }
 
 void test_http_response_limits_are_bounded() {
