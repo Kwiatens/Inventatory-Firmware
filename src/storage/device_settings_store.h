@@ -17,6 +17,14 @@ class DeviceSettingsStore {
   // Stored BacklightMode value; the default when nothing valid is stored.
   uint8_t backlightMode() const;
   bool saveBacklightMode(uint8_t mode);
+  // Energy saving is off when nothing is stored.
+  bool energySavingEnabled() const;
+  bool saveEnergySavingEnabled(bool enabled);
+  // Stored SleepDelay and PowerOffDelay values; the defaults when nothing valid is stored.
+  uint8_t sleepDelay() const;
+  bool saveSleepDelay(uint8_t delay);
+  uint8_t powerOffDelay() const;
+  bool savePowerOffDelay(uint8_t delay);
 
  private:
   mutable Preferences prefs_;
@@ -24,6 +32,9 @@ class DeviceSettingsStore {
   // -1 means unknown, so the next save always writes.
   int16_t lastContrast_ = -1;
   int16_t lastBacklightMode_ = -1;
+  int16_t lastEnergySaving_ = -1;
+  int16_t lastSleepDelay_ = -1;
+  int16_t lastPowerOffDelay_ = -1;
 };
 
 }  // namespace inventatory_scan

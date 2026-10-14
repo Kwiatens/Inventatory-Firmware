@@ -337,7 +337,7 @@ void DisplayRenderer::drawContrast(const DisplayModel& model) {
 
 // The option name, then one segment per option with the chosen one filled, then
 // what the option does.
-void DisplayRenderer::drawBacklight(const DisplayModel& model) {
+void DisplayRenderer::drawChoice(const DisplayModel& model) {
   lcd_.setFont(style::kFontValue);
   const int labelWidth = lcd_.getStrWidth(model.primary.c_str());
   lcd_.drawStr((style::kScreenW - labelWidth) / 2, style::kChoiceLabelY, model.primary.c_str());
@@ -583,7 +583,7 @@ void DisplayRenderer::drawBatteryCard(const DisplayModel& model, const RenderAct
 
 // The low-battery warning: a triangle, the title, the detail, and a countdown
 // line with a bar that empties as the shutdown nears.
-void DisplayRenderer::drawLowBattery(const DisplayModel& model) {
+void DisplayRenderer::drawCountdownWarning(const DisplayModel& model) {
   const int x = style::kWarnIconX;
   const int y = style::kWarnIconY;
   const int w = style::kWarnIconW;
@@ -692,8 +692,8 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
     case DisplayUiMode::BatteryCard:
       drawBatteryCard(model, activity);
       break;
-    case DisplayUiMode::LowBattery:
-      drawLowBattery(model);
+    case DisplayUiMode::CountdownWarning:
+      drawCountdownWarning(model);
       break;
     case DisplayUiMode::PowerWarning:
       drawPowerWarning(model, activity);
@@ -713,7 +713,7 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
         case DisplayBodyKind::List: drawList(model); break;
         case DisplayBodyKind::Fault: drawFault(model); break;
         case DisplayBodyKind::Contrast: drawContrast(model); break;
-        case DisplayBodyKind::Backlight: drawBacklight(model); break;
+        case DisplayBodyKind::Choice: drawChoice(model); break;
         case DisplayBodyKind::Confirm: drawConfirm(model); break;
         case DisplayBodyKind::Setup: drawSetup(model); break;
       }

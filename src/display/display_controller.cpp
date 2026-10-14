@@ -550,7 +550,7 @@ void DisplayController::showQuickSettings() {
   model_.showPcStatus = false;
   model_.header = "Device settings";
   appendListRow(model_, "1  Display");
-  appendListRow(model_, "2  Standby");
+  appendListRow(model_, "2  Energy saving");
   appendListRow(model_, "3  Pair with new PC");
   appendListRow(model_, "4  Software update");
   model_.actions = "C Back";
@@ -572,12 +572,42 @@ void DisplayController::showDisplaySettings(uint8_t contrast, const String& back
 
 void DisplayController::showBacklight(const String& label, const String& detail, std::size_t index,
                                       std::size_t count) {
+  showChoice(DisplayUiMode::Backlight, "Backlight", label, detail, index, count);
+}
+
+// Energy saving: the switch, then the two delays. Each delay opens its own picker.
+void DisplayController::showEnergySaving(bool enabled, const String& sleepLabel, const String& powerOffLabel) {
   clearContent();
-  model_.mode = DisplayUiMode::Backlight;
-  model_.bodyKind = DisplayBodyKind::Backlight;
+  model_.mode = DisplayUiMode::EnergySaving;
+  model_.bodyKind = DisplayBodyKind::List;
   model_.rail = DisplayRailStyle::None;
   model_.showPcStatus = false;
-  model_.header = "Backlight";
+  model_.header = "Energy saving";
+  appendListRow(model_, String("1  Enabled  ") + (enabled ? "On" : "Off"));
+  appendListRow(model_, "2  Sleep after  " + sleepLabel);
+  appendListRow(model_, "3  Turn off after  " + powerOffLabel);
+  model_.actions = "C Back";
+  markDirty();
+}
+
+void DisplayController::showSleepAfter(const String& label, const String& detail, std::size_t index,
+                                       std::size_t count) {
+  showChoice(DisplayUiMode::SleepAfter, "Sleep after", label, detail, index, count);
+}
+
+void DisplayController::showPowerOffAfter(const String& label, const String& detail, std::size_t index,
+                                          std::size_t count) {
+  showChoice(DisplayUiMode::PowerOffAfter, "Turn off after", label, detail, index, count);
+}
+
+void DisplayController::showChoice(DisplayUiMode mode, const char* header, const String& label,
+                                   const String& detail, std::size_t index, std::size_t count) {
+  clearContent();
+  model_.mode = mode;
+  model_.bodyKind = DisplayBodyKind::Choice;
+  model_.rail = DisplayRailStyle::None;
+  model_.showPcStatus = false;
+  model_.header = header;
   model_.primary = label;
   model_.secondary = detail;
   model_.choiceIndex = index;
@@ -693,10 +723,10 @@ void DisplayController::showBatteryCard(bool charging, int percent, const String
   markDirty();
 }
 
-void DisplayController::showLowBattery(const String& title, const String& detail, const String& note,
-                                       int countdownSeconds, int countdownPercent) {
+void DisplayController::showCountdownWarning(const String& title, const String& detail, const String& note,
+                                             int countdownSeconds, int countdownPercent) {
   overlay_ = DisplayModel();
-  overlay_.mode = DisplayUiMode::LowBattery;
+  overlay_.mode = DisplayUiMode::CountdownWarning;
   overlay_.bodyKind = DisplayBodyKind::Task;
   overlay_.rail = DisplayRailStyle::None;
   overlay_.primary = title;

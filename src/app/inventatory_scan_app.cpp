@@ -120,6 +120,9 @@ bool InventatoryScanApp::begin() {
     lcdContrast_ = deviceSettings_.contrast();
     display_.setContrast(lcdContrast_);
     backlightMode_ = backlightModeFromStored(deviceSettings_.backlightMode());
+    energySavingOn_ = deviceSettings_.energySavingEnabled();
+    sleepDelay_ = sleepDelayFromStored(deviceSettings_.sleepDelay());
+    powerOffDelay_ = powerOffDelayFromStored(deviceSettings_.powerOffDelay());
   }
   if (!setupStore_.begin() || !setupStore_.load(provisionedSettings_)) {
     setupMode_ = true;
@@ -140,6 +143,7 @@ bool InventatoryScanApp::begin() {
 
 void InventatoryScanApp::loop() {
   serviceBattery();
+  serviceEnergySaving();
   serviceBacklight();
   // Every screen, including setup, shows the fault mark while the scanner is not running.
   display_.setScannerFault(scannerFaulted());

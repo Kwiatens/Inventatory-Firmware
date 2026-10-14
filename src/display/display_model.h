@@ -30,8 +30,11 @@ enum class DisplayUiMode {
   Printing,
   DisplaySettings,
   Backlight,
+  EnergySaving,
+  SleepAfter,
+  PowerOffAfter,
   BatteryCard,
-  LowBattery,
+  CountdownWarning,
   PowerWarning,
   PowerOff,
   Blank,
@@ -54,7 +57,8 @@ enum class DisplayBodyKind {
   Contrast,
   Confirm,
   Setup,
-  Backlight,
+  // A setting picker: one segment per option. The backlight and the energy saving delays use it.
+  Choice,
 };
 
 // What the dot of the ›i mark shows on the boot and update screens. The normal
@@ -134,7 +138,7 @@ struct DisplayModel {
   // Low-battery countdown in seconds; negative when the screen has none.
   int countdownSeconds = -1;
   int countdownPercent = 0;
-  // Backlight picker: the chosen option out of choiceCount.
+  // Setting picker: the chosen option out of choiceCount.
   std::size_t choiceIndex = 0;
   std::size_t choiceCount = 0;
 };

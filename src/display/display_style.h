@@ -149,7 +149,7 @@ constexpr int kPowerBarH = 7;
 constexpr int kPowerBarFillW = kPowerBarW - 4;
 constexpr int kGlassEdgeY = 56;
 
-// Backlight picker: one segment per option, the chosen one filled.
+// Setting picker (backlight, auto sleep): one segment per option, the chosen one filled.
 constexpr int kChoiceSegmentW = 12;
 constexpr int kChoiceSegmentGap = 3;
 constexpr int kChoiceLabelY = 24;

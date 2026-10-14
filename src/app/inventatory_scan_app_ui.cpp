@@ -42,6 +42,8 @@ void InventatoryScanApp::exitStandby() {
   }
 
   Serial.println("Waking from standby mode.");
+  // A device that slept on its energy saving timer is awake now, so the sequence starts again.
+  if (energyPhase_ == EnergyPhase::Asleep) energyPhase_ = EnergyPhase::Awake;
   const bool scannerReady = scanner_.resume();
   networkPowerOffRequested_ = false;
   networkPaused_ = false;
@@ -117,10 +119,69 @@ void InventatoryScanApp::persistBacklightMode() {
   }
 }
 
+void InventatoryScanApp::openEnergySaving() {
+  state_ = State::EnergySaving;
+  display_.showEnergySaving(energySavingOn_, String(sleepDelayShortLabel(sleepDelay_)),
+                            String(powerOffDelayShortLabel(powerOffDelay_)));
+}
+
+// The delays are kept while energy saving is off, so switching it back on restores them.
+void InventatoryScanApp::toggleEnergySaving() {
+  energySavingOn_ = !energySavingOn_;
+  persistEnergySaving();
+  noteUserActivity();
+  openEnergySaving();
+}
+
+void InventatoryScanApp::persistEnergySaving() {
+  if (!deviceSettings_.saveEnergySavingEnabled(energySavingOn_)) Serial.println("Could not save energy saving.");
+}
+
+void InventatoryScanApp::openSleepAfterSettings() {
+  state_ = State::AdjustSleepAfter;
+  display_.showSleepAfter(String(sleepDelayLabel(sleepDelay_)), String(sleepDelayDetail(sleepDelay_)),
+                          static_cast<std::size_t>(sleepDelay_), kSleepDelayCount);
+}
+
+// A and B move along the list, as for the backlight. The change takes effect at once and is saved.
+void InventatoryScanApp::stepSleepDelay(int step) {
+  const int next = constrain(static_cast<int>(sleepDelay_) + step, 0, static_cast<int>(kSleepDelayCount) - 1);
+  sleepDelay_ = static_cast<SleepDelay>(next);
+  persistSleepDelay();
+  noteUserActivity();
+  openSleepAfterSettings();
+}
+
+void InventatoryScanApp::persistSleepDelay() {
+  if (!deviceSettings_.saveSleepDelay(static_cast<uint8_t>(sleepDelay_))) Serial.println("Could not save sleep delay.");
+}
+
+void InventatoryScanApp::openPowerOffSettings() {
+  state_ = State::AdjustPowerOff;
+  display_.showPowerOffAfter(String(powerOffDelayLabel(powerOffDelay_)), String(powerOffDelayDetail(powerOffDelay_)),
+                             static_cast<std::size_t>(powerOffDelay_), kPowerOffDelayCount);
+}
+
+// Moves along the list as the sleep picker does: A towards the shortest, B towards Never.
+void InventatoryScanApp::stepPowerOffDelay(int step) {
+  const int next =
+      constrain(static_cast<int>(powerOffDelay_) + step, 0, static_cast<int>(kPowerOffDelayCount) - 1);
+  powerOffDelay_ = static_cast<PowerOffDelay>(next);
+  persistPowerOffDelay();
+  noteUserActivity();
+  openPowerOffSettings();
+}
+
+void InventatoryScanApp::persistPowerOffDelay() {
+  if (!deviceSettings_.savePowerOffDelay(static_cast<uint8_t>(powerOffDelay_))) {
+    Serial.println("Could not save power off delay.");
+  }
+}
+
 // The backlight stays lit for pairing and warnings whatever the setting says, and
 // stays dark in standby, where the panel itself is off.
 void InventatoryScanApp::serviceBacklight() {
-  const bool forced = lowBatteryWarning_ || setupMode_ || otaRequested_ || otaActive_;
+  const bool forced = lowBatteryWarning_ || setupMode_ || otaRequested_ || otaActive_ || energyWarningShown();
   const bool lit = powerMode_ != PowerMode::Standby &&
                    backlightLit(backlightMode_, forced, millis(), lastUserActivityAt_);
   backlight_.setLit(lit);
