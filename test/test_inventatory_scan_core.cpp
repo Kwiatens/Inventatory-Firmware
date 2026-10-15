@@ -512,6 +512,7 @@ void test_scanner_fault_warning_policy() {
 
 void test_error_code_catalogue_is_well_formed_and_unique() {
   // Every code is three capital letters, a dash and two digits, and no two codes are the same.
+  // Inside each area the numbers run 01, 02, ... with no gap, in the order listed here.
   const char* const codes[] = {
       kScannerFaultCode,         kScanRejectedCode,         kQueueFullCode,           kScanNotSavedCode,
       kQueueUnreadableCode,      kRepairFailedCode,         kDiscardFailedCode,       kSyncBlockedCode,
@@ -521,6 +522,7 @@ void test_error_code_catalogue_is_well_formed_and_unique() {
   };
   const std::size_t count = sizeof(codes) / sizeof(codes[0]);
   TEST_ASSERT_EQUAL_UINT(20U, count);
+  int previousNumber = 0;
   for (std::size_t index = 0; index < count; ++index) {
     const char* code = codes[index];
     TEST_ASSERT_EQUAL_UINT(6U, std::strlen(code));
@@ -530,6 +532,10 @@ void test_error_code_catalogue_is_well_formed_and_unique() {
     TEST_ASSERT_EQUAL_CHAR('-', code[3]);
     TEST_ASSERT_TRUE(code[4] >= '0' && code[4] <= '9');
     TEST_ASSERT_TRUE(code[5] >= '0' && code[5] <= '9');
+    const bool sameArea = index > 0 && std::strncmp(code, codes[index - 1], 3) == 0;
+    const int number = (code[4] - '0') * 10 + (code[5] - '0');
+    TEST_ASSERT_EQUAL_INT(sameArea ? previousNumber + 1 : 1, number);
+    previousNumber = number;
     for (std::size_t other = index + 1; other < count; ++other) {
       TEST_ASSERT_TRUE(std::strcmp(code, codes[other]) != 0);
     }
