@@ -8,3 +8,6 @@ src/config/config.h
 
 # Host-side unit test build output
 host-tests/build/
+
+# Private log of open items for coding sessions; never committed
+OPEN-ITEMS.md
