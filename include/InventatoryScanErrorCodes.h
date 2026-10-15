@@ -6,18 +6,20 @@
 namespace inventatory_scan {
 
 // The codes the LCD shows for a problem. The public reference explains each one at
-// kwiatens.github.io/Inventatory-Site/docs/scanner/error-codes/. A code is part of that
-// reference, so never renumber one or reuse its number. Retire it and take the next free number.
+// kwiatens.github.io/Inventatory-Site/docs/scanner/error-codes/.
 //
 // Format: three letters for the area, a dash, two digits.
 //
-// Only a code the device can actually show is listed here. Retired numbers are never reused:
-// SCN-02 (never shown: an unrecognised barcode is ignored), SYN-01 and SYN-02 (the PC's
-// replies that would show them never reach the device), PWR-01 and PWR-02 (warnings, not faults).
+// Inside each area the numbers run 01, 02, ... with no gap, in this order. Only a code the
+// device can show is listed. To remove one, delete it, renumber the rest of its area, and update
+// the public reference, AGENTS.md and CHANGELOG.md. The host test fails on a gap.
+// tools/check_error_codes.py also fails on a code that no firmware file uses, on a code missing
+// from the host test list, and on a public reference that differs. No device in the field shows
+// these codes yet, so renumbering is safe until the first hardware release. After that, ask first.
 
 // Scanner.
 constexpr char kScannerFaultCode[] = "SCN-01";
-constexpr char kScanRejectedCode[] = "SCN-03";
+constexpr char kScanRejectedCode[] = "SCN-02";
 
 // Offline queue and storage.
 constexpr char kQueueFullCode[] = "STO-01";
@@ -27,7 +29,7 @@ constexpr char kRepairFailedCode[] = "STO-04";
 constexpr char kDiscardFailedCode[] = "STO-05";
 
 // Sync with the PC.
-constexpr char kSyncBlockedCode[] = "SYN-03";
+constexpr char kSyncBlockedCode[] = "SYN-01";
 
 // Pairing and Wi-Fi setup.
 constexpr char kPairingLockedCode[] = "PAI-01";
@@ -49,7 +51,7 @@ constexpr char kPrintPcOfflineCode[] = "PRT-02";
 constexpr char kPresetsNotLoadedCode[] = "PRT-03";
 
 // Battery. A low or empty battery is a warning, not a fault, so it has no code. Only a reading
-// that cannot be trusted does. PWR-01 and PWR-02 were retired for that reason and are never reused.
-constexpr char kBatteryUnreadableCode[] = "PWR-03";
+// that cannot be trusted does.
+constexpr char kBatteryUnreadableCode[] = "PWR-01";
 
 }  // namespace inventatory_scan

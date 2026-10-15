@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The LiPo voltage is read on GPIO1 through a resistor divider and logged at boot.
 - Operator-confirmed repair of an unreadable offline queue. Readable scans are kept.
 - A faulty barcode scanner no longer stops the device from starting.
-- An exclamation mark shows in the top bar while any problem stands: the barcode scanner is not replying, the scan queue cannot be read (`STO-03`), a scan is blocked (`SYN-03`), or the battery voltage cannot be read (`PWR-03`). The main screen and the menu then offer `# Fault info`, which shows the code (`SCN-01`), what it means and what to check. While the fault shows, the main screen reads "There is a problem" with the code below it, in place of "Ready to scan".
+- An exclamation mark shows in the top bar while any problem stands: the barcode scanner is not replying, the scan queue cannot be read (`STO-03`), a scan is blocked (`SYN-01`), or the battery voltage cannot be read (`PWR-01`). The main screen and the menu then offer `# Fault info`, which shows the code (`SCN-01`), what it means and what to check. While the fault shows, the main screen reads "There is a problem" with the code below it, in place of "Ready to scan".
 - Every problem the scanner reports has an error code, such as `SCN-01` or `STO-02`. The codes appear on the failure screens, and each one is explained at kwiatens.github.io/Inventatory-Site/docs/scanner/error-codes/.
 - When several problems stand at once, the main screen and the fault screen show each code in turn, three seconds each.
 - New firmware is confirmed only after 30 seconds of healthy running. A crash or reset before that, including powering the device off straight after an update, returns it to the previous firmware.
@@ -39,9 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A 5xx response for the head event counts toward the "Sync blocked" warning, as a 4xx response already did.
 - A partial barcode is dropped if its end does not arrive, instead of being reported as a scan.
 - The scanner failure notice after standby quotes the code `SCN-01`, not `SCANNER ERROR`.
-- "Queue unreadable" and "Sync blocked" on the Ready screen now read "There is a problem" with their code, `STO-03` or `SYN-03`, in place of the old words.
-- The low-battery and empty-battery warnings show no error code. Only a battery reading that cannot be trusted has one: a voltage outside 2.5 V to 4.5 V for four seconds in a row shows `PWR-03` as a standing problem, with the top-bar mark. `PWR-01` and `PWR-02` are retired.
+- "Queue unreadable" and "Sync blocked" on the Ready screen now read "There is a problem" with their code, `STO-03` or `SYN-01`, in place of the old words.
+- The low-battery and empty-battery warnings show no error code. Only a battery reading that cannot be trusted has one: a voltage outside 2.5 V to 4.5 V for four seconds in a row shows `PWR-01` as a standing problem, with the top-bar mark.
 - The failure codes take the numbers of the error-code reference. For example, `STORAGE ERROR` is now `STO-02`.
+- The error codes run without gaps in each area, and a code that the device cannot show is not listed.
 - The top bar's status gives way to the battery when the title leaves no room for it, as the runtime estimate already did.
 - The host test suite covers the queue migrations, the replay counter and the provisioning parser. A coverage report is available with `make -C host-tests coverage`.
 
