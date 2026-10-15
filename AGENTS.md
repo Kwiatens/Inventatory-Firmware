@@ -270,8 +270,13 @@ Storage (NVS) partition (`0x5000` / 20 KiB).
   at `freshOutboxSequenceStart(esp_random())`, which is a random odd value below 2^31.
 - **Header validation**: A header is trusted only when its size, magic, version and
   every field are in range (`outboxHeaderFieldsValid`). Out-of-range values are never
-  clamped. A header this firmware cannot read is left untouched, the queue is marked
-  unreadable, and the repair menu is the only way to remove it.
+  clamped. A header of another version is read through its first 16 bytes (magic,
+  version, count, head, reserved, event sequence), which every layout keeps at the same
+  offsets (`static_assert`s in `outbox_store.h` and `outbox_store.cpp`). If it holds no
+  scans, it is replaced by this layout's empty header and keeps its event sequence, so
+  an update does not block scanning. If it holds scans, or has no usable sequence, it is
+  left untouched, the queue is marked unreadable, and the repair menu is the only way to
+  remove it. A future layout must keep the first 16 bytes as they are, or add a migration.
 
 ### Outbox failure handling and persistence guarantees
 Agents must observe the three distinct failure domains:

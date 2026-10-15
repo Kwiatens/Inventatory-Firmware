@@ -24,7 +24,10 @@ void test_host_outbox_header_field_rule_rejects_out_of_range_values();
 void test_host_outbox_new_outbox_starts_at_the_given_sequence();
 void test_host_outbox_erased_outbox_does_not_reuse_event_ids();
 void test_host_outbox_out_of_range_head_is_refused_not_clamped();
-void test_host_outbox_foreign_header_is_refused_and_kept_intact();
+void test_host_outbox_foreign_header_with_scans_is_refused_and_kept_intact();
+void test_host_outbox_empty_foreign_header_is_adopted_and_keeps_its_sequence();
+void test_host_outbox_empty_foreign_header_without_a_sequence_is_refused_and_kept();
+void test_host_outbox_failed_adoption_keeps_the_header_and_retries_at_next_boot();
 void test_host_outbox_operator_discard_recovers_a_foreign_header();
 void test_host_outbox_operator_discard_removes_an_unrecognised_legacy_blob();
 void test_host_outbox_copy_never_splits_a_utf8_sequence();
@@ -171,9 +174,9 @@ void test_host_outbox_out_of_range_head_is_refused_not_clamped() {
   TEST_ASSERT_EQUAL_MEMORY(before, after, sizeof(before));
 }
 
-void test_host_outbox_foreign_header_is_refused_and_kept_intact() {
-  // A header from a newer layout, as left behind before an OTA rollback.
-  storeRawHeader(RawHeader{kMagic, 6, 0, 0, 0, 1});
+void test_host_outbox_foreign_header_with_scans_is_refused_and_kept_intact() {
+  // A header from a newer layout that still lists a queued scan, as left behind before an OTA rollback.
+  storeRawHeader(RawHeader{kMagic, 6, 1, 0, 0, 1});
 
   OutboxStore outbox;
   TEST_ASSERT_FALSE(bootWithSeed(outbox, 1U));
@@ -182,6 +185,56 @@ void test_host_outbox_foreign_header_is_refused_and_kept_intact() {
                         static_cast<int>(outbox.enqueue(DeviceEventKind::InventoryAdjust, String("X"), 1)));
   // Nothing is written over the foreign header.
   TEST_ASSERT_EQUAL_UINT16(6, readRawHeader().version);
+}
+
+void test_host_outbox_empty_foreign_header_is_adopted_and_keeps_its_sequence() {
+  // A header from another layout with no scans in it, as an update leaves it. Nothing can be lost, so
+  // this layout's empty header replaces it: the scanner keeps working, and the event sequence carries on,
+  // so no event id is issued twice.
+  OutboxStore first;
+  TEST_ASSERT_TRUE(bootWithSeed(first, 0x1001U));
+  const uint16_t current = readRawHeader().version;
+  storeRawHeader(RawHeader{kMagic, static_cast<uint16_t>(current + 1U), 0, 0, 0, 0x4001U});
+
+  host_nvs::reboot();
+  OutboxStore outbox;
+  TEST_ASSERT_TRUE(bootWithSeed(outbox, 0x9001U));
+  TEST_ASSERT_FALSE(outbox.unreadable());
+  TEST_ASSERT_EQUAL_UINT32(0, outbox.size());
+  TEST_ASSERT_EQUAL_UINT32(0x4001U, outbox.nextSequence());
+  TEST_ASSERT_EQUAL_UINT16(current, readRawHeader().version);
+
+  expectQueued(outbox, "A");
+  DeviceEventRecord event;
+  TEST_ASSERT_TRUE(outbox.peek(0, event));
+  TEST_ASSERT_EQUAL_STRING("R1-TEST-16385", event.eventId.c_str());
+}
+
+void test_host_outbox_empty_foreign_header_without_a_sequence_is_refused_and_kept() {
+  // Without an event sequence the header cannot be continued safely, so it is kept as it is.
+  storeRawHeader(RawHeader{kMagic, 6, 0, 0, 0, 0});
+
+  OutboxStore outbox;
+  TEST_ASSERT_FALSE(bootWithSeed(outbox, 1U));
+  TEST_ASSERT_TRUE(outbox.unreadable());
+  TEST_ASSERT_EQUAL_UINT16(6, readRawHeader().version);
+}
+
+void test_host_outbox_failed_adoption_keeps_the_header_and_retries_at_next_boot() {
+  // If the replacement header cannot be written, the old header stays and the next boot tries again.
+  storeRawHeader(RawHeader{kMagic, 6, 0, 0, 0, 0x4001U});
+
+  host_nvs::faults().failWrites = true;
+  OutboxStore outbox;
+  TEST_ASSERT_FALSE(bootWithSeed(outbox, 0x9001U));
+  TEST_ASSERT_TRUE(outbox.unreadable());
+  TEST_ASSERT_EQUAL_UINT16(6, readRawHeader().version);
+
+  host_nvs::reboot();
+  OutboxStore retried;
+  TEST_ASSERT_TRUE(bootWithSeed(retried, 0x9001U));
+  TEST_ASSERT_FALSE(retried.unreadable());
+  TEST_ASSERT_EQUAL_UINT32(0x4001U, retried.nextSequence());
 }
 
 void test_host_outbox_operator_discard_recovers_a_foreign_header() {
@@ -276,7 +329,10 @@ void runHostOutboxRecoveryTests() {
   RUN_TEST(test_host_outbox_new_outbox_starts_at_the_given_sequence);
   RUN_TEST(test_host_outbox_erased_outbox_does_not_reuse_event_ids);
   RUN_TEST(test_host_outbox_out_of_range_head_is_refused_not_clamped);
-  RUN_TEST(test_host_outbox_foreign_header_is_refused_and_kept_intact);
+  RUN_TEST(test_host_outbox_foreign_header_with_scans_is_refused_and_kept_intact);
+  RUN_TEST(test_host_outbox_empty_foreign_header_is_adopted_and_keeps_its_sequence);
+  RUN_TEST(test_host_outbox_empty_foreign_header_without_a_sequence_is_refused_and_kept);
+  RUN_TEST(test_host_outbox_failed_adoption_keeps_the_header_and_retries_at_next_boot);
   RUN_TEST(test_host_outbox_operator_discard_recovers_a_foreign_header);
   RUN_TEST(test_host_outbox_operator_discard_removes_an_unrecognised_legacy_blob);
   RUN_TEST(test_host_outbox_copy_never_splits_a_utf8_sequence);

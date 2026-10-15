@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The low-battery and empty-battery warnings show no error code. Only a battery reading that cannot be trusted has one: a voltage outside 2.5 V to 4.5 V for four seconds in a row shows `PWR-01` as a standing problem, with the top-bar mark.
 - The failure codes take the numbers of the error-code reference. For example, `STORAGE ERROR` is now `STO-02`.
 - The error codes run without gaps in each area, and a code that the device cannot show is not listed.
+- A firmware update no longer shows `STO-03` when the queue holds no scans. The device takes over the empty queue and keeps its event sequence. Only a queue with scans waiting in it, from another firmware version, shows `STO-03`.
 - The top bar's status gives way to the battery when the title leaves no room for it, as the runtime estimate already did.
 - The host test suite covers the queue migrations, the replay counter and the provisioning parser. A coverage report is available with `make -C host-tests coverage`.
 
