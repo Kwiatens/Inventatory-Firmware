@@ -105,6 +105,9 @@ class OutboxStore {
     char encodedPartName[kNameLen]{};
   };
 
+  // The first 16 bytes of the header are the same in every layout: magic, version, count, head,
+  // reserved and the event sequence. A header of another version is read through them, which is how
+  // an empty queue is adopted after an update. Keep these offsets in every future layout.
   struct Header {
     uint32_t magic = kMagic;
     uint16_t version = kVersion;
@@ -114,6 +117,9 @@ class OutboxStore {
     uint32_t nextSequence = 1;
   };
 
+  static_assert(offsetof(Header, version) == 4 && offsetof(Header, count) == 6 &&
+                    offsetof(Header, head) == 8 && offsetof(Header, nextSequence) == 12,
+                "the header fields that every layout shares must keep their offsets");
   static_assert(std::is_trivially_copyable<Record>::value, "Record must be trivially copyable");
   static_assert(std::is_trivially_copyable<Header>::value, "Header must be trivially copyable");
   static_assert(sizeof(Record) <= 512U, "Record must stay inside a single NVS blob chunk");
@@ -128,9 +134,9 @@ class OutboxStore {
   bool readSlot(std::size_t slot);
   void eraseSlot(std::size_t slot);
   enum class MigrationResult : uint8_t { Migrated, NotRecognized, WriteFailed };
-  // Absent: no header key. Valid: a header this firmware can read. Invalid: a
-  // header is present but is another layout, damaged, or out of range.
-  enum class HeaderState : uint8_t { Absent, Valid, Invalid };
+  // Absent: no header key. Valid: a header this firmware can read. OtherVersion: a header of
+  // another layout, read through the fields every layout shares. Invalid: damaged or out of range.
+  enum class HeaderState : uint8_t { Absent, Valid, Invalid, OtherVersion };
 
   bool ensureStorage();
   HeaderState readHeader(Header& header);
@@ -138,6 +144,7 @@ class OutboxStore {
   bool persistQueue();
   MigrationResult migrateLegacyState();
   bool adoptMigratedRecords(std::size_t count, uint32_t nextSequence);
+  bool adoptEmptyOtherVersionHeader(uint32_t nextSequence);
   RepairResult discardUnreadableQueue(std::size_t& dropped);
   void resetRecords();
 
