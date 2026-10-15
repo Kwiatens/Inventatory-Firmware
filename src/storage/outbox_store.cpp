@@ -60,6 +60,15 @@ struct LegacyStateV4 {
   LegacyRecordV4 records[OutboxStore::kCapacity]{};
 };
 
+// The version 2 and version 4 layouts start with the same fields as the current header, so a header
+// from either one can be read for its count and sequence.
+static_assert(offsetof(LegacyState, version) == 4 && offsetof(LegacyState, count) == 6 &&
+                  offsetof(LegacyState, head) == 8 && offsetof(LegacyState, nextSequence) == 12,
+              "the version 2 layout must keep the shared header fields at their offsets");
+static_assert(offsetof(LegacyStateV4, version) == 4 && offsetof(LegacyStateV4, count) == 6 &&
+                  offsetof(LegacyStateV4, head) == 8 && offsetof(LegacyStateV4, nextSequence) == 12,
+              "the version 4 layout must keep the shared header fields at their offsets");
+
 // Legacy fields are fixed char arrays that may be completely full with no NUL
 // terminator, so the String is built from at most `capacity` bytes instead of
 // letting String(const char*) read past the end of the array.
@@ -168,12 +177,27 @@ OutboxStore::HeaderState OutboxStore::readHeader(Header& header) {
   if (!prefs_.isKey(kHeaderKey)) return HeaderState::Absent;
   header = Header{};
   if (prefs_.getBytesLength(kHeaderKey) != sizeof(Header) ||
-      prefs_.getBytes(kHeaderKey, &header, sizeof(header)) != sizeof(header) || header.magic != kMagic ||
-      header.version != kVersion ||
-      !outboxHeaderFieldsValid(header.head, header.count, header.nextSequence, kCapacity)) {
+      prefs_.getBytes(kHeaderKey, &header, sizeof(header)) != sizeof(header) || header.magic != kMagic) {
+    return HeaderState::Invalid;
+  }
+  if (header.version != kVersion) return HeaderState::OtherVersion;
+  if (!outboxHeaderFieldsValid(header.head, header.count, header.nextSequence, kCapacity)) {
     return HeaderState::Invalid;
   }
   return HeaderState::Valid;
+}
+
+// Replaces a header of another layout that holds no scans with this layout's empty header. The event
+// sequence carries over, so an id that was issued is never issued again.
+bool OutboxStore::adoptEmptyOtherVersionHeader(uint32_t nextSequence) {
+  if (!writeHeader(makeOutboxQueueState(0, 0, 0, nextSequence))) return false;
+  head_ = 0;
+  count_ = 0;
+  tail_ = 0;
+  nextSequence_ = nextSequence;
+  unreadable_ = false;
+  incompatible_ = false;
+  return true;
 }
 
 bool OutboxStore::loadQueue(const Header& header) {
@@ -297,11 +321,19 @@ bool OutboxStore::load() {
     return false;
   }
 
-  if (state == HeaderState::Invalid) {
-    // A header this firmware cannot read: another layout (for example after an
-    // OTA rollback), damage, or out-of-range fields. The bytes are left exactly as
-    // they are, and the operator can repair (discard) the queue explicitly.
-    // Migration never runs here, so an older blob cannot overwrite a live queue.
+  if (state == HeaderState::OtherVersion && header.count == 0 && header.nextSequence != 0 &&
+      adoptEmptyOtherVersionHeader(header.nextSequence)) {
+    // An empty queue from another layout, as an update leaves it. Nothing can be lost, so the
+    // scanner starts with this layout's empty queue and carries on with the same event sequence.
+    loaded_ = true;
+    return true;
+  }
+
+  if (state == HeaderState::Invalid || state == HeaderState::OtherVersion) {
+    // A header this firmware cannot read: a layout with scans in it (for example after an OTA
+    // rollback), damage, out-of-range fields, or an empty header whose replacement could not be
+    // written. The bytes are left exactly as they are, and the operator can repair (discard) the
+    // queue explicitly. Migration never runs here, so an older blob cannot overwrite a live queue.
     clear();
     unreadable_ = true;
     incompatible_ = true;
