@@ -121,6 +121,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check the error-code catalogue
+        run: python3 tools/check_error_codes.py
+
       - name: Install OpenSSL development headers
         run: sudo apt-get update && sudo apt-get install -y libssl-dev
 

@@ -161,7 +161,7 @@ agents must distinguish between immutable invariants and mutable implementation 
 │   └── gmg12864_spi_test/      # Independent SPI display verification
 ├── include/                    # Protocol definitions and core parsing algorithms
 │   ├── InventatoryScanCore.h   # Barcode parsing, AIM stripping, DataMatrix decoding
-│   ├── InventatoryScanErrorCodes.h # Error codes shown on the LCD (numbers are public, never reused)
+│   ├── InventatoryScanErrorCodes.h # Error codes shown on the LCD (numbers run 01, 02, ... with no gap per area)
 │   ├── InventatoryScanHttp.h   # HTTP status constants and bounding limits
 │   ├── InventatoryScanOutbox.h # Outbox serialization structures and queue models
 │   ├── InventatoryScanSecurity.h # HMAC-SHA-256 and directional key derivation
@@ -203,6 +203,7 @@ agents must distinguish between immutable invariants and mutable implementation 
 ├── test/
 │   └── test_inventatory_scan_core.cpp # Embedded Unity unit test suite
 └── tools/
+    ├── check_error_codes.py    # Error-code numbering, use, test catalogue and public reference check
     └── ota_auth.py             # Pre-build script reading OTA password from config.h
 ```
 
@@ -391,14 +392,14 @@ preserved:
   running (`scannerFaultShown`). It is hidden in standby. While it shows, the main screen and the menu
   offer `# Fault info`, and that screen gives the code (`kScannerFaultCode`, `SCN-01`) and what to check.
   The mark is drawn for any standing problem (`problemMark`), not only the scanner.
-- **Standing problems**: The scanner, an unreadable queue (`STO-03`), a blocked sync (`SYN-03`) and a
-  battery reading that cannot be trusted (`PWR-03`) each have a code. While several stand, the main screen
+- **Standing problems**: The scanner, an unreadable queue (`STO-03`), a blocked sync (`SYN-01`) and a
+  battery reading that cannot be trusted (`PWR-01`) each have a code. While several stand, the main screen
   and the fault screen show one code at a time and move to the next every `kFaultRotateMs`
   (`faultRotationIndex`). `#` explains the code on show.
 - **Battery safety**: A reading outside `kBatteryMinimumValidMv` to `kBatteryMaximumValidMv` is an
   unreadable divider or a wrong reading and never warns or powers off. After `kBatteryTripSamples`
-  such readings in a row it is a standing problem (`PWR-03`). A low or empty battery is a warning with no
-  code: `PWR-01` and `PWR-02` are retired. Low and critical thresholds need `kBatteryTripSamples`
+  such readings in a row it is a standing problem (`PWR-01`). A low or empty battery is a warning with no
+  code. Low and critical thresholds need `kBatteryTripSamples`
   consecutive one-second samples. The low warning latches and powers off after 60 s unless the dock connects.
   A low cell that is not docked is refused at boot with a notice, then the chip sleeps again.
 - **Backlight**: `Off`, `On`, or an Auto idle timeout (1, 3, 5, 10 min), set under Device
@@ -455,6 +456,17 @@ make -C host-tests SANITIZE=address,undefined test   # what CI runs
 ```
 This executes assertions on a 64-bit host. It does not exercise the ESP32 toolchain,
 real NVS partitions or hardware timing.
+
+### Error-code catalogue check
+Run after any change to `include/InventatoryScanErrorCodes.h`, to a code's use in `src/`,
+or to the public reference. CI runs it without the site path. The site path also checks the
+public reference lists the same codes, in the same order:
+```bash
+python3 tools/check_error_codes.py
+python3 tools/check_error_codes.py --site path/to/Inventatory-Site/src/content/docs/docs/scanner/error-codes.md
+```
+A gap fails the check: `SCN-01` followed by `SCN-03` is an error. To remove a code, renumber the rest
+of its area and update the public reference, this file and `CHANGELOG.md` in the same change.
 
 ### Standalone display smoke test
 ```powershell
@@ -556,6 +568,6 @@ When concluding any task, the agent must provide a factual summary containing:
 - [ ] Durability: Newly captured scans that fail NVS write show error banner and are not queued.
 - [ ] Security: HMAC mutual auth, directional keys, monotonic counter reservation preserved.
 - [ ] Zero logging: Passed CI grep rules (no raw barcodes, UART buffers, or secrets logged).
-- [ ] Verification: `make -C host-tests test` passes, `pio test ... --without-uploading --without-testing` passes, and firmware builds pass.
+- [ ] Verification: `make -C host-tests test` passes, `python3 tools/check_error_codes.py` passes, `pio test ... --without-uploading --without-testing` passes, and firmware builds pass.
 - [ ] Working tree: No modified `config.h`, `.pio/`, `.bin` files, or unrelated user edits in diff.
 - [ ] Commit format: Follows section 12 and the shared standards. New source files carry the SPDX header.
