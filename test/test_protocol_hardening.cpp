@@ -76,7 +76,7 @@ void test_transportMacMatches_combinations() {
   TEST_ASSERT_FALSE(transportMacMatches(base, diffLen));
 
   String diffLen2 = base.substring(0, 63);
-  TEST_ASSERT_FALSE(transportMacMatches(diffLen2, diffLen2));
+  TEST_ASSERT_FALSE(transportMacMatches(base, diffLen2));
 
   String allOnes = "1111111111111111111111111111111111111111111111111111111111111111";
   TEST_ASSERT_FALSE(transportMacMatches(base, allOnes));
