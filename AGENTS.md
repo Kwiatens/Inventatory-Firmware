@@ -389,7 +389,7 @@ preserved:
   scanning immediately aborts menu navigation and returns to the inventory workflow.
   Scanning is paused only during BLE pairing, standby, destructive confirmation
   dialogs, OTA updates, or active label printing.
-- **Top bar battery**: The right-hand slot cycles through the status, the battery level and,
+- **Top bar battery**: The right-hand slot cycles through the status, the battery level and
   the runtime estimate (from a typical rate, marked "~", until a rate has been observed) (`headerPageAt`).
   While the dock supplies power the status reads "Charging". The dock connect and disconnect
   show a short full-screen card (`showBatteryCard`); it appears on the Ready screen only.
