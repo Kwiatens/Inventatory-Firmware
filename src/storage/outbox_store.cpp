@@ -121,8 +121,16 @@ void OutboxStore::copyString(char* dest, std::size_t capacity, const String& val
   dest[limit] = '\0';
 }
 
-void OutboxStore::slotKey(std::size_t slot, char (&out)[8]) {
-  snprintf(out, sizeof(out), "e%u", static_cast<unsigned>(slot));
+void OutboxStore::slotKey(uint8_t generation, std::size_t slot, char (&out)[8]) {
+  if (generation == 0) {
+    snprintf(out, sizeof(out), "e%u", static_cast<unsigned>(slot));
+  } else {
+    snprintf(out, sizeof(out), "f%u", static_cast<unsigned>(slot));
+  }
+}
+
+uint8_t OutboxStore::generationOf(uint16_t version) {
+  return version == kVersionAltSlots ? 1U : 0U;
 }
 
 DeviceEventRecord OutboxStore::fromRecord(const Record& record) const {
@@ -140,10 +148,10 @@ DeviceEventRecord OutboxStore::fromRecord(const Record& record) const {
   return event;
 }
 
-bool OutboxStore::writeHeader(const OutboxQueueState& state) {
+bool OutboxStore::writeHeader(const OutboxQueueState& state, uint8_t generation) {
   Header header;
   header.magic = kMagic;
-  header.version = kVersion;
+  header.version = generation == 0 ? kVersion : kVersionAltSlots;
   header.count = static_cast<uint16_t>(state.count);
   header.head = static_cast<uint16_t>(state.head);
   header.nextSequence = state.nextSequence;
@@ -151,25 +159,25 @@ bool OutboxStore::writeHeader(const OutboxQueueState& state) {
 }
 
 bool OutboxStore::writeSlot(std::size_t slot) {
-  return writeSlot(slot, records_[slot]);
+  return writeSlot(generation_, slot, records_[slot]);
 }
 
-bool OutboxStore::writeSlot(std::size_t slot, const Record& record) {
+bool OutboxStore::writeSlot(uint8_t generation, std::size_t slot, const Record& record) {
   char key[8];
-  slotKey(slot, key);
+  slotKey(generation, slot, key);
   return prefs_.putBytes(key, &record, sizeof(Record)) == sizeof(Record);
 }
 
 bool OutboxStore::readSlot(std::size_t slot) {
   char key[8];
-  slotKey(slot, key);
+  slotKey(generation_, slot, key);
   if (prefs_.getBytesLength(key) != sizeof(Record)) return false;
   return prefs_.getBytes(key, &records_[slot], sizeof(Record)) == sizeof(Record);
 }
 
-void OutboxStore::eraseSlot(std::size_t slot) {
+void OutboxStore::eraseSlot(uint8_t generation, std::size_t slot) {
   char key[8];
-  slotKey(slot, key);
+  slotKey(generation, slot, key);
   if (prefs_.isKey(key)) prefs_.remove(key);
 }
 
@@ -180,7 +188,9 @@ OutboxStore::HeaderState OutboxStore::readHeader(Header& header) {
       prefs_.getBytes(kHeaderKey, &header, sizeof(header)) != sizeof(header) || header.magic != kMagic) {
     return HeaderState::Invalid;
   }
-  if (header.version != kVersion) return HeaderState::OtherVersion;
+  // Version 5 is the "e<n>" slot set and version 6 the "f<n>" set (see kVersionAltSlots). Any other version is
+  // another layout, which an empty queue may be adopted from.
+  if (header.version != kVersion && header.version != kVersionAltSlots) return HeaderState::OtherVersion;
   if (!outboxHeaderFieldsValid(header.head, header.count, header.nextSequence, kCapacity)) {
     return HeaderState::Invalid;
   }
@@ -190,10 +200,11 @@ OutboxStore::HeaderState OutboxStore::readHeader(Header& header) {
 // Replaces a header of another layout that holds no scans with this layout's empty header. The event
 // sequence carries over, so an id that was issued is never issued again.
 bool OutboxStore::adoptEmptyOtherVersionHeader(uint32_t nextSequence) {
-  if (!writeHeader(makeOutboxQueueState(0, 0, 0, nextSequence))) return false;
+  if (!writeHeader(makeOutboxQueueState(0, 0, 0, nextSequence), 0)) return false;
   head_ = 0;
   count_ = 0;
   tail_ = 0;
+  generation_ = 0;
   nextSequence_ = nextSequence;
   unreadable_ = false;
   incompatible_ = false;
@@ -201,6 +212,7 @@ bool OutboxStore::adoptEmptyOtherVersionHeader(uint32_t nextSequence) {
 }
 
 bool OutboxStore::loadQueue(const Header& header) {
+  generation_ = generationOf(header.version);
   count_ = header.count;
   head_ = header.head;
   tail_ = (head_ + count_) % kCapacity;
@@ -221,7 +233,7 @@ bool OutboxStore::persistQueue() {
   for (std::size_t offset = 0; offset < count_; ++offset) {
     if (!writeSlot((head_ + offset) % kCapacity)) return false;
   }
-  return writeHeader(makeOutboxQueueState(head_, count_, tail_, nextSequence_));
+  return writeHeader(makeOutboxQueueState(head_, count_, tail_, nextSequence_), generation_);
 }
 
 bool OutboxStore::adoptMigratedRecords(std::size_t count, uint32_t nextSequence) {
@@ -229,6 +241,7 @@ bool OutboxStore::adoptMigratedRecords(std::size_t count, uint32_t nextSequence)
   head_ = 0;
   tail_ = count_ % kCapacity;
   nextSequence_ = nextSequence == 0 ? 1U : nextSequence;
+  generation_ = 0;
   if (persistQueue()) {
     // The old monolithic blob is dropped only once the new layout is durable.
     prefs_.remove(kLegacyStateKey);
@@ -359,7 +372,7 @@ bool OutboxStore::load() {
   // so ids cannot repeat ids the desktop already holds for this device.
   clear();
   nextSequence_ = freshSequenceStart_;
-  if (!writeHeader(makeOutboxQueueState(head_, count_, tail_, nextSequence_))) return false;
+  if (!writeHeader(makeOutboxQueueState(head_, count_, tail_, nextSequence_), generation_)) return false;
   loaded_ = true;
   return true;
 }
@@ -390,7 +403,7 @@ OutboxStore::EnqueueResult OutboxStore::enqueue(DeviceEventKind kind, const Stri
   // unreferenced slot behind, never a queued event without its payload.
   // If either write fails, the old header and in-memory state remain the
   // source of truth; the new slot is simply unreferenced and harmless.
-  if (!writeSlot(slot, record) || !writeHeader(next)) {
+  if (!writeSlot(generation_, slot, record) || !writeHeader(next, generation_)) {
     return EnqueueResult::StorageFailed;
   }
 
@@ -418,7 +431,7 @@ bool OutboxStore::pop(DeviceEventRecord* event) {
 
   // Commit the header before changing RAM or erasing the payload. If NVS
   // rejects the write, the event remains queued and can be retried safely.
-  if (!writeHeader(next)) return false;
+  if (!writeHeader(next, generation_)) return false;
 
   if (event != nullptr) *event = fromRecord(records_[slot]);
   head_ = next.head;
@@ -427,7 +440,7 @@ bool OutboxStore::pop(DeviceEventRecord* event) {
   nextSequence_ = next.nextSequence;
   // A power cut after the header commit can leave this payload behind, but it
   // is no longer referenced by the header and is safe to reclaim later.
-  eraseSlot(slot);
+  eraseSlot(generation_, slot);
   return true;
 }
 
@@ -435,6 +448,7 @@ void OutboxStore::clear() {
   resetRecords();
   count_ = head_ = tail_ = 0;
   nextSequence_ = 1;
+  generation_ = 0;
 }
 
 void OutboxStore::resetRecords() {
@@ -446,10 +460,12 @@ void OutboxStore::resetRecords() {
 
 OutboxStore::RepairResult OutboxStore::discardUnreadableQueue(std::size_t& dropped) {
   dropped = 0;
-  for (std::size_t slot = 0; slot < kCapacity; ++slot) {
-    char key[8];
-    slotKey(slot, key);
-    if (prefs_.isKey(key)) ++dropped;
+  for (uint8_t generation = 0; generation < 2; ++generation) {
+    for (std::size_t slot = 0; slot < kCapacity; ++slot) {
+      char key[8];
+      slotKey(generation, slot, key);
+      if (prefs_.isKey(key)) ++dropped;
+    }
   }
 
   // The empty header is written first. A power cut then leaves either the old
@@ -457,8 +473,11 @@ OutboxStore::RepairResult OutboxStore::discardUnreadableQueue(std::size_t& dropp
   // queue. The orphaned slots and any legacy blob are unreferenced after that
   // commit, so they are erased afterwards. The new sequence starts at this boot's
   // random point, so the ids of the discarded queue are not reused in practice.
-  if (!writeHeader(makeOutboxQueueState(0, 0, 0, freshSequenceStart_))) return RepairResult::StorageFailed;
-  for (std::size_t slot = 0; slot < kCapacity; ++slot) eraseSlot(slot);
+  if (!writeHeader(makeOutboxQueueState(0, 0, 0, freshSequenceStart_), 0)) return RepairResult::StorageFailed;
+  for (std::size_t slot = 0; slot < kCapacity; ++slot) {
+    eraseSlot(0, slot);
+    eraseSlot(1, slot);
+  }
   if (prefs_.isKey(kLegacyStateKey)) prefs_.remove(kLegacyStateKey);
 
   clear();
@@ -467,6 +486,18 @@ OutboxStore::RepairResult OutboxStore::discardUnreadableQueue(std::size_t& dropp
   unreadable_ = false;
   incompatible_ = false;
   return RepairResult::Repaired;
+}
+
+// Reads one record for repair. A failed NVS read can be transient, and a record given up here is erased
+// with the rest of its slot set, so a read is tried a few times before the record is counted as lost.
+bool OutboxStore::readRecordForRepair(const char* key, Record& record) {
+  constexpr uint8_t kReadAttempts = 3;
+  for (uint8_t attempt = 0; attempt < kReadAttempts; ++attempt) {
+    if (prefs_.getBytesLength(key) == sizeof(Record) && prefs_.getBytes(key, &record, sizeof(Record)) == sizeof(Record)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 OutboxStore::RepairResult OutboxStore::repair(std::size_t& salvaged, std::size_t& dropped) {
@@ -484,6 +515,8 @@ OutboxStore::RepairResult OutboxStore::repair(std::size_t& salvaged, std::size_t
 
   const std::size_t count = header.count;
   const std::size_t head = header.head;
+  const uint8_t oldGeneration = generationOf(header.version);
+  const uint8_t newGeneration = static_cast<uint8_t>(oldGeneration ^ 1U);
 
   // The in-memory queue is unusable while unreadable_ is set, so records_ doubles
   // as the scratch area (a 16-record array on the stack would be about 4 KB).
@@ -491,12 +524,10 @@ OutboxStore::RepairResult OutboxStore::repair(std::size_t& salvaged, std::size_t
 
   for (std::size_t offset = 0; offset < count; ++offset) {
     char key[8];
-    slotKey((head + offset) % kCapacity, key);
-    if (prefs_.getBytesLength(key) == sizeof(Record)) {
-      if (prefs_.getBytes(key, &kept[salvaged], sizeof(Record)) == sizeof(Record)) {
-        salvaged++;
-        continue;
-      }
+    slotKey(oldGeneration, (head + offset) % kCapacity, key);
+    if (readRecordForRepair(key, kept[salvaged])) {
+      salvaged++;
+      continue;
     }
     dropped++;
   }
@@ -506,26 +537,30 @@ OutboxStore::RepairResult OutboxStore::repair(std::size_t& salvaged, std::size_t
     return RepairResult::NothingToRepair;
   }
 
+  // The salvaged records go into the other slot set. The current header does not
+  // reference that set, so a power cut at any point before the header write leaves the
+  // old queue exactly as it was: still unreadable, and repairable again. The header
+  // write is the single commit. After it the queue is the salvaged set, and the old
+  // slots are unreferenced and erased.
   for (std::size_t i = 0; i < salvaged; ++i) {
-    if (!writeSlot(i, kept[i])) return RepairResult::StorageFailed;
+    if (!writeSlot(newGeneration, i, kept[i])) return RepairResult::StorageFailed;
   }
-
-  // The old header stays valid until the header write; a cut while slots are being rewritten
-  // can lose records, accepted because this is an operator-initiated last-resort recovery of an already corrupt queue.
-  if (!writeHeader(makeOutboxQueueState(0, salvaged, salvaged % kCapacity, header.nextSequence))) {
+  if (!writeHeader(makeOutboxQueueState(0, salvaged, salvaged % kCapacity, header.nextSequence), newGeneration)) {
     return RepairResult::StorageFailed;
   }
-
-  for (std::size_t i = salvaged; i < kCapacity; ++i) {
-    eraseSlot(i);
+  for (std::size_t i = 0; i < kCapacity; ++i) {
+    eraseSlot(oldGeneration, i);
   }
 
+  // records_[i] is now slot i of the new set, so the in-memory queue matches NVS as written.
+  generation_ = newGeneration;
   head_ = 0;
   count_ = salvaged;
   tail_ = salvaged % kCapacity;
   nextSequence_ = header.nextSequence;
   loaded_ = true;
   unreadable_ = false;
+  incompatible_ = false;
   return RepairResult::Repaired;
 }
 

@@ -76,7 +76,12 @@ class OutboxStore {
 
  private:
   static constexpr uint32_t kMagic = 0x48534f51UL;
+  // The header version names the slot set the queue uses. Version 5 keeps the "e<n>" keys
+  // every queue has been written with so far. Version 6 is the same layout under "f<n>" keys,
+  // which repair() writes into before it commits. Older firmware reads version 6 as an unreadable
+  // header: it never misreads the queue, but its only remedy is to discard the stored scans.
   static constexpr uint16_t kVersion = 5;
+  static constexpr uint16_t kVersionAltSlots = 6;
   static constexpr std::size_t kCodeLen = 65;  // 64-character MPN plus null terminator.
   static constexpr std::size_t kManufacturerLen = 48;
   static constexpr std::size_t kNameLen = 64;
@@ -116,14 +121,16 @@ class OutboxStore {
   static_assert(sizeof(Record) <= 512U, "Record must stay inside a single NVS blob chunk");
 
   static void copyString(char* dest, std::size_t capacity, const String& value);
-  static void slotKey(std::size_t slot, char (&out)[8]);
+  static void slotKey(uint8_t generation, std::size_t slot, char (&out)[8]);
+  static uint8_t generationOf(uint16_t version);
+  bool readRecordForRepair(const char* key, Record& record);
 
   DeviceEventRecord fromRecord(const Record& record) const;
-  bool writeHeader(const OutboxQueueState& state);
+  bool writeHeader(const OutboxQueueState& state, uint8_t generation);
   bool writeSlot(std::size_t slot);
-  bool writeSlot(std::size_t slot, const Record& record);
+  bool writeSlot(uint8_t generation, std::size_t slot, const Record& record);
   bool readSlot(std::size_t slot);
-  void eraseSlot(std::size_t slot);
+  void eraseSlot(uint8_t generation, std::size_t slot);
   enum class MigrationResult : uint8_t { Migrated, NotRecognized, WriteFailed };
   // Absent: no header key. Valid: a header this firmware can read. OtherVersion: a header of
   // another layout, read through the fields every layout shares. Invalid: damaged or out of range.
@@ -146,6 +153,8 @@ class OutboxStore {
   bool loaded_ = false;
   bool unreadable_ = false;
   bool incompatible_ = false;
+  // The slot set the current header uses: 0 for "e<n>", 1 for "f<n>". See kVersionAltSlots.
+  uint8_t generation_ = 0;
   Record records_[kCapacity]{};
   std::size_t count_ = 0;
   std::size_t head_ = 0;
