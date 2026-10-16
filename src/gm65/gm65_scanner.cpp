@@ -56,16 +56,19 @@ constexpr ZoneWrite kBootProfile[] = {
 
 bool Gm65Scanner::begin(uint32_t baudRate) {
   baudRate_ = baudRate;
+  return start();
+}
+
+bool Gm65Scanner::start() {
   frames_.reset();
   serial_.setRxBufferSize(1024);
   serial_.begin(baudRate_, SERIAL_8N1, GM65_RX_PIN, GM65_TX_PIN);
   serial_.setTimeout(5);
   delay(100);
-  const bool profileApplied = applyBootProfile();
+  active_ = applyBootProfile();
   flushInput();
   acceptAfterMs_ = millis() + kStartupSettleMs;
-  active_ = profileApplied;
-  return profileApplied;
+  return active_;
 }
 
 void Gm65Scanner::end() {
@@ -83,20 +86,7 @@ bool Gm65Scanner::suspend() {
   return true;
 }
 
-bool Gm65Scanner::resume() {
-  if (active_) {
-    return true;
-  }
-  serial_.setRxBufferSize(1024);
-  serial_.begin(baudRate_, SERIAL_8N1, GM65_RX_PIN, GM65_TX_PIN);
-  serial_.setTimeout(5);
-  delay(100);
-  const bool ok = applyBootProfile();
-  flushInput();
-  acceptAfterMs_ = millis() + kStartupSettleMs;
-  active_ = ok;
-  return ok;
-}
+bool Gm65Scanner::resume() { return active_ || start(); }
 
 void Gm65Scanner::flushInput() {
   drainRx();
