@@ -149,7 +149,7 @@ inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields&
     }
   }
   if (quantityText.length() > 0) {
-    constexpr int kMaximumEditableQuantity = 9999;
+    constexpr int kMaximumEditableQuantity = 9999;  // kQuantityMaxDigits nines
     int parsedQuantity = 0;
     bool numeric = true;
     for (size_t index = 0; index < quantityText.length(); ++index) {
@@ -218,6 +218,9 @@ inline String makeRequestId(const String& deviceId, unsigned long sequence) {
   return out;
 }
 
+// A quantity has at most this many digits.
+constexpr std::size_t kQuantityMaxDigits = 4;
+
 class QuantityComposer {
  public:
   void clear() {
@@ -247,7 +250,7 @@ class QuantityComposer {
       // Overwriting the only non-zero digit with '0' would leave an all-zero value: ignore the key.
       if (digit == '0' && allZeroExcept(cursor_)) return;
       digits_.setCharAt(cursor_, digit);
-    } else if (digits_.length() < 4) {
+    } else if (digits_.length() < kQuantityMaxDigits) {
       digits_ += digit;
     }
     advanceCursor();
@@ -256,7 +259,7 @@ class QuantityComposer {
   void setDefaultValue(int value) {
     defaultValue_ = value <= 0 ? 1 : value;
     digits_ = String(defaultValue_);
-    if (digits_.length() > 4) digits_.remove(4);
+    if (digits_.length() > kQuantityMaxDigits) digits_.remove(kQuantityMaxDigits);
     cursor_ = 0;
     editingStarted_ = false;
   }
@@ -319,7 +322,7 @@ class QuantityComposer {
   }
 
   std::size_t editableSlots() const {
-    return digits_.length() < 4 ? digits_.length() + 1U : digits_.length();
+    return digits_.length() < kQuantityMaxDigits ? digits_.length() + 1U : digits_.length();
   }
 
   void advanceCursor() {
@@ -338,36 +341,5 @@ class QuantityComposer {
   std::size_t cursor_ = 0;
   bool editingStarted_ = false;
 };
-
-inline String buildQuantityRequestJson(const String& deviceId, const String& requestId, const String& code, int delta) {
-  String out;
-  out.reserve(deviceId.length() + requestId.length() + code.length() + 48U);
-  out += "{\"deviceId\":\"";
-  out += escapeJson(trimCopy(deviceId));
-  out += "\",\"requestId\":\"";
-  out += escapeJson(trimCopy(requestId));
-  out += "\",\"code\":\"";
-  out += escapeJson(trimCopy(code));
-  out += "\",\"delta\":";
-  out += String(delta);
-  out += '}';
-  return out;
-}
-
-inline String buildScanRequestJson(const String& deviceId, const String& requestId, const String& code,
-                                  int quantity = 1) {
-  String out;
-  out.reserve(deviceId.length() + requestId.length() + code.length() + 56U);
-  out += "{\"deviceId\":\"";
-  out += escapeJson(trimCopy(deviceId));
-  out += "\",\"requestId\":\"";
-  out += escapeJson(trimCopy(requestId));
-  out += "\",\"code\":\"";
-  out += escapeJson(trimCopy(code));
-  out += "\",\"quantity\":";
-  out += String(quantity);
-  out += '}';
-  return out;
-}
 
 }  // namespace inventatory_scan

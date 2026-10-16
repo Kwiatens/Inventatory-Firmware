@@ -14,15 +14,6 @@
 
 namespace inventatory_scan {
 
-// Retained for the unversioned client helper used by older integration code.
-struct QuantityRequest {
-  String deviceId;
-  String requestId;
-  uint32_t sequence = 0;
-  String code;
-  int delta = 0;
-};
-
 enum class DeviceEventKind : uint8_t {
   InventoryAdjust = 1,
   InventoryReceive = 2,
