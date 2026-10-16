@@ -178,6 +178,26 @@ void InventatoryScanApp::handleScan(const String& code) {
   Serial.println("Rejected unrecognized scanner data.");
 }
 
+SyncResult InventatoryScanApp::localFailure(const char* id, const char* code, const char* message) {
+  SyncResult result;
+  result.resultId = id;
+  result.eventId = id;
+  result.status = "failed";
+  result.code = code;
+  result.message = message;
+  return result;
+}
+
+void InventatoryScanApp::openMenu() {
+  state_ = State::Menu;
+  display_.showMenu(outboxBlockedHead_.blocked(), outbox_.unreadable());
+}
+
+void InventatoryScanApp::returnToReady() {
+  state_ = State::Idle;
+  display_.showReady();
+}
+
 void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
   noteUserActivity();
   // While the low-battery warning is up only the power-off hold is honoured.
@@ -198,33 +218,29 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     exitStandby();
     return;
   }
-  if (event.type == InventatoryKeyEventType::ProvisioningReset) {
-    // Holding # only opens the confirmation screen; the wipe itself needs A.
-    if (setupMode_ || state_ != State::Idle || powerMode_ == PowerMode::Standby || otaRequested_ ||
-        otaActive_) {
+  const bool updating = otaRequested_ || otaActive_;
+  switch (event.type) {
+    case InventatoryKeyEventType::ProvisioningReset:
+      // Holding # only opens the confirmation screen; the wipe itself needs A.
+      if (setupMode_ || state_ != State::Idle || powerMode_ == PowerMode::Standby || updating) return;
+      state_ = State::ConfirmReprovision;
+      reprovisionFromHold_ = true;
+      display_.showResetConfirm();
       return;
-    }
-    state_ = State::ConfirmReprovision;
-    reprovisionFromHold_ = true;
-    display_.showResetConfirm();
-    return;
-  }
-  // The power-off hold is honoured during setup too (AGENTS.md section 9). Setup has no network
-  // work to pause, and deep sleep ends BLE pairing. One second of hold opens the countdown, a release
-  // or a D or # press cancels it, and the commit at four seconds powers off.
-  if (event.type == InventatoryKeyEventType::PowerOffWarning) {
-    if (state_ != State::Idle || otaRequested_ || otaActive_) return;
-    startPowerOffWarning();
-    return;
-  }
-  if (event.type == InventatoryKeyEventType::PowerOffCancel) {
-    cancelPowerOffWarning();
-    return;
-  }
-  if (event.type == InventatoryKeyEventType::PowerOff) {
-    if (state_ != State::Idle || otaRequested_ || otaActive_) return;
-    enterPowerOff();
-    return;
+    // The power-off hold is honoured during setup too (AGENTS.md section 9). Setup has no network
+    // work to pause, and deep sleep ends BLE pairing. One second of hold opens the countdown, a release
+    // or a D or # press cancels it, and the commit at four seconds powers off.
+    case InventatoryKeyEventType::PowerOffWarning:
+      if (state_ == State::Idle && !updating) startPowerOffWarning();
+      return;
+    case InventatoryKeyEventType::PowerOffCancel:
+      cancelPowerOffWarning();
+      return;
+    case InventatoryKeyEventType::PowerOff:
+      if (state_ == State::Idle && !updating) enterPowerOff();
+      return;
+    default:
+      break;
   }
   if (setupMode_) {
     // A keypress on the device is the physical confirmation that re-opens
@@ -240,7 +256,6 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     requestOtaUpdate();
     return;
   }
-
   if (event.type == InventatoryKeyEventType::PowerToggle) {
     if (state_ != State::Idle) return;
     if (powerMode_ == PowerMode::Standby) {
@@ -250,7 +265,6 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     }
     return;
   }
-
   if (state_ == State::WaitingForResult) {
     if (event.type == InventatoryKeyEventType::Cancel) {
       Serial.println("Waiting for Inventatory to confirm the submitted change.");
@@ -258,283 +272,254 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     return;
   }
 
-  if (event.type == InventatoryKeyEventType::Digit) {
-    if (state_ == State::Menu) {
-      if (event.value == '1') openQuickLabels();
-      else if (event.value == '2') openQuickSettings();
-      else if (outbox_.unreadable() && event.value == '3') {
+  switch (event.type) {
+    case InventatoryKeyEventType::Digit:
+      handleDigit(event.value);
+      break;
+    case InventatoryKeyEventType::CycleCursor:
+      if (state_ == State::QuickLabels && quickLabelPresetCount_ > kQuickLabelsPerPage) {
+        const uint8_t pages =
+            static_cast<uint8_t>((quickLabelPresetCount_ + kQuickLabelsPerPage - 1U) / kQuickLabelsPerPage);
+        quickLabelPage_ = static_cast<uint8_t>((quickLabelPage_ + 1U) % pages);
+        display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
+                                 quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
+      } else if (state_ == State::AwaitQuantity) {
+        quantity_.cycleCursor();
+        display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
+      }
+      break;
+    case InventatoryKeyEventType::DeleteDigit:
+      if (state_ == State::AwaitQuantity) {
+        quantity_.deleteDigit();
+        display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
+        Serial.print("Quantity: ");
+        Serial.println(quantity_.displayText().c_str());
+      } else if ((state_ == State::Idle || state_ == State::Menu) && display_.hasProblem()) {
+        // A short # explains the problem on show, from the main screen or the menu, when there is one.
+        faultDetailReturn_ = state_;
+        state_ = State::FaultDetail;
+        display_.showFaultDetail();
+      }
+      break;
+    case InventatoryKeyEventType::Cancel:
+      handleCancel();
+      break;
+    case InventatoryKeyEventType::Add:
+    case InventatoryKeyEventType::Subtract:
+      handleAddSubtract(event.type == InventatoryKeyEventType::Add);
+      break;
+    default:
+      break;
+  }
+}
+
+void InventatoryScanApp::handleDigit(char digit) {
+  switch (state_) {
+    case State::Menu:
+      if (digit == '1') {
+        openQuickLabels();
+      } else if (digit == '2') {
+        openQuickSettings();
+      } else if (digit == '3' && outbox_.unreadable()) {
         state_ = State::ConfirmRepair;
         display_.showRepairConfirm(outbox_.incompatible());
-      }
-      else if (outboxBlockedHead_.blocked() && event.value == '3') {
+      } else if (digit == '3' && outboxBlockedHead_.blocked()) {
         state_ = State::ConfirmDiscard;
         display_.showDiscardConfirm();
       }
       return;
-    }
-    // The fault screen takes no digits; they must not fall through into quantity entry.
-    if (state_ == State::FaultDetail) return;
-    if (state_ == State::ConfirmDiscard || state_ == State::ConfirmRepair) return;
-    if (state_ == State::QuickLabels) {
-      const uint8_t selected = static_cast<uint8_t>(event.value - '0');
+    case State::QuickLabels: {
+      const uint8_t selected = static_cast<uint8_t>(digit - '0');
       if (selected >= 1 && selected <= kQuickLabelsPerPage) {
         requestQuickLabelPrint(static_cast<uint8_t>(quickLabelPage_ * kQuickLabelsPerPage + selected));
       }
       return;
     }
-    if (state_ == State::QuickSettings) {
-      if (event.value == '1') {
+    case State::QuickSettings:
+      if (digit == '1') {
         openDisplaySettings();
-      } else if (event.value == '2') {
+      } else if (digit == '2') {
         openEnergySaving();
-      } else if (event.value == '3') {
+      } else if (digit == '3') {
         state_ = State::ConfirmReprovision;
         reprovisionFromHold_ = false;
         display_.showResetConfirm();
-      } else if (event.value == '4') {
+      } else if (digit == '4') {
         state_ = State::Idle;
         requestOtaUpdate();
       }
       return;
-    }
-    if (state_ == State::DisplaySettings) {
-      if (event.value == '1') {
+    case State::DisplaySettings:
+      if (digit == '1') {
         state_ = State::AdjustContrast;
         display_.showContrast(lcdContrast_);
-      } else if (event.value == '2') {
+      } else if (digit == '2') {
         openBacklightSettings();
       }
       return;
-    }
-    if (state_ == State::EnergySaving) {
-      if (event.value == '1') {
+    case State::EnergySaving:
+      if (digit == '1') {
         toggleEnergySaving();
-      } else if (event.value == '2') {
+      } else if (digit == '2') {
         openSleepAfterSettings();
-      } else if (event.value == '3') {
+      } else if (digit == '3') {
         openPowerOffSettings();
       }
       return;
-    }
-    // The contrast, backlight and energy saving pickers take no digits.
-    if (state_ == State::AdjustContrast || state_ == State::AdjustBacklight || state_ == State::AdjustSleepAfter ||
-        state_ == State::AdjustPowerOff) {
-      return;
-    }
-    if (state_ == State::Idle) {
+    case State::Idle:
       Serial.println("Digit ignored, scan a code first.");
       return;
-    }
-    quantity_.appendDigit(event.value);
-    display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
-    Serial.print("Quantity: ");
-    Serial.println(quantity_.displayText().c_str());
-    return;
-  }
-
-  if (event.type == InventatoryKeyEventType::CycleCursor) {
-    if (state_ == State::QuickLabels && quickLabelPresetCount_ > kQuickLabelsPerPage) {
-      const uint8_t pages =
-          static_cast<uint8_t>((quickLabelPresetCount_ + kQuickLabelsPerPage - 1U) / kQuickLabelsPerPage);
-      quickLabelPage_ = static_cast<uint8_t>((quickLabelPage_ + 1U) % pages);
-      display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
-                               quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
-      return;
-    }
-    if (state_ == State::AwaitQuantity) {
-      quantity_.cycleCursor();
-      display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
-    }
-    return;
-  }
-
-  if (event.type == InventatoryKeyEventType::DeleteDigit) {
-    if (state_ == State::AwaitQuantity) {
-      quantity_.deleteDigit();
+    case State::AwaitQuantity:
+      quantity_.appendDigit(digit);
       display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
       Serial.print("Quantity: ");
       Serial.println(quantity_.displayText().c_str());
-    } else if ((state_ == State::Idle || state_ == State::Menu) && display_.hasProblem()) {
-      // A short # explains the problem on show, from the main screen or the menu, when there is one.
-      faultDetailReturn_ = state_;
-      state_ = State::FaultDetail;
-      display_.showFaultDetail();
-    }
-    return;
+      return;
+    default:
+      // Every other screen takes no digits, so they must not fall through into quantity entry.
+      return;
   }
+}
 
-  if (event.type == InventatoryKeyEventType::Cancel) {
-    if (state_ == State::Idle) {
-      if (display_.errorVisible()) display_.dismissError();
-      else {
-        Serial.println("Opening device menu.");
-        state_ = State::Menu;
-        display_.showMenu(outboxBlockedHead_.blocked(), outbox_.unreadable());
-      }
-      return;
-    }
-    if (state_ == State::ConfirmDiscard || state_ == State::ConfirmRepair) {
-      state_ = State::Menu;
-      display_.showMenu(outboxBlockedHead_.blocked(), outbox_.unreadable());
-      return;
-    }
-    // The fault details return to the screen they were opened from.
-    if (state_ == State::FaultDetail) {
-      if (faultDetailReturn_ == State::Menu) {
-        state_ = State::Menu;
-        display_.showMenu(outboxBlockedHead_.blocked(), outbox_.unreadable());
+// C goes back one level, or cancels what is open.
+void InventatoryScanApp::handleCancel() {
+  switch (state_) {
+    case State::Idle:
+      if (display_.errorVisible()) {
+        display_.dismissError();
       } else {
-        state_ = State::Idle;
-        display_.showReady();
+        Serial.println("Opening device menu.");
+        openMenu();
       }
       return;
-    }
-    if (state_ == State::Menu || state_ == State::QuickLabels || state_ == State::QuickSettings ||
-        state_ == State::PrintingLabel) {
+    case State::ConfirmDiscard:
+    case State::ConfirmRepair:
+      openMenu();
+      return;
+    case State::FaultDetail:
+      // The fault details return to the screen they were opened from.
+      if (faultDetailReturn_ == State::Menu) {
+        openMenu();
+      } else {
+        returnToReady();
+      }
+      return;
+    case State::Menu:
+    case State::QuickLabels:
+    case State::QuickSettings:
+    case State::PrintingLabel:
       pendingQuickLabelPrintId_.clear();
       pendingQuickLabelPresetIndex_ = 0;
-      state_ = State::Idle;
-      display_.showReady();
+      returnToReady();
       return;
-    }
-    if (state_ == State::AdjustContrast) {
+    case State::AdjustContrast:
       persistContrast();
       openDisplaySettings();
       return;
-    }
-    if (state_ == State::AdjustBacklight) {
+    case State::AdjustBacklight:
       // Each change is already saved; C only leaves the picker.
       openDisplaySettings();
       return;
-    }
-    if (state_ == State::AdjustSleepAfter || state_ == State::AdjustPowerOff) {
-      // Each change is already saved; C only leaves the picker.
+    case State::AdjustSleepAfter:
+    case State::AdjustPowerOff:
       openEnergySaving();
       return;
-    }
-    if (state_ == State::EnergySaving) {
+    case State::EnergySaving:
+    case State::DisplaySettings:
       openQuickSettings();
       return;
-    }
-    if (state_ == State::DisplaySettings) {
-      openQuickSettings();
-      return;
-    }
-    if (state_ == State::ConfirmReprovision) {
+    case State::ConfirmReprovision:
       if (reprovisionFromHold_) {
         reprovisionFromHold_ = false;
-        state_ = State::Idle;
-        display_.showReady();
+        returnToReady();
       } else {
         openQuickSettings();
       }
       return;
-    }
-    resetPending();
-    display_.finishInteraction();
-    Serial.println("Cancelled pending scan.");
-    return;
+    default:
+      resetPending();
+      display_.finishInteraction();
+      Serial.println("Cancelled pending scan.");
+      return;
   }
+}
 
-  if (event.type == InventatoryKeyEventType::Add || event.type == InventatoryKeyEventType::Subtract) {
-    if (state_ == State::AdjustContrast) {
-      if (event.type == InventatoryKeyEventType::Add && lcdContrast_ > 0) --lcdContrast_;
-      if (event.type == InventatoryKeyEventType::Subtract && lcdContrast_ < 63) ++lcdContrast_;
+// A and B: step a setting, confirm a dialog (A only), or submit the quantity.
+void InventatoryScanApp::handleAddSubtract(bool add) {
+  switch (state_) {
+    case State::AdjustContrast:
+      if (add && lcdContrast_ > 0) --lcdContrast_;
+      if (!add && lcdContrast_ < 63) ++lcdContrast_;
       display_.setContrast(lcdContrast_);
       persistContrast();
       display_.showContrast(lcdContrast_);
       return;
-    }
-    if (state_ == State::AdjustBacklight) {
-      // A moves towards Off, B towards the longest timeout.
-      stepBacklightMode(event.type == InventatoryKeyEventType::Add ? -1 : 1);
+    // A moves towards the first option (Off, or the shortest delay), B towards the last.
+    case State::AdjustBacklight: stepBacklightMode(add ? -1 : 1); return;
+    case State::AdjustSleepAfter: stepSleepDelay(add ? -1 : 1); return;
+    case State::AdjustPowerOff: stepPowerOffDelay(add ? -1 : 1); return;
+    case State::ConfirmReprovision:
+      if (add) confirmReprovision();
       return;
-    }
-    if (state_ == State::AdjustSleepAfter) {
-      // A moves towards the shortest delay, B towards the longest.
-      stepSleepDelay(event.type == InventatoryKeyEventType::Add ? -1 : 1);
+    case State::ConfirmRepair:
+      if (add) confirmRepair();
       return;
-    }
-    if (state_ == State::AdjustPowerOff) {
-      // A moves towards the shortest delay, B towards Never.
-      stepPowerOffDelay(event.type == InventatoryKeyEventType::Add ? -1 : 1);
+    case State::ConfirmDiscard:
+      if (add) confirmDiscard();
       return;
-    }
-    if (state_ == State::ConfirmReprovision && event.type == InventatoryKeyEventType::Add) {
-      const bool paused = pauseNetworkForSetupTransition();
-      if (paused && setupStore_.clear()) {
-        Serial.println("Re-pair requested from quick settings; restarting BLE setup.");
-        ESP.restart();
-      }
-      if (paused) resumeNetworkAfterSetupTransition();
-      SyncResult failure;
-      failure.resultId = "local-reset";
-      failure.eventId = "local-reset";
-      failure.status = "failed";
-      failure.code = kPairingClearFailedCode;
-      failure.message = "Could not clear pairing";
-      display_.showLocalFailure(failure);
-      state_ = State::Idle;
-      return;
-    }
-    if (state_ == State::ConfirmRepair) {
-      if (event.type == InventatoryKeyEventType::Add) {
-        std::size_t salvaged = 0;
-        std::size_t dropped = 0;
-        const auto result = outbox_.repair(salvaged, dropped);
-        (void)salvaged;
-        (void)dropped;
-        if (result == OutboxStore::RepairResult::Repaired) {
-          Serial.println("Scan queue repaired.");
-          display_.setQueueUnreadable(false);
-          state_ = State::Idle;
-          display_.showReady();
-        } else if (result == OutboxStore::RepairResult::StorageFailed) {
-          SyncResult sr;
-          sr.resultId = "local-queue";
-          sr.eventId = "local-queue";
-          sr.status = "failed";
-          sr.code = kRepairFailedCode;
-          sr.message = "Could not repair queue";
-          display_.showLocalFailure(sr);
-          state_ = State::Idle;
-        } else {
-          state_ = State::Idle;
-          display_.showReady();
-        }
-      }
-      return;
-    }
-    if (state_ == State::ConfirmDiscard) {
-      if (event.type == InventatoryKeyEventType::Add) {
-        if (outbox_.pop()) {
-          outboxBlockedHead_.recordProgress();
-          display_.setSyncBlocked(false);
-          Serial.println("Discarded the oldest queued scan at the operator request.");
-          state_ = State::Idle;
-          display_.showReady();
-        } else {
-          SyncResult result;
-          result.resultId = "local-queue";
-          result.eventId = "local-queue";
-          result.status = "failed";
-          result.code = kDiscardFailedCode;
-          result.message = "Could not discard scan";
-          display_.showLocalFailure(result);
-          state_ = State::Idle;
-        }
-      }
-      return;
-    }
-    if (state_ == State::Idle || scannedCode_.length() == 0) {
+    case State::AwaitQuantity:
+      break;
+    default:
       Serial.println("No scanned code to submit.");
       return;
-    }
-    if (pendingScanType_ == PendingScanType::ComponentDataMatrix && event.type == InventatoryKeyEventType::Subtract) {
-      Serial.println("Component scans use A to confirm the quantity.");
-      return;
-    }
-    submitCurrent(event.type == InventatoryKeyEventType::Add ? 'A' : 'B');
+  }
+  if (scannedCode_.length() == 0) {
+    Serial.println("No scanned code to submit.");
+    return;
+  }
+  if (pendingScanType_ == PendingScanType::ComponentDataMatrix && !add) {
+    Serial.println("Component scans use A to confirm the quantity.");
+    return;
+  }
+  submitCurrent(add ? 'A' : 'B');
+}
+
+void InventatoryScanApp::confirmReprovision() {
+  const bool paused = pauseNetworkForSetupTransition();
+  if (paused && setupStore_.clear()) {
+    Serial.println("Re-pair requested from quick settings; restarting BLE setup.");
+    ESP.restart();
+  }
+  if (paused) resumeNetworkAfterSetupTransition();
+  display_.showLocalFailure(localFailure("local-reset", kPairingClearFailedCode, "Could not clear pairing"));
+  state_ = State::Idle;
+}
+
+void InventatoryScanApp::confirmRepair() {
+  std::size_t salvaged = 0;
+  std::size_t dropped = 0;
+  const auto result = outbox_.repair(salvaged, dropped);
+  if (result == OutboxStore::RepairResult::Repaired) {
+    Serial.println("Scan queue repaired.");
+    display_.setQueueUnreadable(false);
+    returnToReady();
+  } else if (result == OutboxStore::RepairResult::StorageFailed) {
+    display_.showLocalFailure(localFailure("local-queue", kRepairFailedCode, "Could not repair queue"));
+    state_ = State::Idle;
+  } else {
+    returnToReady();
+  }
+}
+
+void InventatoryScanApp::confirmDiscard() {
+  if (outbox_.pop()) {
+    outboxBlockedHead_.recordProgress();
+    display_.setSyncBlocked(false);
+    Serial.println("Discarded the oldest queued scan at the operator request.");
+    returnToReady();
+  } else {
+    display_.showLocalFailure(localFailure("local-queue", kDiscardFailedCode, "Could not discard scan"));
+    state_ = State::Idle;
   }
 }
 
@@ -573,24 +558,12 @@ bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, in
   const auto queueResult =
       outbox_.enqueue(kind, code, value, &event, manufacturer, manufacturerPartNumber, encodedPartName);
   if (queueResult != OutboxStore::EnqueueResult::Queued) {
-    SyncResult result;
-    result.resultId = "local-queue";
-    result.eventId = "local-queue";
-    result.status = "failed";
-    switch (queueResult) {
-      case OutboxStore::EnqueueResult::QueueFull:
-        result.code = kQueueFullCode;
-        result.message = "Sync PC before scanning";
-        break;
-      case OutboxStore::EnqueueResult::StorageFailed:
-        result.code = kScanNotSavedCode;
-        result.message = "Scan storage write failed";
-        break;
-      default:
-        result.code = kScanRejectedCode;
-        result.message = "Scan data cannot be saved";
-        break;
-    }
+    const bool full = queueResult == OutboxStore::EnqueueResult::QueueFull;
+    const bool storage = queueResult == OutboxStore::EnqueueResult::StorageFailed;
+    const auto result = localFailure("local-queue", full ? kQueueFullCode : storage ? kScanNotSavedCode : kScanRejectedCode,
+                                     full      ? "Sync PC before scanning"
+                                     : storage ? "Scan storage write failed"
+                                               : "Scan data cannot be saved");
     display_.showLocalFailure(result);
     Serial.println(result.message.c_str());
     return false;

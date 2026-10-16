@@ -163,7 +163,7 @@ void InventatoryScanApp::serviceBattery() {
 }
 
 void InventatoryScanApp::startLowBatteryWarning() {
-  Serial.println("Battery low: dock the scanner, or it powers off in 60 s.");
+  Serial.printf("Battery low: dock the scanner, or it powers off in %lu s.\r\n", kLowBatteryShutdownMs / 1000UL);
   // The low-battery overlay replaces any power-off countdown on screen, so that countdown ends here.
   powerOffWarning_ = false;
   dismissEnergyWarning();
