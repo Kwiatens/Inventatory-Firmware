@@ -51,6 +51,10 @@ void InventatoryScanApp::requestOtaUpdate() {
 }
 
 bool InventatoryScanApp::serviceOta() {
+  if (otaEndPending_) {
+    otaEndPending_ = false;
+    ArduinoOTA.end();
+  }
   if (!otaRequested_) {
     return false;
   }
@@ -171,6 +175,7 @@ bool InventatoryScanApp::startOtaService() {
         break;
     }
     recoverFromOtaFailure();
+    otaEndPending_ = true;
     display_.showResult(localFailure("local-ota", kUpdateFailedCode, "Update failed"));
   });
 
