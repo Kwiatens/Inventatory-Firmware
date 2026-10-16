@@ -5,6 +5,8 @@
 .vscode/ipch
 src/config/config.h
 .vscode/settings.json
+# Local assistant and editor settings are per machine, never shared.
+.claude/
 
 # Host-side unit test build output
 host-tests/build/
