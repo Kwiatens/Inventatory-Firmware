@@ -134,10 +134,9 @@ void test_host_outbox_erased_outbox_does_not_reuse_event_ids() {
   DeviceEventRecord issued[3];
   for (std::size_t offset = 0; offset < 3; ++offset) TEST_ASSERT_TRUE(first.peek(offset, issued[offset]));
 
-  // A full flash erase removes the namespace. The device boots with a new random start.
-  Preferences prefs;
-  TEST_ASSERT_TRUE(prefs.begin(kNamespace, false));
-  TEST_ASSERT_TRUE(prefs.clear());
+  // A full flash erase wipes NVS. The device boots with a new random start.
+  // The outbox namespace is never cleared on its own (AGENTS.md section 7).
+  host_nvs::reset();
   host_nvs::reboot();
 
   OutboxStore second;
@@ -176,7 +175,8 @@ void test_host_outbox_out_of_range_head_is_refused_not_clamped() {
 
 void test_host_outbox_foreign_header_with_scans_is_refused_and_kept_intact() {
   // A header from a newer layout that still lists a queued scan, as left behind before an OTA rollback.
-  storeRawHeader(RawHeader{kMagic, 6, 1, 0, 0, 1});
+  // Version 6 is a layout this firmware reads (the alternate slot set), so the foreign version is 7.
+  storeRawHeader(RawHeader{kMagic, 7, 1, 0, 0, 1});
 
   OutboxStore outbox;
   TEST_ASSERT_FALSE(bootWithSeed(outbox, 1U));
@@ -184,7 +184,7 @@ void test_host_outbox_foreign_header_with_scans_is_refused_and_kept_intact() {
   TEST_ASSERT_EQUAL_INT(static_cast<int>(OutboxStore::EnqueueResult::StorageFailed),
                         static_cast<int>(outbox.enqueue(DeviceEventKind::InventoryAdjust, String("X"), 1)));
   // Nothing is written over the foreign header.
-  TEST_ASSERT_EQUAL_UINT16(6, readRawHeader().version);
+  TEST_ASSERT_EQUAL_UINT16(7, readRawHeader().version);
 }
 
 void test_host_outbox_empty_foreign_header_is_adopted_and_keeps_its_sequence() {
@@ -194,7 +194,7 @@ void test_host_outbox_empty_foreign_header_is_adopted_and_keeps_its_sequence() {
   OutboxStore first;
   TEST_ASSERT_TRUE(bootWithSeed(first, 0x1001U));
   const uint16_t current = readRawHeader().version;
-  storeRawHeader(RawHeader{kMagic, static_cast<uint16_t>(current + 1U), 0, 0, 0, 0x4001U});
+  storeRawHeader(RawHeader{kMagic, static_cast<uint16_t>(current + 2U), 0, 0, 0, 0x4001U});
 
   host_nvs::reboot();
   OutboxStore outbox;
@@ -212,23 +212,23 @@ void test_host_outbox_empty_foreign_header_is_adopted_and_keeps_its_sequence() {
 
 void test_host_outbox_empty_foreign_header_without_a_sequence_is_refused_and_kept() {
   // Without an event sequence the header cannot be continued safely, so it is kept as it is.
-  storeRawHeader(RawHeader{kMagic, 6, 0, 0, 0, 0});
+  storeRawHeader(RawHeader{kMagic, 7, 0, 0, 0, 0});
 
   OutboxStore outbox;
   TEST_ASSERT_FALSE(bootWithSeed(outbox, 1U));
   TEST_ASSERT_TRUE(outbox.unreadable());
-  TEST_ASSERT_EQUAL_UINT16(6, readRawHeader().version);
+  TEST_ASSERT_EQUAL_UINT16(7, readRawHeader().version);
 }
 
 void test_host_outbox_failed_adoption_keeps_the_header_and_retries_at_next_boot() {
   // If the replacement header cannot be written, the old header stays and the next boot tries again.
-  storeRawHeader(RawHeader{kMagic, 6, 0, 0, 0, 0x4001U});
+  storeRawHeader(RawHeader{kMagic, 7, 0, 0, 0, 0x4001U});
 
   host_nvs::faults().failWrites = true;
   OutboxStore outbox;
   TEST_ASSERT_FALSE(bootWithSeed(outbox, 0x9001U));
   TEST_ASSERT_TRUE(outbox.unreadable());
-  TEST_ASSERT_EQUAL_UINT16(6, readRawHeader().version);
+  TEST_ASSERT_EQUAL_UINT16(7, readRawHeader().version);
 
   host_nvs::reboot();
   OutboxStore retried;
@@ -243,7 +243,7 @@ void test_host_outbox_operator_discard_recovers_a_foreign_header() {
   expectQueued(before, "A");
   expectQueued(before, "B");
   RawHeader foreign = readRawHeader();
-  foreign.version = 6;
+  foreign.version = 7;
   storeRawHeader(foreign);
 
   host_nvs::reboot();
