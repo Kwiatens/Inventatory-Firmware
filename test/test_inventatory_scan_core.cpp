@@ -883,6 +883,14 @@ void test_battery_tracker_learns_runtime() {
   TEST_ASSERT_TRUE(toFull >= 4 && toFull <= 12);
 }
 
+void test_charge_state_from_status_leds() {
+  TEST_ASSERT_TRUE(chargeStateFromLeds(false, false) == ChargeState::Unplugged);
+  TEST_ASSERT_TRUE(chargeStateFromLeds(true, false) == ChargeState::Charging);
+  TEST_ASSERT_TRUE(chargeStateFromLeds(false, true) == ChargeState::Done);
+  // Both lit is a wiring fault; the red LED wins, so the device keeps charging.
+  TEST_ASSERT_TRUE(chargeStateFromLeds(true, true) == ChargeState::Charging);
+}
+
 void test_battery_estimate_text() {
   char text[32];
   TEST_ASSERT_TRUE(formatBatteryDuration(text, sizeof(text), 42));
@@ -1123,6 +1131,7 @@ void setup() {
   RUN_TEST(test_battery_curve_policy);
   RUN_TEST(test_battery_tracker_guards_and_debounce);
   RUN_TEST(test_battery_tracker_learns_runtime);
+  RUN_TEST(test_charge_state_from_status_leds);
   RUN_TEST(test_battery_estimate_text);
   RUN_TEST(test_datamatrix_size_guard_is_exact_at_512_bytes);
   RUN_TEST(test_manufacturer_part_number_length_bounds);
