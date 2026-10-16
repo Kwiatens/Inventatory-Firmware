@@ -319,8 +319,13 @@ void InventatoryScanApp::serviceProvisioning() {
     setupMode_ = false;
     scanner_.flushInput();
     if (!beginNormalRuntime(provisionedSettings_) || !setupStore_.commit()) {
-      Serial.println("Provisioning: normal runtime did not become ready; returning to BLE setup");
-      enterSetupAfterRuntimeFailure();
+      // Bluetooth was released above and cannot start again in this boot. The setup record is still
+      // incomplete, so the restarted device opens pairing again.
+      Serial.println("Provisioning: normal runtime did not become ready; restarting into BLE setup");
+      display_.showBoot("Network error", kNetworkStartFailedCode);
+      display_.tick();
+      delay(2000);
+      ESP.restart();
     } else {
       Serial.println("Provisioning: normal runtime ready");
     }
