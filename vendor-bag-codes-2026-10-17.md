@@ -2,7 +2,7 @@
 
 - Slug: vendor-bag-codes-2026-10-17
 - Owner: Claude (interactive session with the owner)
-- Status: active (committed locally on feat/vendor-bag-codes, not pushed)
+- Status: done (on main as 0582f53 and f6b637f; branches deleted)
 - Last updated: 2026-10-17
 - Branch: feat/vendor-bag-codes (from origin/main 7683704)
 - Worktree: /home/pawel/Dokumenty/Github/Inventatory-Firmware (primary checkout)
@@ -18,8 +18,7 @@
 - Host suite 99 shared and 80 host tests pass. USB, OTA and Unity image build.
 
 ## Left
-- Owner: push to main (fast-forward) or keep the branch.
-- Quantity-screen lookup still sends the manufacturer number. The desktop matches its machine code, DigiKey part number or SKU, so a known DigiKey part can show "Not in inventory". Switching the lookup to the DigiKey part number is a small follow-up.
+- Quantity lookup for DigiKey bags uses the DigiKey part number (f6b637f). TME bags still use the manufacturer number.
 - Board check with real DigiKey and TME bags.
 
 ## Overlaps found
