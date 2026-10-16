@@ -65,9 +65,9 @@ jobs:
           reject_pattern() {
             local pattern="$1"
             local status=0
-            git grep -n -E -e "$pattern" -- src || status=$?
+            git grep -n -E -e "$pattern" -- src include || status=$?
             if [ "$status" -eq 0 ]; then
-              echo "::error::Forbidden pattern matched in src: $pattern"
+              echo "::error::Forbidden pattern matched in src or include: $pattern"
               exit 1
             elif [ "$status" -gt 1 ]; then
               echo "::error::git grep failed with exit $status for pattern: $pattern"
@@ -83,9 +83,9 @@ jobs:
           reject_multiline_pattern() {
             local pattern="$1"
             local status=0
-            git grep -z -q -P -e "$pattern" -- src || status=$?
+            git grep -z -q -P -e "$pattern" -- src include || status=$?
             if [ "$status" -eq 0 ]; then
-              echo "::error::Forbidden multi-line pattern matched in src: $pattern"
+              echo "::error::Forbidden multi-line pattern matched in src or include: $pattern"
               exit 1
             elif [ "$status" -gt 1 ]; then
               echo "::error::git grep failed with exit $status for pattern: $pattern"

@@ -74,9 +74,9 @@ The firmware enforces a zero-sensitive-logging rule. Passwords, tokens, HMAC key
 decoded barcodes must never be logged. CI fails the build if any of these `git grep` checks matches. Run them
 from the repository root before opening a pull request; each must print nothing (exit code 1):
 ```bash
-git grep -n -E -e "GM65 rx|GM65 scan:" -- src
-git grep -n -E -e "sendDebugMessage\(.*(scannedCode_|trimmed|forwardedCode|manufacturerPartNumber)" -- src
-git grep -n -E -e "(Serial\.(print|println|printf)|sendDebugMessage)\(.*(scannedCode_|forwardedCode|wifiPassword|deviceToken|clientConfig_\.token|settings\.deviceToken)" -- src
+git grep -n -E -e "GM65 rx|GM65 scan:" -- src include
+git grep -n -E -e "sendDebugMessage\(.*(scannedCode_|trimmed|forwardedCode|manufacturerPartNumber)" -- src include
+git grep -n -E -e "(Serial\.(print|println|printf)|sendDebugMessage)\(.*(scannedCode_|forwardedCode|wifiPassword|deviceToken|clientConfig_\.token|settings\.deviceToken)" -- src include
 ```
 The patterns in `.github/workflows/firmware.yml` are authoritative; keep this list in step with them.
 

@@ -16,9 +16,9 @@ Connect the display to the ESP32-S3-Nano as follows. Power the module from **3.3
 
 ## Run
 
-Open this `gmg12864_spi_test` folder as its own PlatformIO project, then build/upload the `waveshare_esp32s3_nano` environment. The test uses portrait orientation (64 x 128 pixels): it should show a title, a success message, and an uptime counter that changes every second. The serial monitor at 115200 baud reports the same updates.
+Open this `gmg12864_spi_test` folder as its own PlatformIO project, then build/upload the `waveshare_esp32s3_nano` environment. The test uses landscape orientation (128 x 64 pixels): it should show a title, a success message, and an uptime counter that changes every second. The serial monitor at 115200 baud reports the same updates.
 
-The selected portrait direction is `U8G2_R1` (90 degrees clockwise from the module's default landscape orientation). If the device's physical mounting requires the opposite vertical direction, change it to `U8G2_R3`.
+The selected orientation is `U8G2_R0` (the module's default landscape orientation, 128 x 64 pixels), the same as the production firmware. If the module is mounted upside down, change it to `U8G2_R2` (180 degrees).
 
 ## Dependency license
 
