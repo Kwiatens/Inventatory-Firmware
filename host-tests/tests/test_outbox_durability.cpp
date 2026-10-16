@@ -40,6 +40,7 @@ void test_host_outbox_namespace_too_long_refuses_scans();
 void test_host_outbox_unrecognised_legacy_blob_is_never_destroyed();
 void test_host_outbox_truncated_header_is_never_overwritten();
 void test_host_outbox_power_cut_during_repair_does_not_duplicate_events();
+void test_host_outbox_repair_survives_a_power_cut_at_every_write();
 
 namespace {
 
@@ -410,11 +411,9 @@ void test_host_outbox_truncated_header_is_never_overwritten() {
   TEST_ASSERT_EQUAL_UINT32(sizeof(damaged), prefs.getBytesLength("hdr"));
 }
 
-void test_host_outbox_power_cut_during_repair_does_not_duplicate_events() {
-  TEST_IGNORE_MESSAGE("KNOWN DEFECT: repair() rewrites slots before the header commit, so a power cut between "
-                      "them leaves the old header pointing at a duplicate of a salvaged event. Remove this line "
-                      "once repair() commits atomically.");
-  // Intended behaviour: after the cut and a reboot, every salvaged event is queued exactly once.
+// Queues A, B and C, then removes the record of B while the header still counts it. Returns with the
+// device rebooted, so the queue is unreadable and no fault is armed.
+void buildDamagedQueue() {
   OutboxStore outbox;
   TEST_ASSERT_TRUE(bootOutbox(outbox));
   expectEnqueue(OutboxStore::EnqueueResult::Queued, adjust(outbox, "A", 1));
@@ -423,21 +422,58 @@ void test_host_outbox_power_cut_during_repair_does_not_duplicate_events() {
   Preferences prefs;
   TEST_ASSERT_TRUE(prefs.begin(kNamespace));
   TEST_ASSERT_TRUE(prefs.remove("e1"));
-
   host_nvs::reboot();
+}
+
+void test_host_outbox_power_cut_during_repair_does_not_duplicate_events() {
+  buildDamagedQueue();
   OutboxStore damaged;
   TEST_ASSERT_FALSE(bootOutbox(damaged));
-  // Two slot writes succeed, then the power is cut before the header write.
+  // Two salvage writes succeed, then the power is cut before the header commit. The old header still
+  // points at the old slots, which repair() did not touch, so the queue is unreadable, not wrong.
   host_nvs::faults().writesBeforePowerCut = 2;
   std::size_t salvaged = 0;
   std::size_t dropped = 0;
-  damaged.repair(salvaged, dropped);
+  TEST_ASSERT_TRUE(damaged.repair(salvaged, dropped) == OutboxStore::RepairResult::StorageFailed);
 
   host_nvs::reboot();
   OutboxStore rebooted;
-  TEST_ASSERT_TRUE(bootOutbox(rebooted));
+  TEST_ASSERT_FALSE(bootOutbox(rebooted));
+  TEST_ASSERT_TRUE(rebooted.unreadable());
+
+  // A second repair completes the job, and each salvaged event is queued exactly once.
+  TEST_ASSERT_TRUE(rebooted.repair(salvaged, dropped) == OutboxStore::RepairResult::Repaired);
   const char* const once[] = {"A", "C"};
   expectQueueCodes(rebooted, once, 2);
+  host_nvs::reboot();
+  OutboxStore after;
+  TEST_ASSERT_TRUE(bootOutbox(after));
+  expectQueueCodes(after, once, 2);
+}
+
+void test_host_outbox_repair_survives_a_power_cut_at_every_write() {
+  // Cuts the power after each write that repair() makes, from the first to past the last. After the
+  // reboot the queue either still needs repair, or it holds A and C exactly once. Never a lost or a
+  // repeated event.
+  const char* const once[] = {"A", "C"};
+  for (long long cutAfter = 0; cutAfter <= 40; ++cutAfter) {
+    host_nvs::reset();
+    buildDamagedQueue();
+    OutboxStore damaged;
+    TEST_ASSERT_FALSE(bootOutbox(damaged));
+    host_nvs::faults().writesBeforePowerCut = cutAfter;
+    std::size_t salvaged = 0;
+    std::size_t dropped = 0;
+    damaged.repair(salvaged, dropped);
+
+    host_nvs::reboot();
+    OutboxStore rebooted;
+    if (!bootOutbox(rebooted)) {
+      TEST_ASSERT_TRUE(rebooted.unreadable());
+      TEST_ASSERT_TRUE(rebooted.repair(salvaged, dropped) == OutboxStore::RepairResult::Repaired);
+    }
+    expectQueueCodes(rebooted, once, 2);
+  }
 }
 
 void runHostOutboxDurabilityTests() {
@@ -460,4 +496,5 @@ void runHostOutboxDurabilityTests() {
   RUN_TEST(test_host_outbox_unrecognised_legacy_blob_is_never_destroyed);
   RUN_TEST(test_host_outbox_truncated_header_is_never_overwritten);
   RUN_TEST(test_host_outbox_power_cut_during_repair_does_not_duplicate_events);
+  RUN_TEST(test_host_outbox_repair_survives_a_power_cut_at_every_write);
 }
