@@ -265,13 +265,15 @@ Storage (NVS) partition (`0x5000` / 20 KiB).
   characters plus null terminator. Longer strings fail silently with `KEY_TOO_LONG`.
 - **Per-record keys**: To avoid multi-page NVS chunk churn that rapidly exhausts
   the 20 KiB partition, each event is stored under its own key (`e0` through `e15`),
-  coordinated by a small header (`hdr`).
+  coordinated by a small header (`hdr`). A repair writes into the other set, `f0`
+  through `f15`, and the header version says which set is live (5 for `e`, 6 for `f`).
 - **Event ids**: `<device id>-<sequence>`. The desktop deduplicates on this id, so a
   sequence must never restart at a value already used. A new outbox (no `hdr`) starts
   at `freshOutboxSequenceStart(esp_random())`, which is a random odd value below 2^31.
 - **Header validation**: A header is trusted only when its size, magic, version and
   every field are in range (`outboxHeaderFieldsValid`). Out-of-range values are never
-  clamped. A header of another version is read through its first 16 bytes (magic,
+  clamped. Versions 5 and 6 are this layout (see the repair rule above). A header of any
+  other version is read through its first 16 bytes (magic,
   version, count, head, reserved, event sequence), which every layout keeps at the same
   offsets (`static_assert`s in `outbox_store.h` and `outbox_store.cpp`). If it holds no
   scans, it is replaced by this layout's empty header and keeps its event sequence, so
@@ -317,8 +319,13 @@ Agents must observe the three distinct failure domains:
    - Pop writes the header **first** and erases the slot **second**. A power cut
      leaves an orphaned slot outside the queue range, safely ignored on reboot.
    - Calling `prefs_.clear()` on `inv_outbox` is strictly prohibited.
-   - Operator-confirmed repair of a queue that cannot be read writes the empty header
-     first and erases the orphaned slots afterwards. It does not clear the namespace.
+   - Operator-confirmed repair of a queue that cannot be read writes the salvaged
+     events into the other slot set, then commits the header, then erases the old slots.
+     The live queue is untouched until the header commit, so a power cut before it leaves
+     the queue unreadable and repairable again. A power cut after it leaves the salvaged
+     queue, so no event is lost or queued twice. The repair never clears the namespace.
+   - Operator-confirmed discard of an unreadable header writes the empty header first and
+     erases both slot sets afterwards.
 
 ---
 
@@ -577,3 +584,18 @@ When concluding any task, the agent must provide a factual summary containing:
 - [ ] Verification: `make -C host-tests test` passes, `python3 tools/check_error_codes.py` passes, `pio test ... --without-uploading --without-testing` passes, and firmware builds pass.
 - [ ] Working tree: No modified `config.h`, `.pio/`, `.bin` files, or unrelated user edits in diff.
 - [ ] Commit format: Follows section 12 and the shared standards. New source files carry the SPDX header.
+
+## 15. Working alongside other agents
+
+Several agents (Claude, Codex, Gemini and cloud sessions) have worked on this repository at the same time. Their branches, worktrees and copies drifted apart and some work was done twice. These rules apply to every agent and every session, including subagents.
+
+1. **Start from `main`.** Run `git fetch origin` first. Create your branch from `origin/main` (`git switch -c <type>/<topic> origin/main`). If another task is open in this checkout, use a separate git worktree for yours. Never commit on `main`. Never work on another agent's branch or worktree.
+2. **Keep your branch current.** Fetch and rebase onto `origin/main` at the start of each session, after any pause, and before each push. Rebase only with a clean working tree. If a rebase conflicts, keep `main`'s behaviour unless your task says otherwise, and record what you chose in your note.
+3. **Keep a note.** Each task has one note in the shared folder `~/.agent-notes/Inventatory-Firmware/`, named `<task-slug>.md` (copy `TEMPLATE.md`), with one line for it in `REGISTRY.md` in the same folder. Write the note when you start, at each milestone, and before you stop. It records: the owner and session, the branch and worktree path, the status, the files you claimed, what is done, what is left, and any older work you found that overlaps yours.
+4. **Read before you edit.** Read `REGISTRY.md`. Then run `git log --oneline origin/main -- <your paths>`, and check `git branch -r --contains <commit>` for recent commits on those files. If an active entry or a recent commit touches the same files or the same topic, stop and tell the user first. Name the entry or commit, say what it did, and say whether it conflicts with your plan. Continue only when the user agrees. Reading code is always allowed.
+5. **Claim files.** Before your first edit, list the files you will change in your note and on your registry line. Do not change a file that another active entry claims without the user's agreement.
+6. **Finish cleanly.** Run the checks in section 13 and the build targets in section 10. Merge to `main` only as a fast-forward, and only when the user asks. Mark your note `done` or `abandoned`, remove your registry line, and remove your worktree once its branch is merged.
+7. **Subagents** work under the note of the agent that started them. That agent writes the note and reports any overlaps for them.
+8. **Report overlaps first.** If rule 4 finds an overlap, your reply starts with it, before anything else.
+
+Cloud sessions cannot read `~/.agent-notes`. The owner must pass any overlap to them directly.

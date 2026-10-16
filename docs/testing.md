@@ -63,13 +63,11 @@ A confirmed defect that is not yet fixed is kept as a test marked
 says what to remove once the defect is fixed. Do not weaken an assertion to make a defect
 pass. The release branch must not contain an ignore without a tracking issue.
 
-Currently known:
-
-- `test_host_outbox_power_cut_during_repair_does_not_duplicate_events`: `repair()` rewrites the
-  salvaged slots before it commits the header. A power cut in between can leave the old header
-  pointing at a slot that now holds another event. This is an operator-confirmed repair of an
-  already damaged queue, but the event that was overwritten is lost. The fix is a repair that
-  writes the header first, or into free slots.
+Currently known: none. The repair that used to overwrite the live slots before its header commit is
+fixed. `test_host_outbox_repair_survives_a_power_cut_at_every_write` cuts the power after each write
+that `repair()` makes, and checks that the queue either still needs repair or holds each salvaged
+event exactly once. Mutation check: putting the salvage back into the live slot set makes this test
+and `test_host_outbox_power_cut_during_repair_does_not_duplicate_events` fail.
 
 ## Coverage
 
