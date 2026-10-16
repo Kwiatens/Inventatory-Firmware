@@ -79,7 +79,7 @@ void InventatoryScanApp::logState(const char* reason) const {
 
 void InventatoryScanApp::openQuickLabels() {
   state_ = State::QuickLabels;
-  if (quickLabelPage_ * 4U >= quickLabelPresetCount_) quickLabelPage_ = 0;
+  if (quickLabelPage_ * kQuickLabelsPerPage >= quickLabelPresetCount_) quickLabelPage_ = 0;
   quickLabelSnapshotReceived_ = false;
   pcSupportsQuickLabels_ = false;
   display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
@@ -241,7 +241,7 @@ bool InventatoryScanApp::scannerFaulted() const {
 void InventatoryScanApp::updateConnectivityDisplay() {
   display_.setQueueUnreadable(outbox_.unreadable());
   const bool wifiOnline = WiFi.isConnected();
-  display_.setConnectivity(connectivityState(), wifiOnline, pcOnline_, outbox_.size());
+  display_.setConnectivity(connectivityState(), outbox_.size());
   if (state_ == State::AwaitQuantity && activeLookupId_.length() > 0) {
     display_.updateQuantityLookup(wifiOnline ? String("Checking inventory") : String("Waiting for PC"),
                                   wifiOnline ? QuantityLookupState::Pending

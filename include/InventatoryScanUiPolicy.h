@@ -21,6 +21,9 @@ constexpr bool displayHeaderCanShowStatus(int titleWidth, int statusWidth,
          titleWidth + statusWidth + gap <= availableWidth;
 }
 
+// Quick labels are paged four to a screen, and keys 1 to 4 pick one.
+constexpr std::size_t kQuickLabelsPerPage = 4U;
+
 constexpr bool displayQueueDepth(std::size_t queueDepth) { return queueDepth > 0; }
 
 template <typename PrefixWidth>

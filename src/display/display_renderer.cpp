@@ -64,6 +64,13 @@ void DisplayRenderer::drawClipped(int x, int y, int maxWidth, const String& valu
   if (lcd_.getStrWidth(clipped.c_str()) <= maxWidth) lcd_.drawStr(x, y, clipped.c_str());
 }
 
+// One line centred on the screen, clipped to the screen width less a margin on each side.
+void DisplayRenderer::drawCentered(const uint8_t* font, int baselineY, const String& text) {
+  lcd_.setFont(font);
+  const int width = std::min(lcd_.getStrWidth(text.c_str()), style::kScreenW - 2 * style::kCenterMargin);
+  drawClipped((style::kScreenW - width) / 2, baselineY, width, text);
+}
+
 void DisplayRenderer::drawWrapped(int x, int firstBaselineY, int maxWidth, const String& value,
                                   std::size_t maxLines, int lineStep) {
   int cursor = 0;
@@ -226,8 +233,7 @@ void DisplayRenderer::drawRail(DisplayRailStyle railStyle, const RenderActivity&
   }
 }
 
-void DisplayRenderer::drawTask(const DisplayModel& model, const RenderActivity& activity) {
-  (void)activity;
+void DisplayRenderer::drawTask(const DisplayModel& model) {
   const String& primary = model.primary;
   lcd_.setFont(style::kFontHeading);
   const bool primaryFits = lcd_.getStrWidth(primary.c_str()) <= style::kContentW;
@@ -235,16 +241,16 @@ void DisplayRenderer::drawTask(const DisplayModel& model, const RenderActivity& 
     drawClipped(style::kContentX, style::kTaskPrimaryY, style::kContentW, primary);
   } else {
     lcd_.setFont(style::kFontRegular);
-    drawWrapped(style::kContentX, 25, style::kContentW, primary, 2, 9);
+    drawWrapped(style::kContentX, style::kTaskWrapY, style::kContentW, primary, 2, style::kTextLineStep);
   }
-  const int secondaryY = primaryFits ? style::kTaskSecondaryY : 48;
+  const int secondaryY = primaryFits ? style::kTaskSecondaryY : style::kTaskWrapSecondaryY;
   // A fault puts its error code on the line below the problem, in place of the normal text.
   if (model.errorCode.length() > 0) {
     drawErrorCodeLine(style::kContentX, secondaryY, model.errorCode);
     return;
   }
   lcd_.setFont(style::kFontRegular);
-  drawWrapped(style::kContentX, secondaryY, style::kContentW, model.secondary, 1, 9);
+  drawWrapped(style::kContentX, secondaryY, style::kContentW, model.secondary, 1, style::kTextLineStep);
 }
 
 void DisplayRenderer::drawQuantity(const DisplayModel& model, const RenderActivity& activity) {
@@ -256,7 +262,7 @@ void DisplayRenderer::drawQuantity(const DisplayModel& model, const RenderActivi
     drawClipped(style::kContentX, style::kQuantityCodeY, style::kContentW, model.secondary);
   } else {
     lcd_.setFont(style::kFontRegular);
-    drawWrapped(style::kContentX, 23, style::kContentW, model.primary, 2, 9);
+    drawWrapped(style::kContentX, style::kQuantityWrapY, style::kContentW, model.primary, 2, style::kTextLineStep);
   }
 
   lcd_.setFont(style::kFontRegular);
@@ -285,10 +291,10 @@ void DisplayRenderer::drawResult(const DisplayModel& model) {
     drawClipped(style::kContentX, style::kResultPrimaryY, style::kContentW, model.primary);
   } else {
     lcd_.setFont(style::kFontRegular);
-    drawWrapped(style::kContentX, 22, style::kContentW, model.primary, 2, 9);
+    drawWrapped(style::kContentX, style::kResultWrapY, style::kContentW, model.primary, 2, style::kTextLineStep);
   }
   lcd_.setFont(style::kFontRegular);
-  drawClipped(style::kContentX, primaryFits ? style::kResultSecondaryY : 43,
+  drawClipped(style::kContentX, primaryFits ? style::kResultSecondaryY : style::kResultWrapSecondaryY,
               style::kContentW, model.secondary);
   if (primaryFits) {
     lcd_.setFont(style::kFontValue);
@@ -327,20 +333,16 @@ void DisplayRenderer::drawFault(const DisplayModel& model) {
 }
 
 void DisplayRenderer::drawContrast(const DisplayModel& model) {
-  lcd_.setFont(style::kFontValue);
-  const int width = lcd_.getStrWidth(model.primary.c_str());
-  lcd_.drawStr((style::kScreenW - width) / 2, 38, model.primary.c_str());
-  lcd_.drawFrame(29, 43, 70, 5);
+  drawCentered(style::kFontValue, style::kContrastValueY, model.primary);
+  lcd_.drawFrame(style::kContrastBarX, style::kContrastBarY, style::kContrastBarW, style::kContrastBarH);
   const int level = constrain(model.primary.toInt(), 0, 63);
-  lcd_.drawBox(31, 45, (66 * level) / 63, 1);
+  lcd_.drawBox(style::kContrastBarX + 2, style::kContrastBarY + 2, ((style::kContrastBarW - 4) * level) / 63, 1);
 }
 
 // The option name, then one segment per option with the chosen one filled, then
 // what the option does.
 void DisplayRenderer::drawChoice(const DisplayModel& model) {
-  lcd_.setFont(style::kFontValue);
-  const int labelWidth = lcd_.getStrWidth(model.primary.c_str());
-  lcd_.drawStr((style::kScreenW - labelWidth) / 2, style::kChoiceLabelY, model.primary.c_str());
+  drawCentered(style::kFontValue, style::kChoiceLabelY, model.primary);
 
   const int count = static_cast<int>(model.choiceCount);
   const int total = count * style::kChoiceSegmentW + (count > 0 ? (count - 1) * style::kChoiceSegmentGap : 0);
@@ -353,41 +355,23 @@ void DisplayRenderer::drawChoice(const DisplayModel& model) {
       lcd_.drawFrame(x, style::kChoiceSegmentY, style::kChoiceSegmentW, style::kChoiceSegmentH);
     }
   }
-
-  lcd_.setFont(style::kFontRegular);
-  const int detailWidth = lcd_.getStrWidth(model.secondary.c_str());
-  lcd_.drawStr((style::kScreenW - detailWidth) / 2, style::kChoiceDetailY, model.secondary.c_str());
+  drawCentered(style::kFontRegular, style::kChoiceDetailY, model.secondary);
 }
 
 void DisplayRenderer::drawConfirm(const DisplayModel& model) {
+  const int width = style::kScreenW - 2 * style::kListX;
   lcd_.setFont(style::kFontHeading);
-  drawClipped(style::kListX, 28, style::kScreenW - 2 * style::kListX, model.primary);
+  drawClipped(style::kListX, style::kConfirmPrimaryY, width, model.primary);
   lcd_.setFont(style::kFontRegular);
-  drawWrapped(style::kListX, 41, style::kScreenW - 2 * style::kListX,
-              model.secondary, 1, 9);
+  drawWrapped(style::kListX, style::kConfirmSecondaryY, width, model.secondary, 1, style::kTextLineStep);
 }
 
 void DisplayRenderer::drawSetup(const DisplayModel& model) {
-  lcd_.setFont(style::kFontValue);
-  char codeBuffer[7];
-  snprintf(codeBuffer, sizeof(codeBuffer), "%06lu", static_cast<unsigned long>(model.setupCode));
-  const String code(codeBuffer);
-  const int width = lcd_.getStrWidth(code.c_str());
-  lcd_.drawStr((style::kScreenW - width) / 2, 31, code.c_str());
-  lcd_.setFont(style::kFontHeading);
-  const int primaryWidth = lcd_.getStrWidth(model.primary.c_str());
-  if (primaryWidth <= style::kScreenW - 8) {
-    lcd_.drawStr((style::kScreenW - primaryWidth) / 2, 43, model.primary.c_str());
-  } else {
-    drawClipped(4, 43, style::kScreenW - 8, model.primary);
-  }
-  lcd_.setFont(style::kFontRegular);
-  const int secondaryWidth = lcd_.getStrWidth(model.secondary.c_str());
-  if (secondaryWidth <= style::kScreenW - 8) {
-    lcd_.drawStr((style::kScreenW - secondaryWidth) / 2, 52, model.secondary.c_str());
-  } else {
-    drawClipped(4, 52, style::kScreenW - 8, model.secondary);
-  }
+  char code[7];
+  snprintf(code, sizeof(code), "%06lu", static_cast<unsigned long>(model.setupCode));
+  drawCentered(style::kFontValue, style::kSetupCodeY, code);
+  drawCentered(style::kFontHeading, style::kSetupPrimaryY, model.primary);
+  drawCentered(style::kFontRegular, style::kSetupSecondaryY, model.secondary);
 }
 
 bool DisplayRenderer::isKeyToken(const String& word) {
@@ -609,40 +593,23 @@ void DisplayRenderer::drawCountdownWarning(const DisplayModel& model) {
   }
 }
 
-// The soft power-off warning: the ›i on the left with no dot, the title and detail beside it, and a bar
-// that drains as the countdown runs down. The bar is the only countdown on the screen.
+// The soft power-off warning: the title, a bar that drains as the countdown runs down, and a hint. The bar
+// is the only countdown on the screen.
 void DisplayRenderer::drawPowerWarning(const DisplayModel& model, const RenderActivity& activity) {
-  const int unit = style::kBootMarkUnit;
-  const int markY = (style::kScreenH - style::kMarkBodyRows * unit) / 2 - style::kMarkBodyRow * unit;
-  drawMark(style::kBootMarkX, markY, unit, 0, false);
-
-  const int textX = style::kBootMarkX + style::kMarkCols * unit + style::kBootColumnGap;
-  const int textW = style::kHeaderRightX - textX;
-  lcd_.setFont(style::kFontHeading);
-  drawClipped(textX, style::kPowerTitleY, textW, model.primary);
-  lcd_.setFont(style::kFontRegular);
-  drawClipped(textX, style::kPowerDetailY, textW, model.secondary);
-
+  drawCentered(style::kFontHeading, style::kPowerTitleY, model.primary);
   lcd_.drawFrame(style::kPowerBarX, style::kPowerBarY, style::kPowerBarW, style::kPowerBarH);
   if (activity.powerBarFillPx > 0) {
     lcd_.drawBox(style::kPowerBarX + 2, style::kPowerBarY + 2, activity.powerBarFillPx, style::kPowerBarH - 4);
   }
+  drawCentered(style::kFontRegular, style::kPowerHintY, model.secondary);
 }
 
-// The power-off ending: the ›i, dropped by activity.markOffsetY and cut at the glass edge, with the
-// text beside it. The rule under the glass is drawn last.
+// The power-off ending: the ›i, dropped by activity.markOffsetY and cut at a short glass rule, with one
+// line of text under it. The rule is drawn last.
 void DisplayRenderer::drawPowerOff(const DisplayModel& model, const RenderActivity& activity) {
-  const int unit = style::kBootMarkUnit;
-  const int markY = (style::kScreenH - style::kMarkBodyRows * unit) / 2 - style::kMarkBodyRow * unit;
-  drawMarkBehindGlass(style::kBootMarkX, markY + activity.markOffsetY, unit);
-
-  const int textX = style::kBootMarkX + style::kMarkCols * unit + style::kBootColumnGap;
-  const int textW = style::kHeaderRightX - textX;
-  lcd_.setFont(style::kFontHeading);
-  drawClipped(textX, style::kPowerTitleY, textW, model.primary);
-  lcd_.setFont(style::kFontRegular);
-  drawClipped(textX, style::kPowerDetailY, textW, model.secondary);
-  lcd_.drawBox(0, style::kGlassEdgeY, style::kScreenW, 1);
+  drawMarkBehindGlass(style::kPowerOffMarkX, style::kPowerOffMarkY + activity.markOffsetY, style::kBootMarkUnit);
+  lcd_.drawHLine((style::kScreenW - style::kGlassEdgeW) / 2, style::kGlassEdgeY, style::kGlassEdgeW);
+  drawCentered(style::kFontRegular, style::kPowerOffTextY, model.primary);
 }
 
 // The wake bloom: stage 1 draws the top of the stem, stage 3 the whole stem, then the chevron draws out
@@ -707,7 +674,7 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
       drawHeader(model, activity);
       drawRail(model.rail, activity);
       switch (model.bodyKind) {
-        case DisplayBodyKind::Task: drawTask(model, activity); break;
+        case DisplayBodyKind::Task: drawTask(model); break;
         case DisplayBodyKind::Quantity: drawQuantity(model, activity); break;
         case DisplayBodyKind::Result: drawResult(model); break;
         case DisplayBodyKind::List: drawList(model); break;

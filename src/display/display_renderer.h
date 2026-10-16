@@ -36,7 +36,7 @@ class DisplayRenderer {
   void drawBatteryIcon(int x, int y, int percent);
   void drawBolt(int x, int y);
   void drawRail(DisplayRailStyle rail, const RenderActivity& activity);
-  void drawTask(const DisplayModel& model, const RenderActivity& activity);
+  void drawTask(const DisplayModel& model);
   void drawQuantity(const DisplayModel& model, const RenderActivity& activity);
   void drawResult(const DisplayModel& model);
   void drawList(const DisplayModel& model);
@@ -58,6 +58,7 @@ class DisplayRenderer {
   void drawMarkBehindGlass(int x, int y, int unit);
   void drawBoxAboveGlass(int x, int y, int w, int h);
   void drawClipped(int x, int y, int maxWidth, const String& text);
+  void drawCentered(const uint8_t* font, int baselineY, const String& text);
   void drawWrapped(int x, int firstBaselineY, int maxWidth, const String& text,
                    std::size_t maxLines, int lineStep);
   static bool isKeyToken(const String& word);

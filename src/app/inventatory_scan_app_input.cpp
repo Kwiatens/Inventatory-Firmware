@@ -277,7 +277,9 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     if (state_ == State::ConfirmDiscard || state_ == State::ConfirmRepair) return;
     if (state_ == State::QuickLabels) {
       const uint8_t selected = static_cast<uint8_t>(event.value - '0');
-      if (selected >= 1 && selected <= 4) requestQuickLabelPrint(quickLabelPage_ * 4U + selected);
+      if (selected >= 1 && selected <= kQuickLabelsPerPage) {
+        requestQuickLabelPrint(static_cast<uint8_t>(quickLabelPage_ * kQuickLabelsPerPage + selected));
+      }
       return;
     }
     if (state_ == State::QuickSettings) {
@@ -331,8 +333,9 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
   }
 
   if (event.type == InventatoryKeyEventType::CycleCursor) {
-    if (state_ == State::QuickLabels && quickLabelPresetCount_ > 4U) {
-      const uint8_t pages = static_cast<uint8_t>((quickLabelPresetCount_ + 3U) / 4U);
+    if (state_ == State::QuickLabels && quickLabelPresetCount_ > kQuickLabelsPerPage) {
+      const uint8_t pages =
+          static_cast<uint8_t>((quickLabelPresetCount_ + kQuickLabelsPerPage - 1U) / kQuickLabelsPerPage);
       quickLabelPage_ = static_cast<uint8_t>((quickLabelPage_ + 1U) % pages);
       display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
                                quickLabelSnapshotReceived_, pcSupportsQuickLabels_);

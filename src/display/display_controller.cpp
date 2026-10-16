@@ -18,9 +18,6 @@ namespace {
 
 // Rows the list body can show; anything beyond this is never drawn.
 constexpr std::size_t kListRowLimit = style::kListMaxRows;
-// Quick labels are paged four to a screen.
-constexpr std::size_t kQuickLabelsPerPage = 4U;
-
 static_assert(kListRowLimit <= sizeof(DisplayModel::listRows) / sizeof(DisplayModel::listRows[0]),
               "list row limit exceeds DisplayModel::listRows capacity");
 static_assert(kQuickLabelsPerPage <= kListRowLimit, "a quick-label page must fit the list");
@@ -132,10 +129,7 @@ void DisplayController::setBatteryUnreadable(bool unreadable) {
   markDirty();
 }
 
-void DisplayController::setConnectivity(DisplayConnectivityState state, bool wifiOnline, bool pcOnline,
-                                        std::size_t queueDepth) {
-  (void)wifiOnline;
-  (void)pcOnline;
+void DisplayController::setConnectivity(DisplayConnectivityState state, std::size_t queueDepth) {
   if (model_.connectivity == state && model_.queueDepth == queueDepth) return;
   model_.connectivity = state;
   model_.queueDepth = queueDepth;
@@ -186,23 +180,22 @@ void DisplayController::showPowerWarning() {
   overlay_.mode = DisplayUiMode::PowerWarning;
   overlay_.rail = DisplayRailStyle::None;
   overlay_.primary = "Powering off";
-  overlay_.secondary = "Release to cancel";
+  overlay_.secondary = "Release * to cancel";
   overlayActive_ = true;
   overlayStartedAt_ = millis();
   overlayUntilMs_ = 0;
   markDirty();
 }
 
-// The power-off ending, run to its end. The mark sinks behind the glass in steps while the text stays,
-// the text rests, and the panel goes dark. The caller sleeps the chip after this returns.
+// The power-off ending, run to its end. The mark sinks behind the glass rule in steps, the wake hint rests
+// under it, and the panel goes dark. The caller sleeps the chip after this returns.
 void DisplayController::playPowerOffSink() {
   clearOverlay();
   clearContent();
   model_.mode = DisplayUiMode::PowerOff;
   model_.rail = DisplayRailStyle::None;
   model_.showPcStatus = false;
-  model_.primary = "See you soon";
-  model_.secondary = "Press * to wake";
+  model_.primary = "Press * to wake";
   for (int step = 0; step < kPowerOffSinkSteps; ++step) {
     renderPowerOffFrame(powerOffSinkOffset(step));
     delay(step < kPowerOffSinkSteps - 1 ? kPowerOffSinkStepMs : kPowerOffRestMs);
@@ -237,7 +230,7 @@ void DisplayController::showQuantity(const String& itemText, const String& itemC
   model_.bodyKind = DisplayBodyKind::Quantity;
   model_.showPcStatus = true;
   model_.receiveQuantity = receiveMode;
-  model_.quantityPrompt = receiveMode ? "Add quantity:" : "Change quantity by:";
+  model_.quantityPrompt = receiveMode ? "Add quantity:" : "Change by:";
   model_.primary = itemText;
   model_.secondary = itemCode;
   model_.quantityText = quantityText;
