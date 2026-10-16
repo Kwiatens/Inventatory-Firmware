@@ -146,7 +146,9 @@ void InventatoryScanApp::handleScan(const String& code) {
     scannedPartName_ = encodedPartName;
     quantity_.setDefaultValue(defaultQuantity);
     pendingScanType_ = PendingScanType::ComponentDataMatrix;
-    activeLookupCode_ = forwardedCode;
+    // A DigiKey bag is looked up by its DigiKey part number, which the desktop matches; the manufacturer number is only
+    // shown. bagCode is non-empty here, so the DigiKey part number is valid.
+    activeLookupCode_ = trimCopy(decoded.auxiliaryPartNumber);
     activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
     lookupMissCount_ = 0;
     setAwaitingQuantity();
