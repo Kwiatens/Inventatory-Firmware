@@ -27,6 +27,7 @@ class DeviceSettingsStore {
   bool savePowerOffDelay(uint8_t delay);
 
  private:
+  bool saveCached(const char* key, uint8_t value, int16_t& last);
   mutable Preferences prefs_;
   // Last contrast known to be stored in NVS (or the effective default after begin()).
   // -1 means unknown, so the next save always writes.
