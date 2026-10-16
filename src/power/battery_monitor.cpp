@@ -21,8 +21,9 @@ static_assert(BATTERY_DIVIDER_BOTTOM_OHMS > 0UL, "BATTERY_DIVIDER_BOTTOM_OHMS mu
 void BatteryMonitor::begin() {
   // 12 dB attenuation covers the divider output for a LiPo (about 2.1 V at 4.2 V with equal resistors).
   analogSetPinAttenuation(BATTERY_ADC_PIN, ADC_11db);
-  // The pull-down reads an unwired or floating charger line as "not charging".
-  pinMode(hardware::kChargerSensePin, INPUT_PULLDOWN);
+  // The pull-downs read an unwired or floating LED pad as "not lit".
+  pinMode(hardware::kChargingLedPin, INPUT_PULLDOWN);
+  pinMode(hardware::kChargeDoneLedPin, INPUT_PULLDOWN);
 }
 
 uint32_t BatteryMonitor::readMillivolts() const {
@@ -36,8 +37,10 @@ uint32_t BatteryMonitor::readMillivolts() const {
                                BATTERY_DIVIDER_BOTTOM_OHMS);
 }
 
-bool BatteryMonitor::chargerPresent() const {
-  return digitalRead(hardware::kChargerSensePin) == HIGH;
+ChargeState BatteryMonitor::chargeState() const {
+  const bool redLit = digitalRead(hardware::kChargingLedPin) == hardware::kChargeLedOnLevel;
+  const bool greenLit = digitalRead(hardware::kChargeDoneLedPin) == hardware::kChargeLedOnLevel;
+  return chargeStateFromLeds(redLit, greenLit);
 }
 
 }  // namespace inventatory_scan
