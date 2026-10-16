@@ -72,14 +72,11 @@ constexpr int kChipRadius = 1;
 constexpr int kChipLabelGap = 2;
 constexpr int kChipGroupGap = 5;
 
-// The ›i mark, as on the website and desktop app: a 5 x 7 grid of square cells.
-// Rows 0-1 hold the i's dot (column 4) and the gap below it; rows 2-6 hold the
-// chevron (columns 0-2) and the stem (column 4). No drop shadow: on a 1-bit LCD
+// The ›i mark, as on the website and desktop app: a 5 x 5 grid of square cells
+// holding the chevron (columns 0-2) and the stem (column 4), with no dot. No drop shadow: on a 1-bit LCD
 // the dithered shade muddies the chevron.
 constexpr int kMarkCols = 5;
-constexpr int kMarkRows = 7;
-constexpr int kMarkBodyRow = 2;
-constexpr int kMarkBodyRows = kMarkRows - kMarkBodyRow;
+constexpr int kMarkBodyRows = 5;
 
 // Boot: the mark on the left, its body centred like the update screen, and the
 // name beside it.
@@ -88,8 +85,7 @@ constexpr int kBootMarkX = 5;
 constexpr int kBootColumnGap = 9;
 constexpr int kBootLineGap = 4;
 
-// Update: the mark on the left, status on the right. The mark's body, without
-// the dot, is centred on the screen and the status block on that body.
+// Update: the mark on the left, status on the right. The mark is centred on the screen and the status block on that body.
 constexpr int kUpdateMarkUnit = 6;
 constexpr int kUpdateColumnGap = 13;
 constexpr int kUpdateTitleGap = 4;
@@ -161,7 +157,7 @@ constexpr int kPowerBarFillW = kPowerBarW - 4;
 constexpr int kGlassEdgeY = 48;
 constexpr int kGlassEdgeW = 46;
 constexpr int kPowerOffMarkX = (kScreenW - kMarkCols * kBootMarkUnit) / 2;
-constexpr int kPowerOffMarkY = 4;
+constexpr int kPowerOffMarkY = 12;
 constexpr int kPowerOffTextY = 60;
 
 // Display contrast: the value, then a bar under it.

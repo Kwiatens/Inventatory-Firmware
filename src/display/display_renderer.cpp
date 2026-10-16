@@ -420,50 +420,29 @@ void DisplayRenderer::drawActions(const String& actionsText) {
   }
 }
 
-// The ›i mark: the chevron and the stem, with the dot in the four slots that
-// dotSlots selects. showEmptySlots marks the unlit slots with a pixel.
-void DisplayRenderer::drawMark(int x, int y, int unit, uint8_t dotSlots, bool showEmptySlots) {
-  const int bodyY = y + style::kMarkBodyRow * unit;
+// The ›i mark: the chevron and the stem, from the top of its body.
+void DisplayRenderer::drawMark(int x, int bodyY, int unit) {
   for (int row = 0; row < style::kMarkBodyRows; ++row) {
     lcd_.drawBox(x + kChevronColumns[row] * unit, bodyY + row * unit, unit, unit);
   }
   lcd_.drawBox(x + kStemColumn * unit, bodyY, unit, style::kMarkBodyRows * unit);
-
-  // The dot is one cell split into four slots; with an odd unit the left and
-  // top slots take the extra pixel so a full dot matches the stem's width.
-  const int lead = (unit + 1) / 2;
-  for (int slot = 0; slot < 4; ++slot) {
-    const int column = slot & 1;
-    const int row = slot >> 1;
-    const int slotX = x + kStemColumn * unit + column * lead;
-    const int slotY = y + row * lead;
-    const int slotW = column == 0 ? lead : unit - lead;
-    const int slotH = row == 0 ? lead : unit - lead;
-    if ((dotSlots & (1U << slot)) != 0U) {
-      lcd_.drawBox(slotX, slotY, slotW, slotH);
-    } else if (showEmptySlots) {
-      lcd_.drawPixel(slotX + slotW / 2, slotY + slotH / 2);
-    }
-  }
 }
 
 // Boot: the mark on the left, centred vertically, with the name beside it and
-// the flashed firmware version in the bottom-right corner. The normal boot draws
-// no dot; a fault draws its static broken dot.
+// the flashed firmware version in the bottom-right corner.
 void DisplayRenderer::drawBoot(const DisplayModel& model, const RenderActivity& activity) {
   const int unit = style::kBootMarkUnit;
-  const int markY =
-      (style::kScreenH - style::kMarkBodyRows * unit) / 2 - style::kMarkBodyRow * unit;
+  const int bodyY = (style::kScreenH - style::kMarkBodyRows * unit) / 2;
   // The mark blooms in on wake; the name and version wait until it is whole.
   if (activity.bloomStage < kBootBloomStages) {
-    drawMarkBloom(style::kBootMarkX, markY, unit, activity.bloomStage);
+    drawMarkBloom(style::kBootMarkX, bodyY, unit, activity.bloomStage);
     return;
   }
-  drawMark(style::kBootMarkX, markY, unit, activity.brandDotSlots, false);
+  drawMark(style::kBootMarkX, bodyY, unit);
 
   const int textX = style::kBootMarkX + style::kMarkCols * unit + style::kBootColumnGap;
   const int textW = style::kHeaderRightX - textX;
-  const int middle = markY + (style::kMarkBodyRow * unit) + (style::kMarkBodyRows * unit) / 2;
+  const int middle = bodyY + (style::kMarkBodyRows * unit) / 2;
   // The name takes the large face; a longer boot error falls back to the heading.
   lcd_.setFont(style::kFontBrand);
   const uint8_t* const titleFont =
@@ -484,20 +463,20 @@ void DisplayRenderer::drawBoot(const DisplayModel& model, const RenderActivity& 
                model.tertiary.c_str());
 }
 
-void DisplayRenderer::drawUpdate(const DisplayModel& model, const RenderActivity& activity) {
+void DisplayRenderer::drawUpdate(const DisplayModel& model) {
   const int unit = style::kUpdateMarkUnit;
   const int markX = (style::kScreenW - (style::kMarkCols * unit + style::kUpdateColumnGap +
                                         style::kUpdateColumnW)) /
                     2;
   const int bodyHeight = style::kMarkBodyRows * unit;
   const int bodyY = (style::kScreenH - bodyHeight) / 2;
-  drawMark(markX, bodyY - style::kMarkBodyRow * unit, unit, activity.brandDotSlots, true);
+  drawMark(markX, bodyY, unit);
 
   const int textX = markX + style::kMarkCols * unit + style::kUpdateColumnGap;
   const int middle = bodyY + bodyHeight / 2;
   lcd_.setFont(style::kFontHeading);
   const int titleAscent = lcd_.getAscent();
-  if (model.brandDot == DisplayBrandDot::Progress) {
+  if (model.otaProgress) {
     lcd_.setFont(style::kFontValue);
     const int valueAscent = lcd_.getAscent();
     const int blockHeight = titleAscent + style::kUpdatePercentGap + valueAscent +
@@ -614,8 +593,7 @@ void DisplayRenderer::drawPowerOff(const DisplayModel& model, const RenderActivi
 
 // The wake bloom: stage 1 draws the top of the stem, stage 3 the whole stem, then the chevron draws out
 // from its tip, the middle arms first, and stage 6 completes it. Stage 0 is blank.
-void DisplayRenderer::drawMarkBloom(int x, int y, int unit, int stage) {
-  const int bodyY = y + style::kMarkBodyRow * unit;
+void DisplayRenderer::drawMarkBloom(int x, int bodyY, int unit, int stage) {
   const int stemRows = stage >= 3 ? style::kMarkBodyRows : stage == 2 ? 3 : stage == 1 ? 1 : 0;
   if (stemRows > 0) lcd_.drawBox(x + kStemColumn * unit, bodyY, unit, stemRows * unit);
 
@@ -630,9 +608,8 @@ void DisplayRenderer::drawMarkBloom(int x, int y, int unit, int stage) {
   }
 }
 
-// The chevron and stem with no dot, each cell cut at the glass edge so the mark slides behind it.
-void DisplayRenderer::drawMarkBehindGlass(int x, int y, int unit) {
-  const int bodyY = y + style::kMarkBodyRow * unit;
+// The chevron and stem, each cell cut at the glass edge so the mark slides behind it.
+void DisplayRenderer::drawMarkBehindGlass(int x, int bodyY, int unit) {
   for (int row = 0; row < style::kMarkBodyRows; ++row) {
     drawBoxAboveGlass(x + kChevronColumns[row] * unit, bodyY + row * unit, unit, unit);
   }
@@ -654,7 +631,7 @@ void DisplayRenderer::render(const DisplayModel& model, const RenderActivity& ac
       drawBoot(model, activity);
       break;
     case DisplayUiMode::Ota:
-      drawUpdate(model, activity);
+      drawUpdate(model);
       break;
     case DisplayUiMode::BatteryCard:
       drawBatteryCard(model, activity);
