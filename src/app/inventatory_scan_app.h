@@ -206,6 +206,9 @@ class InventatoryScanApp {
   bool reprovisionFromHold_ = false;
   bool otaRequested_ = false;
   bool otaActive_ = false;
+  // Set by the ArduinoOTA error callback. The listener is stopped from serviceOta(), never from
+  // inside the callback, so an update that failed does not leave the listener bound.
+  bool otaEndPending_ = false;
   // OTA must not wait forever: giving up (timeout or C) restores normal operation
   // until an uploader actually starts sending.
   unsigned long otaRequestedAt_ = 0;
