@@ -24,6 +24,49 @@ void registerBleRequestTests();
 void registerBlockedHeadTests();
 void registerTextHelperTests();
 
+void test_bag_codes_for_sync() {
+  // A DigiKey bag: the envelope, the DigiKey part number and the manufacturer part number, 43 characters.
+  const auto digiKey = digiKeyBagCodeForSync("445-15749-1-ND", "MLZ2012M3R3HT000", kMaximumBagEventCodeBytes);
+  TEST_ASSERT_EQUAL_UINT(43U, digiKey.length());
+  TEST_ASSERT_EQUAL_INT(0, digiKey.indexOf("[)>"));
+  TEST_ASSERT_EQUAL_INT(7, digiKey.indexOf("P445-15749-1-ND"));
+  TEST_ASSERT_TRUE(digiKey.indexOf("1PMLZ2012M3R3HT000") > 0);
+  TEST_ASSERT_EQUAL_INT(0x1E, static_cast<int>(static_cast<unsigned char>(digiKey[3])));
+  TEST_ASSERT_EQUAL_INT(0x1D, static_cast<int>(static_cast<unsigned char>(digiKey[6])));
+  TEST_ASSERT_EQUAL_INT(0x04, static_cast<int>(static_cast<unsigned char>(digiKey[digiKey.length() - 1U])));
+
+  // Without a manufacturer part number the envelope and the DigiKey part number are still sent.
+  const auto bare = digiKeyBagCodeForSync("445-15749-1-ND", "", kMaximumBagEventCodeBytes);
+  TEST_ASSERT_EQUAL_UINT(24U, bare.length());
+  // A manufacturer part number that does not fit is left out, and the DigiKey part number still identifies the bag.
+  TEST_ASSERT_EQUAL_UINT(24U, digiKeyBagCodeForSync("445-15749-1-ND", "MLZ2012M3R3HT000", 30U).length());
+  // Nothing is sent when the code would not fit at all.
+  TEST_ASSERT_EQUAL_UINT(0U, digiKeyBagCodeForSync("445-15749-1-ND", "MLZ2012M3R3HT000", 10U).length());
+  // A part number without the DigiKey -ND ending, or with a character a bag does not print, is not a DigiKey bag.
+  TEST_ASSERT_EQUAL_UINT(0U, digiKeyBagCodeForSync("445-15749-1", "MLZ2012M3R3HT000", kMaximumBagEventCodeBytes).length());
+  TEST_ASSERT_EQUAL_UINT(0U, digiKeyBagCodeForSync("445 15749-1-ND", "", kMaximumBagEventCodeBytes).length());
+  TEST_ASSERT_EQUAL_UINT(0U, digiKeyBagCodeForSync("", "MLZ2012M3R3HT000", kMaximumBagEventCodeBytes).length());
+
+  // A TME bag's QR text: the symbol, the manufacturer part number and the quantity.
+  const String tmeText =
+      "QTY:5 PN:0ZCM0010FF2G PO:34115735/9 MFR:BELFUSE MPN:0ZCM0010FF2G CoO:TW RoHS https://www.tme.eu/details/0ZCM0010FF2G";
+  TmeBagLabel label;
+  TEST_ASSERT_TRUE(parseTmeBagLabel(tmeText, label));
+  TEST_ASSERT_TRUE(label.symbol == "0ZCM0010FF2G");
+  TEST_ASSERT_TRUE(label.manufacturerPartNumber == "0ZCM0010FF2G");
+  TEST_ASSERT_EQUAL_INT(5, label.quantity);
+  const auto tmeCode = tmeBagCodeForSync(label, kMaximumBagEventCodeBytes);
+  TEST_ASSERT_TRUE(tmeCode == "PN:0ZCM0010FF2G MPN:0ZCM0010FF2G");
+
+  // The product page is optional, as the desktop reads it. The symbol and the manufacturer part number are needed.
+  TmeBagLabel rejected;
+  TEST_ASSERT_TRUE(parseTmeBagLabel("QTY:5 PN:0ZCM0010FF2G MPN:0ZCM0010FF2G", rejected));
+  TEST_ASSERT_TRUE(rejected.symbol == "0ZCM0010FF2G");
+  TEST_ASSERT_FALSE(parseTmeBagLabel("PN:0ZCM0010FF2G https://www.tme.eu/details/0ZCM0010FF2G", rejected));
+  // A DigiKey bag's code is not a TME label.
+  TEST_ASSERT_FALSE(parseTmeBagLabel(digiKey, rejected));
+}
+
 void test_standardized_scanner_codes() {
   TEST_ASSERT_TRUE(isStandardMachineCode("0002"));
   TEST_ASSERT_FALSE(isStandardMachineCode("31"));
@@ -1134,6 +1177,7 @@ void setup() {
   registerBlockedHeadTests();
   registerTextHelperTests();
   RUN_TEST(test_standardized_scanner_codes);
+  RUN_TEST(test_bag_codes_for_sync);
   RUN_TEST(test_datamatrix_decoding_fixtures);
   RUN_TEST(test_quantity_composer_defaults_and_limit);
   RUN_TEST(test_quantity_composer_never_submits_a_value_it_does_not_show);
