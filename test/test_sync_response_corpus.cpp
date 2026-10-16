@@ -76,6 +76,7 @@ void test_sync_corpus_rejects_structural_damage() {
   expectRejected("duplicate key", String("{\"protocolVersion\":1,\"protocolVersion\":1,\"requestId\":\"r\",\"acceptedEventIds\":[],\"results\":[]}"));
   expectRejected("duplicate key in an unread member",
                  withMember(String("\"extra\":1,\"extra\":2")));
+  expectRejected("escaped name repeats an unread member", withMember(String("\"extra\":1,\"\\u0065xtra\":2")));
   expectRejected("byte order mark before the object", String("\xEF\xBB\xBF") + kMinimal);
   expectRejected("NaN literal in an unread member", withMember(String("\"extra\":NaN")));
   expectRejected("Infinity literal in an unread member", withMember(String("\"extra\":Infinity")));
@@ -188,8 +189,9 @@ void test_sync_corpus_decodes_escapes_and_unicode() {
   TEST_ASSERT_TRUE(escaped.valid);
   TEST_ASSERT_EQUAL_STRING("a\"b\\c/d\b\f\n\r\t", escaped.requestId.c_str());
 
-  // U+1F600 is four UTF-8 bytes: F0 9F 98 80.
-  const SyncResponse emoji = parseSyncResponseJson(
+  // U+1F600 is four UTF-8 bytes: F0 9F 98 80. Static, so only one SyncResponse
+  // (about half a kilobyte) is on the 8 KiB loop stack at a time.
+  static const SyncResponse emoji = parseSyncResponseJson(
       "{\"protocolVersion\":1,\"requestId\":\"r\",\"acceptedEventIds\":[],\"results\":[],\"lookupResult\":"
       "{\"lookupId\":\"l\",\"status\":\"found\",\"itemName\":\"\\uD83D\\uDE00\"}}");
   TEST_ASSERT_TRUE(emoji.valid);
