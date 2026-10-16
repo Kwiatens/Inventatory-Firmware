@@ -5,6 +5,7 @@
 
 #include <Arduino.h>
 
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 
@@ -391,21 +392,31 @@ class SyncJsonParser {
     return position;
   }
 
-  // True when an earlier member of the same object has the same name. Names are
-  // compared as written in the body, without decoding escapes.
+  // True when an earlier member of the same object has the same name, compared after escapes are
+  // decoded, so "resultId" repeats "resultId". Earlier members are already validated.
+  // True when an earlier member of the same object has the same name. Plain names are compared as they
+  // are written, which is the same as comparing them decoded. A name with an escape is decoded, so
+  // "\u0072esultId" repeats "resultId". Earlier members are already validated.
   bool keyRepeatsEarlierMember(std::size_t objectStart, std::size_t keyStart, std::size_t keyEnd) const {
-    const std::size_t keyLength = keyEnd - keyStart;
+    const bool keyEscaped = hasEscape(keyStart, keyEnd);
     std::size_t position = objectStart + 1U;
     skipWhitespace(position);
     while (position < keyStart) {
       const std::size_t earlierStart = position;
       if (!parseString(position, nullptr)) return true;
-      if (position - earlierStart == keyLength) {
-        bool same = true;
-        for (std::size_t index = 0; same && index < keyLength; ++index) {
-          same = input_[earlierStart + index] == input_[keyStart + index];
-        }
-        if (same) return true;
+      const std::size_t earlierEnd = position;
+      if (keyEscaped || hasEscape(earlierStart, earlierEnd)) {
+        String earlier;
+        std::size_t decodePosition = earlierStart;
+        String current;
+        if (!parseString(decodePosition, &earlier)) return true;
+        std::size_t currentPosition = keyStart;
+        if (!parseString(currentPosition, &current)) return true;
+        if (earlier == current) return true;
+      } else if (earlierEnd - earlierStart == keyEnd - keyStart &&
+                 std::equal(input_.c_str() + earlierStart, input_.c_str() + earlierEnd,
+                            input_.c_str() + keyStart)) {
+        return true;
       }
       skipWhitespace(position);
       if (position >= input_.length() || input_[position] != ':') return true;
@@ -415,6 +426,14 @@ class SyncJsonParser {
       skipWhitespace(position);
       if (position < input_.length() && input_[position] == ',') ++position;
       skipWhitespace(position);
+    }
+    return false;
+  }
+
+  // True when the raw bytes between keyStart and keyEnd contain a backslash, that is, an escape.
+  bool hasEscape(std::size_t start, std::size_t end) const {
+    for (std::size_t index = start; index < end; ++index) {
+      if (input_[index] == '\\') return true;
     }
     return false;
   }
