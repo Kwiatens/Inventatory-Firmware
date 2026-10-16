@@ -61,16 +61,6 @@ enum class DisplayBodyKind {
   Choice,
 };
 
-// What the dot of the ›i mark shows on the boot and update screens. The normal
-// boot shows no dot; a fault keeps a static broken dot.
-enum class DisplayBrandDot {
-  None,
-  Full,
-  Busy,
-  Progress,
-  Fault,
-};
-
 enum class DisplayRailStyle {
   None,
   Static,
@@ -88,7 +78,6 @@ struct RenderActivity {
   bool alternate = false;
   bool quantityCursorVisible = true;
   int railActivityOffset = 0;
-  uint8_t brandDotSlots = 0;
   // Top bar page, as a HeaderPage value.
   uint8_t headerPage = 0;
   // Battery card fill, 0 .. kBatteryCardFillSteps.
@@ -107,7 +96,8 @@ struct DisplayModel {
   DisplayRailStyle rail = DisplayRailStyle::Activity;
   DisplayConnectivityState connectivity = DisplayConnectivityState::Offline;
   bool showPcStatus = true;
-  DisplayBrandDot brandDot = DisplayBrandDot::None;
+  // The update screen shows the percentage and a progress bar.
+  bool otaProgress = false;
   bool animateEllipsis = false;
   bool receiveQuantity = false;
   std::size_t queueDepth = 0;

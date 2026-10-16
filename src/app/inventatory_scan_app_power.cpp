@@ -112,7 +112,8 @@ void InventatoryScanApp::noteUserActivity() { lastUserActivityAt_ = millis(); }
 String InventatoryScanApp::batteryEstimateText() const {
   char text[32];
   if (!formatBatteryEstimate(text, sizeof(text), batteryTracker_.minutesRemaining(),
-                             batteryTracker_.charging(), batteryTracker_.percent())) {
+                             batteryTracker_.charging(), batteryTracker_.percent(),
+                             batteryTracker_.estimateApproximate())) {
     return String();
   }
   return String(text);
