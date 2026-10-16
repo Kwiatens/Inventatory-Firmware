@@ -141,7 +141,7 @@ bool InventatoryScanApp::startOtaService() {
     Serial.printf("OTA progress: %u%%\r", percent);
     // The upload runs to completion inside ArduinoOTA.handle() on this core, so
     // the loop does not tick the display until it ends; render from here. tick()
-    // only redraws when the percentage or the dot's blink changed.
+    // only redraws when the percentage changed.
     if (static_cast<int>(percent) != otaDisplayedPercent_) {
       otaDisplayedPercent_ = static_cast<int>(percent);
       display_.showOta("UPDATING", otaDisplayedPercent_);

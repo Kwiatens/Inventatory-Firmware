@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The host test suite covers the queue migrations, the replay counter and the provisioning parser. A coverage report is available with `make -C host-tests coverage`.
 
 ### Fixed
+- A sync result no longer replaces a settings or confirmation screen that the operator has open. Only the Ready, quantity and waiting screens take a result.
 - A failed local save is shown instead of an earlier result.
 - Bluetooth setup no longer keeps stale pairing data from an earlier attempt.
 - A queue written by another firmware version, or a damaged queue header, no longer blocks scanning until the device is erased.

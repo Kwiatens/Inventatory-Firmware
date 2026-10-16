@@ -53,7 +53,7 @@ bool SetupStateStore::savePending(const ProvisionedSettings& settings) {
       !prefs_.putUInt("magic", kMagic) || !prefs_.putUShort("version", kVersion)) {
     return false;
   }
-  return prefs_.putBool("complete", false);
+  return true;
 }
 
 bool SetupStateStore::commit() {

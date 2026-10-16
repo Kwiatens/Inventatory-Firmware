@@ -21,6 +21,8 @@ class Gm65Scanner {
   bool active() const;
 
  private:
+  // Opens the UART, applies the boot profile and starts accepting frames after a settle time.
+  bool start();
   bool applyBootProfile();
   bool writeZoneBit(uint16_t address, uint8_t value);
   bool writeZoneByte(uint8_t type, uint16_t address, uint8_t value);
