@@ -88,7 +88,8 @@ void DisplayRenderer::drawClipped(int x, int y, int maxWidth, const String& valu
 // One line centred on the screen, clipped to the screen width less a margin on each side.
 void DisplayRenderer::drawCentered(const uint8_t* font, int baselineY, const String& text) {
   lcd_.setFont(font);
-  const int width = std::min(lcd_.getStrWidth(text.c_str()), style::kScreenW - 2 * style::kCenterMargin);
+  const int width = std::min(static_cast<int>(lcd_.getStrWidth(text.c_str())),
+                             style::kScreenW - 2 * style::kCenterMargin);
   drawClipped((style::kScreenW - width) / 2, baselineY, width, text);
 }
 
