@@ -21,7 +21,7 @@ namespace inventatory_scan {
 namespace {
 
 // Pins that the board already drives or reads, from config.h and hardware.h. The backlight and
-// dock signal must not share one with them, nor with each other.
+// charger LEDs must not share one with them, nor with each other.
 constexpr int kClaimedPins[] = {
     KEYPAD_COLUMN_1_PIN, KEYPAD_COLUMN_2_PIN, KEYPAD_COLUMN_3_PIN, KEYPAD_COLUMN_4_PIN,
     KEYPAD_ROW_1_PIN,    KEYPAD_ROW_2_PIN,    KEYPAD_ROW_3_PIN,    KEYPAD_ROW_4_PIN,
@@ -42,12 +42,17 @@ constexpr bool pinIsClaimed(int pin, const int* pins, std::size_t count) {
 }
 
 static_assert(!pinIsReserved(hardware::kBacklightPin), "kBacklightPin is a strap, LED, USB or flash pin");
-static_assert(!pinIsReserved(hardware::kChargerSensePin), "kChargerSensePin is a strap, LED, USB or flash pin");
+static_assert(!pinIsReserved(hardware::kChargingLedPin), "kChargingLedPin is a strap, LED, USB or flash pin");
+static_assert(!pinIsReserved(hardware::kChargeDoneLedPin), "kChargeDoneLedPin is a strap, LED, USB or flash pin");
 static_assert(!pinIsClaimed(hardware::kBacklightPin, kClaimedPins, kClaimedPinCount),
               "kBacklightPin is already used by the keypad, scanner, battery or LCD");
-static_assert(!pinIsClaimed(hardware::kChargerSensePin, kClaimedPins, kClaimedPinCount),
-              "kChargerSensePin is already used by the keypad, scanner, battery or LCD");
-static_assert(hardware::kBacklightPin != hardware::kChargerSensePin, "backlight and dock signal share a pin");
+static_assert(!pinIsClaimed(hardware::kChargingLedPin, kClaimedPins, kClaimedPinCount),
+              "kChargingLedPin is already used by the keypad, scanner, battery or LCD");
+static_assert(!pinIsClaimed(hardware::kChargeDoneLedPin, kClaimedPins, kClaimedPinCount),
+              "kChargeDoneLedPin is already used by the keypad, scanner, battery or LCD");
+static_assert(hardware::kBacklightPin != hardware::kChargingLedPin, "backlight and charging LED share a pin");
+static_assert(hardware::kBacklightPin != hardware::kChargeDoneLedPin, "backlight and charging LED share a pin");
+static_assert(hardware::kChargingLedPin != hardware::kChargeDoneLedPin, "the two charging LEDs share a pin");
 
 // ESP32 NVS namespaces are limited to 15 characters plus the terminator.
 constexpr char kOutboxNamespace[] = "inv_outbox";
@@ -82,11 +87,14 @@ bool InventatoryScanApp::begin() {
   keypadInit();
   const uint32_t bootMillivolts = battery_.readMillivolts();
   Serial.printf("Battery %lu mV\r\n", static_cast<unsigned long>(bootMillivolts));
-  batteryTracker_.update(bootMillivolts, battery_.chargerPresent(), millis());
+  const ChargeState bootCharge = battery_.chargeState();
+  batteryTracker_.update(bootMillivolts, bootCharge != ChargeState::Unplugged, millis(),
+                         bootCharge == ChargeState::Done);
   batterySampled_ = true;
   lastBatterySampleAt_ = millis();
   lastCharging_ = batteryTracker_.charging();
-  display_.setBatteryStatus(batteryTracker_.percent(), lastCharging_, batteryEstimateText());
+  lastChargeDone_ = batteryTracker_.chargeDone();
+  display_.setBatteryStatus(batteryTracker_.percent(), lastCharging_, lastChargeDone_, batteryEstimateText());
   // A cell that is low and not docked is refused: show why, then sleep again.
   const int bootPercent = batteryTracker_.percent();
   if (bootPercent >= 0 && bootPercent <= kBatteryLowPercent && !lastCharging_) {

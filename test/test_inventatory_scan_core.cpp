@@ -898,6 +898,32 @@ void test_battery_tracker_learns_runtime() {
   TEST_ASSERT_TRUE(toFull >= 4 && toFull <= 12);
 }
 
+void test_charge_state_from_status_leds() {
+  TEST_ASSERT_TRUE(chargeStateFromLeds(false, false) == ChargeState::Unplugged);
+  TEST_ASSERT_TRUE(chargeStateFromLeds(true, false) == ChargeState::Charging);
+  TEST_ASSERT_TRUE(chargeStateFromLeds(false, true) == ChargeState::Done);
+  // Both lit is a wiring fault; the red LED wins, so the device keeps charging.
+  TEST_ASSERT_TRUE(chargeStateFromLeds(true, true) == ChargeState::Charging);
+}
+
+void test_battery_tracker_debounces_charge_done() {
+  BatteryTracker tracker;
+  tracker.update(4000, true, 0);
+  TEST_ASSERT_FALSE(tracker.chargeDone());
+  // One sample of the done LED is a flicker, not the end of charging.
+  tracker.update(4000, true, 1000, true);
+  TEST_ASSERT_FALSE(tracker.chargeDone());
+  tracker.update(4000, true, 2000, false);
+  tracker.update(4000, true, 3000, true);
+  TEST_ASSERT_FALSE(tracker.chargeDone());
+  tracker.update(4000, true, 4000, true);
+  TEST_ASSERT_TRUE(tracker.chargeDone());
+  // It reads done only while charging.
+  tracker.update(4000, false, 5000, true);
+  tracker.update(4000, false, 6000, true);
+  TEST_ASSERT_FALSE(tracker.chargeDone());
+}
+
 void test_battery_estimate_text() {
   char text[32];
   TEST_ASSERT_TRUE(formatBatteryDuration(text, sizeof(text), 42));
@@ -1143,6 +1169,8 @@ void setup() {
   RUN_TEST(test_battery_tracker_guards_and_debounce);
   RUN_TEST(test_battery_unreadable_needs_four_bad_readings_in_a_row);
   RUN_TEST(test_battery_tracker_learns_runtime);
+  RUN_TEST(test_charge_state_from_status_leds);
+  RUN_TEST(test_battery_tracker_debounces_charge_done);
   RUN_TEST(test_battery_estimate_text);
   RUN_TEST(test_datamatrix_size_guard_is_exact_at_512_bytes);
   RUN_TEST(test_manufacturer_part_number_length_bounds);

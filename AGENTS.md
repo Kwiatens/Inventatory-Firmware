@@ -100,7 +100,8 @@ Authoritative pin assignments are defined in `src/config/hardware.h` and
 | | Rows 1-4 | `9, 10, 17, 18` (D6-D9) | Scanned and debounced on Core 1; all RTC GPIOs |
 | **Power key (`*`)** | Wake column (column 1) / drive row (row 4) | `5` / `18` | Deep sleep: row 4 held low, other rows held high, column 1 wakes on low (ext1 ANY_LOW) |
 | **LiPo sense** | Divider midpoint (`BATTERY_ADC_PIN`) | `1` (A0, ADC1) | BAT+ -> 100 kOhm -> pin -> 100 kOhm -> GND, 100 nF to GND; ADC2 cannot be used with Wi-Fi |
-| **Dock charger sense** | High while the dock supplies power (`hardware::kChargerSensePin`) | `38` (header MOSI, right pin 14) | The board has no battery charger, so the dock must drive this line. Internal pull-down reads an unwired pad as "not charging". Divide or level-shift signals above 3.3 V |
+| **Charging LED (red)** | High while the UPS module's charger LED is lit, i.e. charging (`hardware::kChargingLedPin`) | `4` (header A3, left pin 4) | Internal pull-down reads an unwired pad as "not lit". Divide or level-shift signals above 3.3 V. Confirm the level with a meter before wiring |
+| **Charge-done LED (green)** | High while the UPS module's charge-complete LED is lit (`hardware::kChargeDoneLedPin`) | `38` (header MOSI, right pin 14) | Replaced the old dock-present line. Same pull-down and level rules as the red LED |
 | **LCD backlight** | Backlight on/off through an external transistor (`hardware::kBacklightPin`) | `2` (header A1, left pin 5) | Active high (`kBacklightOnLevel`). The board has no backlight driver, so the transistor and its gate pull-down must be added |
 
 GPIO0, GPIO3, GPIO45 and GPIO46 are boot straps or the RGB LED, and GPIO48 drives the board's SCK LED.

@@ -128,17 +128,22 @@ constexpr int kCardTitleY = 28;
 constexpr int kCardDetailY = 39;
 constexpr int kCardValueY = 58;
 
-// Low-battery warning: a warning triangle, the title beside it, and the countdown bar.
+// Low-battery warning: a triangle, the title and detail beside it, the countdown bar, and the
+// countdown line under the bar. The title, detail and countdown line share one left edge
+// (kWarnTextX). The widest countdown line ("Powering off in 10 s") is 95 px, so the text column
+// must start at 30 or less to fit before the right margin (kHeaderRightX).
 constexpr int kWarnIconX = 7;
-constexpr int kWarnIconY = 9;
+constexpr int kWarnIconY = 14;
 constexpr int kWarnIconW = 16;
 constexpr int kWarnIconH = 14;
-constexpr int kWarnTextX = 31;
+constexpr int kWarnTextX = 29;
 constexpr int kWarnTitleY = 20;
 constexpr int kWarnDetailY = 31;
-constexpr int kWarnCountdownY = 44;
 constexpr int kWarnBarX = 7;
-constexpr int kWarnBarY = 50;
+constexpr int kWarnBarY = 39;
+// A notice with no bar keeps its line right under the detail (kWarnNoticeY).
+constexpr int kWarnCountdownY = 57;
+constexpr int kWarnNoticeY = 42;
 constexpr int kWarnBarW = 114;
 constexpr int kWarnBarH = 6;
 
