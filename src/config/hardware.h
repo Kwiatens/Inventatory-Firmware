@@ -27,11 +27,14 @@ constexpr uint8_t kBacklightPin = 2;
 constexpr uint8_t kBacklightOnLevel = 1;
 constexpr uint8_t kBacklightOffLevel = kBacklightOnLevel ? 0 : 1;
 
-// Dock charger present: high while the dock supplies power. The board has no battery charger
-// (the schematic shows only USB-C and a buck converter), so the dock must drive this line. Use a
-// divider or level shifter if the signal is above 3.3 V. The pin is header pad MOSI (GPIO38, right
-// header pin 14), which no other net on the board uses. An internal pull-down reads an unwired pad
-// as "not charging".
-constexpr uint8_t kChargerSensePin = 38;
+// Charger status LEDs from the LiPo UPS module: red lit while the cell charges, green lit when
+// charging is complete. Both are inputs read against GND. Use a divider or level shifter if a
+// pad swings above 3.3 V. An internal pull-down reads an unwired pad as "not lit".
+// Red is header pad A3 (GPIO4, left header pin 4). Green is header pad MOSI (GPIO38, right header
+// pin 14), which replaced the old dock-present line.
+constexpr uint8_t kChargingLedPin = 4;
+constexpr uint8_t kChargeDoneLedPin = 38;
+// Level that means "LED lit". Change to 0 only after measuring the pad with the LED on.
+constexpr uint8_t kChargeLedOnLevel = 1;
 
 }  // namespace inventatory_scan::hardware

@@ -63,10 +63,11 @@ class DisplayController {
   void setQueueUnreadable(bool unreadable);
 
   // Battery in the top bar. percent < 0 means unknown.
-  void setBatteryStatus(int percent, bool charging, const String& estimate);
+  // chargeDone: the charger's "charging complete" LED is lit, so the top bar reads "Charged".
+  void setBatteryStatus(int percent, bool charging, bool chargeDone, const String& estimate);
   // Overlays cover the screen beneath them and leave it intact, so the screen is
   // back as it was when the overlay ends.
-  void showBatteryCard(bool charging, int percent, const String& estimate, unsigned long dwellMs);
+  void showBatteryCard(bool charging, bool chargeDone, int percent, const String& estimate, unsigned long dwellMs);
   // A warning with a countdown: the low battery, and the energy saving steps before sleep and power off.
   // countdownSeconds < 0 hides the countdown line and bar.
   void showCountdownWarning(const String& title, const String& detail, const String& note, int countdownSeconds,

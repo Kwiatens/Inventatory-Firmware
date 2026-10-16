@@ -133,6 +133,8 @@ struct DisplayModel {
   // Battery in the top bar and on the battery cards. batteryPercent < 0 means unknown.
   int batteryPercent = -1;
   bool batteryCharging = false;
+  // The charger's "charging complete" LED is lit; the top bar reads "Charged".
+  bool batteryChargeDone = false;
   // Runtime line ("6h 20m left", "Full: 1h 05m"); empty until a rate is known.
   String batteryEstimate;
   // Low-battery countdown in seconds; negative when the screen has none.

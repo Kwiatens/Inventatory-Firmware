@@ -167,6 +167,8 @@ class InventatoryScanApp {
   bool batterySampled_ = false;
   unsigned long lastBatterySampleAt_ = 0;
   bool lastCharging_ = false;
+  // The charger's green "charging complete" LED was lit at the last battery sample.
+  bool lastChargeDone_ = false;
   // Latched when the low-battery warning appears; it clears only when the dock connects.
   bool lowBatteryWarning_ = false;
   unsigned long lowBatteryWarningAt_ = 0;
