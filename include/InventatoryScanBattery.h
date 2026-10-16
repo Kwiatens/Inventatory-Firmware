@@ -75,6 +75,20 @@ enum class BatteryLevel : uint8_t {
   Critical,
 };
 
+// The charger's two status LEDs. Red lit: charging. Green lit: charging complete. Neither
+// lit: on battery, or the charger has not started. Red wins if both read lit.
+enum class ChargeState : uint8_t {
+  Unplugged,
+  Charging,
+  Done,
+};
+
+inline ChargeState chargeStateFromLeds(bool redLit, bool greenLit) {
+  if (redLit) return ChargeState::Charging;
+  if (greenLit) return ChargeState::Done;
+  return ChargeState::Unplugged;
+}
+
 // Tracks the battery from one reading per second. The voltage is smoothed, the
 // percent follows the smoothed voltage, and the time to empty or full comes from
 // the rate seen so far: how long each whole percent took to change while
