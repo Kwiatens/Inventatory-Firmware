@@ -32,5 +32,5 @@
 
 ## Notes for the next agent
 - Do not re-merge origin/ccr-793285a6-2t9u8g. Its commits are already on main.
-- Backups still held: stash@{0} (late merge state), stash@{1} (pre-merge WIP), refs/backup/merge-state-late, and the backup folder. Drop them only after the owner agrees.
-- Remote branches not on main: origin/feature/bag-code-transport (one unmerged commit) and an old Dependabot branch.
+- Backups dropped on 2026-10-17 with the owner's agreement: the two stash entries, refs/backup/merge-state-late and the backup folder. One unrelated old stash (on fix/review-remediation) is left.
+- Remote branches not on main: origin/feature/bag-code-transport (one commit, see its own note), origin/dependabot/github_actions/actions-25c580fd63 (kept until its Code of Conduct is ported).
