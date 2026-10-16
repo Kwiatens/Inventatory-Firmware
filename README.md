@@ -58,6 +58,7 @@ pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
 - [Architecture and invariants](AGENTS.md), also the guide for coding agents
 - [Changelog](CHANGELOG.md)
 - [Release steps](docs/releasing.md)
+- [Wiring notes](docs/wiring.md), including the GM65 cable colour warning
 
 ## License
 
