@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The host test suite covers the queue migrations, the replay counter and the provisioning parser. A coverage report is available with `make -C host-tests coverage`.
 
 ### Fixed
+- The charger's "charging complete" LED is debounced like the charging state, so a flickering LED does not re-show the dock card. With it lit, the estimate reads "Fully charged" to match the top bar.
 - A sync result no longer replaces a settings or confirmation screen that the operator has open. Only the Ready, quantity and waiting screens take a result.
 - A failed local save is shown instead of an earlier result.
 - Bluetooth setup no longer keeps stale pairing data from an earlier attempt.
@@ -65,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A stale acknowledgement can no longer let an OTA request start before the network task has paused.
 - Values shared between the two cores are atomic, and the network mutex is never freed while it is in use.
 - BLE provisioning status is published from the main loop, not from the BLE callback.
+- The low-battery warning screen is aligned: the triangle and its `!` are centred, the countdown bar has no frame, and the countdown line sits under the bar.
 
 ### Security
 - The transport HTTP status is published only after the response MAC verifies. A missing counter key fails closed.

@@ -23,6 +23,27 @@ constexpr int kStemColumn = 4;
 // Lightning bolt, 5 x 7: one byte per row, bit 0 at the left.
 constexpr uint8_t kBoltRows[style::kBoltH] = {0x18, 0x0C, 0x06, 0x1F, 0x18, 0x0C, 0x06};
 
+// Low-battery warning triangle, 16 x 14, with the '!' cut out. Drawn from a bitmap rather than
+// a geometric triangle, so the sides step evenly and the '!' is exactly centred. Two bytes per
+// row, low byte first, bit 0 at the left, as drawXBMP expects. The column between pixels 7 and 8
+// is the centre line.
+constexpr uint8_t kWarnIconRows[style::kWarnIconH * 2] = {
+    0x80, 0x01,  // .......##.......
+    0xC0, 0x03,  // ......####......
+    0xC0, 0x03,  // ......####......
+    0x60, 0x06,  // .....##..##.....
+    0x60, 0x06,  // .....##..##.....
+    0x70, 0x0E,  // ....###..###....
+    0x70, 0x0E,  // ....###..###....
+    0x78, 0x1E,  // ...####..####...
+    0xF8, 0x1F,  // ...##########...
+    0x7C, 0x3E,  // ..#####..#####..
+    0x7C, 0x3E,  // ..#####..#####..
+    0xFE, 0x7F,  // .##############.
+    0xFE, 0x7F,  // .##############.
+    0xFF, 0xFF,  // ################
+};
+
 // The chevron's tip row: the middle of the five body rows.
 constexpr int kTipRow = style::kMarkBodyRows / 2;
 
@@ -119,8 +140,8 @@ DisplayRenderer::HeaderSlot DisplayRenderer::headerSlotFor(const DisplayModel& m
     }
   } else if (page == HeaderPage::Status && model.showPcStatus) {
     slot.text = !model.batteryCharging ? pcStatusText(model)
-                : model.batteryPercent >= 100 ? String("Charged")
-                                              : String("Charging");
+                : (model.batteryChargeDone || model.batteryPercent >= 100) ? String("Charged")
+                                                                           : String("Charging");
     slot.font = style::kFontRegular;
   } else if (page == HeaderPage::Estimate && model.batteryEstimate.length() > 0) {
     slot.text = model.batteryEstimate;
@@ -544,31 +565,22 @@ void DisplayRenderer::drawBatteryCard(const DisplayModel& model, const RenderAct
   drawClipped(style::kCardTextX, style::kCardValueY, textW, percentText);
 }
 
-// The low-battery warning: a triangle, the title, the detail, and a countdown
-// line with a bar that empties as the shutdown nears.
+// The low-battery warning: a triangle, the title, the detail, a bar that empties as the shutdown
+// nears, and the countdown line under the bar.
 void DisplayRenderer::drawCountdownWarning(const DisplayModel& model) {
-  const int x = style::kWarnIconX;
-  const int y = style::kWarnIconY;
-  const int w = style::kWarnIconW;
-  const int h = style::kWarnIconH;
-  lcd_.drawTriangle(x + w / 2, y, x, y + h, x + w, y + h);
-  lcd_.setDrawColor(0);
-  lcd_.drawBox(x + w / 2 - 1, y + 4, 2, 6);
-  lcd_.drawBox(x + w / 2 - 1, y + 11, 2, 2);
-  lcd_.setDrawColor(1);
+  lcd_.drawXBMP(style::kWarnIconX, style::kWarnIconY, style::kWarnIconW, style::kWarnIconH, kWarnIconRows);
 
   const int textW = style::kHeaderRightX - style::kWarnTextX;
   lcd_.setFont(style::kFontHeading);
   drawClipped(style::kWarnTextX, style::kWarnTitleY, textW, model.primary);
   lcd_.setFont(style::kFontRegular);
   drawClipped(style::kWarnTextX, style::kWarnDetailY, textW, model.secondary);
-  drawClipped(style::kWarnBarX, style::kWarnCountdownY, style::kWarnBarW, model.tertiary);
 
-  if (model.countdownSeconds >= 0) {
-    lcd_.drawFrame(style::kWarnBarX, style::kWarnBarY, style::kWarnBarW, style::kWarnBarH);
-    const int innerW = style::kWarnBarW - 4;
-    const int fill = innerW * constrain(model.countdownPercent, 0, 100) / 100;
-    if (fill > 0) lcd_.drawBox(style::kWarnBarX + 2, style::kWarnBarY + 2, fill, style::kWarnBarH - 4);
+  const bool hasBar = model.countdownSeconds >= 0;
+  drawClipped(style::kWarnTextX, hasBar ? style::kWarnCountdownY : style::kWarnNoticeY, textW, model.tertiary);
+  if (hasBar) {
+    const int fill = style::kWarnBarW * constrain(model.countdownPercent, 0, 100) / 100;
+    if (fill > 0) lcd_.drawBox(style::kWarnBarX, style::kWarnBarY, fill, style::kWarnBarH);
   }
 }
 

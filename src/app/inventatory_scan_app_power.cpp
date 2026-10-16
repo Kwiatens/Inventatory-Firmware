@@ -112,7 +112,7 @@ void InventatoryScanApp::noteUserActivity() { lastUserActivityAt_ = millis(); }
 String InventatoryScanApp::batteryEstimateText() const {
   char text[32];
   if (!formatBatteryEstimate(text, sizeof(text), batteryTracker_.minutesRemaining(),
-                             batteryTracker_.charging(), batteryTracker_.percent(),
+                             batteryTracker_.charging(), batteryTracker_.chargeDone() ? 100 : batteryTracker_.percent(),
                              batteryTracker_.estimateApproximate())) {
     return String();
   }
@@ -131,18 +131,22 @@ void InventatoryScanApp::serviceBattery() {
   batterySampled_ = true;
   lastBatterySampleAt_ = now;
 
-  batteryTracker_.update(battery_.readMillivolts(), battery_.chargerPresent(), now);
+  const ChargeState charge = battery_.chargeState();
+  batteryTracker_.update(battery_.readMillivolts(), charge != ChargeState::Unplugged, now,
+                         charge == ChargeState::Done);
+  const bool chargeDone = batteryTracker_.chargeDone();
   display_.setBatteryUnreadable(batteryTracker_.unreadable());
   const bool charging = batteryTracker_.charging();
   const int percent = batteryTracker_.percent();
   const String estimate = batteryEstimateText();
-  display_.setBatteryStatus(percent, charging, estimate);
+  display_.setBatteryStatus(percent, charging, chargeDone, estimate);
 
-  if (charging != lastCharging_) {
+  if (charging != lastCharging_ || chargeDone != lastChargeDone_) {
     lastCharging_ = charging;
+    lastChargeDone_ = chargeDone;
     noteUserActivity();
     if (charging && lowBatteryWarning_) cancelLowBatteryWarning();
-    if (canShowBatteryCard()) display_.showBatteryCard(charging, percent, estimate, kBatteryCardMs);
+    if (canShowBatteryCard()) display_.showBatteryCard(charging, chargeDone, percent, estimate, kBatteryCardMs);
   }
 
   if (lowBatteryWarning_) {

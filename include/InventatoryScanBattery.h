@@ -82,6 +82,20 @@ enum class BatteryLevel : uint8_t {
   Critical,
 };
 
+// The charger's two status LEDs. Red lit: charging. Green lit: charging complete. Neither
+// lit: on battery, or the charger has not started. Red wins if both read lit.
+enum class ChargeState : uint8_t {
+  Unplugged,
+  Charging,
+  Done,
+};
+
+inline ChargeState chargeStateFromLeds(bool redLit, bool greenLit) {
+  if (redLit) return ChargeState::Charging;
+  if (greenLit) return ChargeState::Done;
+  return ChargeState::Unplugged;
+}
+
 // Tracks the battery from one reading per second. The voltage is smoothed, the
 // percent follows the smoothed voltage, and the time to empty or full comes from
 // the rate seen so far: how long each whole percent took to change while
@@ -89,7 +103,9 @@ enum class BatteryLevel : uint8_t {
 // unsigned arithmetic, so they survive the 32-bit wrap.
 class BatteryTracker {
  public:
-  void update(uint32_t millivolts, bool charging, uint32_t nowMs) {
+  // chargeDone: the charger reports that charging is complete. Like `charging`, it must read the new
+  // state for kBatteryChargerDebounceSamples samples in a row before it changes.
+  void update(uint32_t millivolts, bool charging, uint32_t nowMs, bool chargeDone = false) {
     if (millivolts < kBatteryMinimumValidMv || millivolts > kBatteryMaximumValidMv) {
       valid_ = false;
       if (invalidSamples_ < 255U) ++invalidSamples_;
@@ -110,7 +126,9 @@ class BatteryTracker {
     percent_ = batteryPercentFromMillivolts(smoothedMv_);
     if (firstSample) {
       charging_ = charging;
+      chargeDone_ = chargeDone;
       chargerFlipSamples_ = 0;
+      doneFlipSamples_ = 0;
       restartAnchor(nowMs);
     } else if (charging != charging_) {
       if (chargerFlipSamples_ < 255U) ++chargerFlipSamples_;
@@ -122,6 +140,12 @@ class BatteryTracker {
     } else {
       chargerFlipSamples_ = 0;
     }
+    if (chargeDone == chargeDone_) {
+      doneFlipSamples_ = 0;
+    } else if (++doneFlipSamples_ >= kBatteryChargerDebounceSamples) {
+      chargeDone_ = chargeDone;
+      doneFlipSamples_ = 0;
+    }
     learnRate(nowMs);
     countTrip(lowSamples_, percent_ <= kBatteryLowPercent);
     countTrip(criticalSamples_, percent_ <= kBatteryCriticalPercent);
@@ -132,6 +156,8 @@ class BatteryTracker {
   // single bad sample never shows a fault.
   bool unreadable() const { return invalidSamples_ >= kBatteryTripSamples; }
   bool charging() const { return valid_ && charging_; }
+  // Charging, and the charger says it is complete.
+  bool chargeDone() const { return charging() && chargeDone_; }
   // -1 while no reading has been taken.
   int percent() const { return valid_ ? static_cast<int>(percent_) : -1; }
   // -1 while there is no reading. Before a rate has been observed it comes from the typical rate
@@ -203,7 +229,9 @@ class BatteryTracker {
   bool rateKnown_[2] = {false, false};
   uint8_t lowSamples_ = 0;
   uint8_t criticalSamples_ = 0;
+  bool chargeDone_ = false;
   uint8_t chargerFlipSamples_ = 0;
+  uint8_t doneFlipSamples_ = 0;
   uint8_t invalidSamples_ = 0;
 };
 

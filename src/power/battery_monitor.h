@@ -5,17 +5,20 @@
 
 #include <Arduino.h>
 
+#include "InventatoryScanBattery.h"
+
 namespace inventatory_scan {
 
 // LiPo voltage read through the resistor divider on BATTERY_ADC_PIN (see config.example.h),
-// and the dock's charger-present signal on hardware::kChargerSensePin.
+// and the charger state from the two status LEDs on hardware::kChargingLedPin and
+// hardware::kChargeDoneLedPin.
 class BatteryMonitor {
  public:
   void begin();
   // Battery terminal voltage in millivolts, averaged over several calibrated ADC conversions.
   uint32_t readMillivolts() const;
-  // True while the dock supplies power.
-  bool chargerPresent() const;
+  // Charging, done, or unplugged, from the status LEDs.
+  ChargeState chargeState() const;
 };
 
 }  // namespace inventatory_scan
