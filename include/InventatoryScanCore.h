@@ -169,6 +169,105 @@ inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields&
   return decoded.manufacturerPartNumber.length() > 0 || decoded.encodedPartName.length() > 0;
 }
 
+// The longest code the outbox keeps: its code field holds 64 characters and a terminator.
+constexpr size_t kMaximumBagEventCodeBytes = 64U;
+
+inline bool isBagIdentifierCharacter(char ch) {
+  const auto byte = static_cast<unsigned char>(ch);
+  return std::isalnum(byte) != 0 || ch == '-' || ch == '_' || ch == '.' || ch == '/' || ch == '+' || ch == '#';
+}
+
+inline bool isBagIdentifier(const String& value) {
+  if (value.length() == 0 || value.length() > kMaximumBagEventCodeBytes) return false;
+  for (size_t index = 0; index < value.length(); ++index) {
+    if (!isBagIdentifierCharacter(value[index])) return false;
+  }
+  return true;
+}
+
+// Rebuilds the bag code the desktop recognises for a DigiKey bag, from the bag's own identifiers: the ISO/IEC 15434
+// Macro 06 envelope, the DigiKey part number (P) and, when it fits, the manufacturer part number (1P). Only these
+// identifiers leave the scanner. Empty when the bag has no DigiKey part number (one ending in -ND) or the code would not
+// fit in maxLength.
+inline String digiKeyBagCodeForSync(const String& digiKeyPartNumber, const String& manufacturerPartNumber,
+                                    size_t maxLength) {
+  const auto partNumber = trimCopy(digiKeyPartNumber);
+  if (partNumber.length() <= 3U || partNumber.substring(partNumber.length() - 3U) != "-ND") return String();
+  if (!isBagIdentifier(partNumber)) return String();
+  String envelope = "[)>";
+  envelope += '\x1E';
+  envelope += "06";
+  envelope += '\x1D';
+  envelope += "P";
+  envelope += partNumber;
+  String withManufacturer = envelope;
+  const auto manufacturer = trimCopy(manufacturerPartNumber);
+  if (manufacturer.length() > 0) {
+    withManufacturer += '\x1D';
+    withManufacturer += "1P";
+    withManufacturer += manufacturer;
+  }
+  withManufacturer += '\x1E';
+  withManufacturer += '\x04';
+  if (withManufacturer.length() <= maxLength) return withManufacturer;
+  envelope += '\x1E';
+  envelope += '\x04';
+  return envelope.length() <= maxLength ? envelope : String();
+}
+
+// The fields of a TME bag's QR text that the desktop reads: the TME symbol (PN), the manufacturer part number (MPN) and
+// the quantity (QTY). The text is a TME label only when it also names the TME product page.
+struct TmeBagLabel {
+  String symbol;
+  String manufacturerPartNumber;
+  int quantity = 1;
+};
+
+inline bool parseTmeBagLabel(const String& text, TmeBagLabel& label) {
+  label = {};
+  const size_t length = text.length();
+  size_t index = 0;
+  while (index < length) {
+    while (index < length && text[index] == ' ') ++index;
+    size_t end = index;
+    while (end < length && text[end] != ' ') ++end;
+    const auto token = text.substring(index, end);
+    index = end;
+    if (token.startsWith("https://www.tme.eu/")) continue;  // the product page is optional, as the desktop reads it
+    const auto colon = token.indexOf(':');
+    if (colon <= 0) continue;
+    const auto key = token.substring(0, colon);
+    const auto value = token.substring(colon + 1);
+    if (key == "PN") {
+      label.symbol = value;
+    } else if (key == "MPN") {
+      label.manufacturerPartNumber = value;
+    } else if (key == "QTY" && value.length() > 0 && value.length() <= 6U) {
+      int quantity = 0;
+      bool numeric = true;
+      for (size_t digit = 0; digit < value.length(); ++digit) {
+        if (!std::isdigit(static_cast<unsigned char>(value[digit]))) {
+          numeric = false;
+          break;
+        }
+        quantity = quantity * 10 + (value[digit] - '0');
+      }
+      if (numeric && quantity > 0) label.quantity = quantity;
+    }
+  }
+  return isBagIdentifier(label.symbol) && isBagIdentifier(label.manufacturerPartNumber);
+}
+
+// The code a TME label scan sends: the symbol and the manufacturer part number, as the desktop reads them. Empty when it
+// would not fit in maxLength.
+inline String tmeBagCodeForSync(const TmeBagLabel& label, size_t maxLength) {
+  String code = "PN:";
+  code += label.symbol;
+  code += " MPN:";
+  code += label.manufacturerPartNumber;
+  return code.length() <= maxLength ? code : String();
+}
+
 inline String hexByte(unsigned char value) {
   static const char kHex[] = "0123456789abcdef";
   String out;
