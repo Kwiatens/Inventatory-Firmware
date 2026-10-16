@@ -265,13 +265,15 @@ Storage (NVS) partition (`0x5000` / 20 KiB).
   characters plus null terminator. Longer strings fail silently with `KEY_TOO_LONG`.
 - **Per-record keys**: To avoid multi-page NVS chunk churn that rapidly exhausts
   the 20 KiB partition, each event is stored under its own key (`e0` through `e15`),
-  coordinated by a small header (`hdr`).
+  coordinated by a small header (`hdr`). A repair writes into the other set, `f0`
+  through `f15`, and the header version says which set is live (5 for `e`, 6 for `f`).
 - **Event ids**: `<device id>-<sequence>`. The desktop deduplicates on this id, so a
   sequence must never restart at a value already used. A new outbox (no `hdr`) starts
   at `freshOutboxSequenceStart(esp_random())`, which is a random odd value below 2^31.
 - **Header validation**: A header is trusted only when its size, magic, version and
   every field are in range (`outboxHeaderFieldsValid`). Out-of-range values are never
-  clamped. A header of another version is read through its first 16 bytes (magic,
+  clamped. Versions 5 and 6 are this layout (see the repair rule above). A header of any
+  other version is read through its first 16 bytes (magic,
   version, count, head, reserved, event sequence), which every layout keeps at the same
   offsets (`static_assert`s in `outbox_store.h` and `outbox_store.cpp`). If it holds no
   scans, it is replaced by this layout's empty header and keeps its event sequence, so
@@ -317,8 +319,13 @@ Agents must observe the three distinct failure domains:
    - Pop writes the header **first** and erases the slot **second**. A power cut
      leaves an orphaned slot outside the queue range, safely ignored on reboot.
    - Calling `prefs_.clear()` on `inv_outbox` is strictly prohibited.
-   - Operator-confirmed repair of a queue that cannot be read writes the empty header
-     first and erases the orphaned slots afterwards. It does not clear the namespace.
+   - Operator-confirmed repair of a queue that cannot be read writes the salvaged
+     events into the other slot set, then commits the header, then erases the old slots.
+     The live queue is untouched until the header commit, so a power cut before it leaves
+     the queue unreadable and repairable again. A power cut after it leaves the salvaged
+     queue, so no event is lost or queued twice. The repair never clears the namespace.
+   - Operator-confirmed discard of an unreadable header writes the empty header first and
+     erases both slot sets afterwards.
 
 ---
 
