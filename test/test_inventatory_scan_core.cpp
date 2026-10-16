@@ -290,7 +290,7 @@ void test_protocol_v1_sync_round_trip() {
   TEST_ASSERT_TRUE(isCurrentLookupResult(response, "lookup-9"));
   TEST_ASSERT_FALSE(isCurrentLookupResult(response, "lookup-stale"));
 
-  const auto unavailable = parseSyncResponseJson(
+  static const auto unavailable = parseSyncResponseJson(
       "{\"protocolVersion\":1,\"requestId\":\"sync-8\",\"acceptedEventIds\":[],"
       "\"results\":[],\"lookupResult\":{\"lookupId\":\"lookup-10\","
       "\"status\":\"unavailable\",\"itemName\":\"\"}}");
@@ -395,7 +395,7 @@ void test_sync_response_json_is_strictly_parsed() {
   TEST_ASSERT_FALSE(syncResponseIsValid(
       R"json({"protocolVersion":1,"requestId":"sync-13","acceptedEventIds":[],"results":[{"resultId":"r1","eventId":"e1","status":"completed","quantity":7tail}]})json"));
 
-  const auto unicodeEscape = parseSyncResponseJson(
+  static const auto unicodeEscape = parseSyncResponseJson(
       R"json({"protocolVersion":1,"requestId":"sync-\u0041","acceptedEventIds":[],"results":[]})json");
   TEST_ASSERT_TRUE(unicodeEscape.valid);
   TEST_ASSERT_EQUAL_STRING("sync-A", unicodeEscape.requestId.c_str());
