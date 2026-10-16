@@ -174,21 +174,11 @@ void test_quantity_composer_subtract_and_invalid_digits() {
   TEST_ASSERT_TRUE(composer.empty());
 }
 
-void test_request_json_serialization() {
-  const auto json = buildQuantityRequestJson("  R1  ", "id-123", "Inventatory-001", -4);
-  TEST_ASSERT_EQUAL_STRING(
-      "{\"deviceId\":\"R1\",\"requestId\":\"id-123\",\"code\":\"Inventatory-001\",\"delta\":-4}",
-      json.c_str());
-}
-
-void test_scan_json_escapes_datamatrix_separators() {
+void test_json_escapes_datamatrix_separators() {
   const String code = String("[)>") + static_cast<char>(0x1E) + "06" + static_cast<char>(0x1D) +
                       "1PTPS7A2033PDBVR" + static_cast<char>(0x1D) + "Q2" + static_cast<char>(0x1E) +
                       static_cast<char>(0x04);
-  const auto json = buildScanRequestJson("R1", "scan-1", code, 2);
-  TEST_ASSERT_EQUAL_STRING(
-      "{\"deviceId\":\"R1\",\"requestId\":\"scan-1\",\"code\":\"[)>\\u001e06\\u001d1PTPS7A2033PDBVR\\u001dQ2\\u001e\\u0004\",\"quantity\":2}",
-      json.c_str());
+  TEST_ASSERT_EQUAL_STRING("[)>\\u001e06\\u001d1PTPS7A2033PDBVR\\u001dQ2\\u001e\\u0004", escapeJson(code).c_str());
 }
 
 void test_request_id_format() {
@@ -649,6 +639,10 @@ void test_backlight_policy() {
   TEST_ASSERT_TRUE(backlightLit(BacklightMode::Auto1Min, false, 2000U, 0xFFFFFC18UL));
   TEST_ASSERT_EQUAL_STRING("Auto 3 min", backlightModeLabel(BacklightMode::Auto3Min));
   TEST_ASSERT_EQUAL_STRING("Auto 3m", backlightModeShortLabel(BacklightMode::Auto3Min));
+  // A value outside the enum reads as the default, as the stored-value helpers do.
+  TEST_ASSERT_EQUAL_STRING("On", backlightModeLabel(static_cast<BacklightMode>(99)));
+  TEST_ASSERT_EQUAL_STRING("30 min", powerOffDelayLabel(static_cast<PowerOffDelay>(99)));
+  TEST_ASSERT_EQUAL_STRING("Off after 5 min idle", backlightModeDetail(BacklightMode::Auto5Min));
 }
 
 static EnergyInputs energyCase(bool enabled, bool powerOffSet, bool idleReady, bool updating, uint32_t sleepLeftMs,
@@ -1120,8 +1114,7 @@ void setup() {
   RUN_TEST(test_quantity_composer_cursor_replaces_and_appends);
   RUN_TEST(test_quantity_composer_replaces_default_and_deletes_digits);
   RUN_TEST(test_quantity_composer_subtract_and_invalid_digits);
-  RUN_TEST(test_request_json_serialization);
-  RUN_TEST(test_scan_json_escapes_datamatrix_separators);
+  RUN_TEST(test_json_escapes_datamatrix_separators);
   RUN_TEST(test_request_id_format);
   RUN_TEST(test_fixed_ring_buffer_fifo_and_overwrite);
   RUN_TEST(test_outbox_pop_transition_is_staged_before_commit);

@@ -170,14 +170,8 @@ bool InventatoryScanApp::startOtaService() {
         Serial.println("unknown");
         break;
     }
-    SyncResult result;
-    result.status = "failed";
-    result.code = kUpdateFailedCode;
-    result.message = "Update failed";
-    result.resultId = "local-ota";
-    result.eventId = "local-ota";
     recoverFromOtaFailure();
-    display_.showResult(result);
+    display_.showResult(localFailure("local-ota", kUpdateFailedCode, "Update failed"));
   });
 
   ArduinoOTA.begin();
@@ -197,13 +191,7 @@ void InventatoryScanApp::abandonOtaWait(const char* reason, bool showFailure) {
   if (otaActive_) ArduinoOTA.end();
   recoverFromOtaFailure();
   if (showFailure) {
-    SyncResult result;
-    result.status = "failed";
-    result.code = kNoUpdateCode;
-    result.message = "No update received";
-    result.resultId = "local-ota";
-    result.eventId = "local-ota";
-    display_.showLocalFailure(result);
+    display_.showLocalFailure(localFailure("local-ota", kNoUpdateCode, "No update received"));
   } else {
     display_.showReady();
   }

@@ -165,41 +165,28 @@ inline bool backlightLit(BacklightMode mode, bool forced, uint32_t nowMs, uint32
   return timeout != 0U && static_cast<uint32_t>(nowMs - lastActivityMs) < timeout;
 }
 
+// Text for an option from a table in enum order; a value outside the table gets the default's text.
+template <std::size_t Count>
+inline const char* optionText(const char* const (&table)[Count], uint8_t index, uint8_t fallback) {
+  return table[index < Count ? index : fallback];
+}
+
 // Names for the settings screens. The short form fits a row of the device settings list.
 inline const char* backlightModeLabel(BacklightMode mode) {
-  switch (mode) {
-    case BacklightMode::Off: return "Off";
-    case BacklightMode::On: return "On";
-    case BacklightMode::Auto1Min: return "Auto 1 min";
-    case BacklightMode::Auto3Min: return "Auto 3 min";
-    case BacklightMode::Auto5Min: return "Auto 5 min";
-    case BacklightMode::Auto10Min: return "Auto 10 min";
-  }
-  return "On";
+  static const char* const kText[] = {"Off", "On", "Auto 1 min", "Auto 3 min", "Auto 5 min", "Auto 10 min"};
+  return optionText(kText, static_cast<uint8_t>(mode), kBacklightModeDefault);
 }
 
 inline const char* backlightModeShortLabel(BacklightMode mode) {
-  switch (mode) {
-    case BacklightMode::Off: return "Off";
-    case BacklightMode::On: return "On";
-    case BacklightMode::Auto1Min: return "Auto 1m";
-    case BacklightMode::Auto3Min: return "Auto 3m";
-    case BacklightMode::Auto5Min: return "Auto 5m";
-    case BacklightMode::Auto10Min: return "Auto 10m";
-  }
-  return "On";
+  static const char* const kText[] = {"Off", "On", "Auto 1m", "Auto 3m", "Auto 5m", "Auto 10m"};
+  return optionText(kText, static_cast<uint8_t>(mode), kBacklightModeDefault);
 }
 
+// The backlight only switches on and off; it does not dim.
 inline const char* backlightModeDetail(BacklightMode mode) {
-  switch (mode) {
-    case BacklightMode::Off: return "Dark, except warnings";
-    case BacklightMode::On: return "Stays lit";
-    case BacklightMode::Auto1Min: return "Dims after 1 min idle";
-    case BacklightMode::Auto3Min: return "Dims after 3 min idle";
-    case BacklightMode::Auto5Min: return "Dims after 5 min idle";
-    case BacklightMode::Auto10Min: return "Dims after 10 min idle";
-  }
-  return "Stays lit";
+  static const char* const kText[] = {"Dark, except warnings", "Stays lit",           "Off after 1 min idle",
+                                      "Off after 3 min idle",   "Off after 5 min idle", "Off after 10 min idle"};
+  return optionText(kText, static_cast<uint8_t>(mode), kBacklightModeDefault);
 }
 
 // Energy saving. The device sleeps (standby) after an idle time, then turns off (deep sleep) after a
@@ -268,72 +255,35 @@ inline PowerOffDelay powerOffDelayFromStored(uint8_t value) {
 
 // Names for the settings screens. The short form fits a row of the energy saving list.
 inline const char* sleepDelayLabel(SleepDelay delay) {
-  switch (delay) {
-    case SleepDelay::Min1: return "1 min";
-    case SleepDelay::Min3: return "3 min";
-    case SleepDelay::Min5: return "5 min";
-    case SleepDelay::Min10: return "10 min";
-    case SleepDelay::Min30: return "30 min";
-  }
-  return "5 min";
+  static const char* const kText[] = {"1 min", "3 min", "5 min", "10 min", "30 min"};
+  return optionText(kText, static_cast<uint8_t>(delay), kSleepDelayDefault);
 }
 
 inline const char* sleepDelayShortLabel(SleepDelay delay) {
-  switch (delay) {
-    case SleepDelay::Min1: return "1m";
-    case SleepDelay::Min3: return "3m";
-    case SleepDelay::Min5: return "5m";
-    case SleepDelay::Min10: return "10m";
-    case SleepDelay::Min30: return "30m";
-  }
-  return "5m";
+  static const char* const kText[] = {"1m", "3m", "5m", "10m", "30m"};
+  return optionText(kText, static_cast<uint8_t>(delay), kSleepDelayDefault);
 }
 
 inline const char* sleepDelayDetail(SleepDelay delay) {
-  switch (delay) {
-    case SleepDelay::Min1: return "Sleeps after 1 min";
-    case SleepDelay::Min3: return "Sleeps after 3 min";
-    case SleepDelay::Min5: return "Sleeps after 5 min";
-    case SleepDelay::Min10: return "Sleeps after 10 min";
-    case SleepDelay::Min30: return "Sleeps after 30 min";
-  }
-  return "Sleeps after 5 min";
+  static const char* const kText[] = {"Sleeps after 1 min", "Sleeps after 3 min", "Sleeps after 5 min",
+                                      "Sleeps after 10 min", "Sleeps after 30 min"};
+  return optionText(kText, static_cast<uint8_t>(delay), kSleepDelayDefault);
 }
 
 inline const char* powerOffDelayLabel(PowerOffDelay delay) {
-  switch (delay) {
-    case PowerOffDelay::Min1: return "1 min";
-    case PowerOffDelay::Min5: return "5 min";
-    case PowerOffDelay::Min10: return "10 min";
-    case PowerOffDelay::Min30: return "30 min";
-    case PowerOffDelay::Hour1: return "1 hour";
-    case PowerOffDelay::Never: return "Never";
-  }
-  return "Never";
+  static const char* const kText[] = {"1 min", "5 min", "10 min", "30 min", "1 hour", "Never"};
+  return optionText(kText, static_cast<uint8_t>(delay), kPowerOffDelayDefault);
 }
 
 inline const char* powerOffDelayShortLabel(PowerOffDelay delay) {
-  switch (delay) {
-    case PowerOffDelay::Min1: return "1m";
-    case PowerOffDelay::Min5: return "5m";
-    case PowerOffDelay::Min10: return "10m";
-    case PowerOffDelay::Min30: return "30m";
-    case PowerOffDelay::Hour1: return "1h";
-    case PowerOffDelay::Never: return "Never";
-  }
-  return "Never";
+  static const char* const kText[] = {"1m", "5m", "10m", "30m", "1h", "Never"};
+  return optionText(kText, static_cast<uint8_t>(delay), kPowerOffDelayDefault);
 }
 
 inline const char* powerOffDelayDetail(PowerOffDelay delay) {
-  switch (delay) {
-    case PowerOffDelay::Min1: return "Off 1 min after sleep";
-    case PowerOffDelay::Min5: return "Off 5 min after sleep";
-    case PowerOffDelay::Min10: return "Off 10 min after sleep";
-    case PowerOffDelay::Min30: return "Off 30 min after sleep";
-    case PowerOffDelay::Hour1: return "Off 1 hour after sleep";
-    case PowerOffDelay::Never: return "Stays asleep";
-  }
-  return "Stays asleep";
+  static const char* const kText[] = {"Off 1 min after sleep",  "Off 5 min after sleep", "Off 10 min after sleep",
+                                      "Off 30 min after sleep", "Off 1 hour after sleep", "Stays asleep"};
+  return optionText(kText, static_cast<uint8_t>(delay), kPowerOffDelayDefault);
 }
 
 // Time left on a countdown that began at startMs and lasts spanMs, zero once it has run out. The
