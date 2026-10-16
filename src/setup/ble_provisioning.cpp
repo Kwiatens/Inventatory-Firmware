@@ -37,10 +37,10 @@ class ServerCallbacks final : public BLEServerCallbacks {
   void onDisconnect(BLEServer*, esp_ble_gatts_cb_param_t* param) override {
     Serial.printf("BLE: client disconnected, reason 0x%02x\r\n", static_cast<unsigned>(param->disconnect.reason));
   }
-  void onDisconnect(BLEServer* server) override {
-    // Keep first-use setup discoverable after a failed/cancelled attempt.
+  void onDisconnect(BLEServer*) override {
+    // Only records the event. service() restarts advertising from Core 1, so the BLE callback never
+    // touches the server.
     owner_.onClientDisconnected();
-    if (owner_.active() && !owner_.locked()) server->startAdvertising();
   }
  private:
   BleProvisioning& owner_;
@@ -79,6 +79,10 @@ class RequestCallbacks final : public BLECharacteristicCallbacks {
 
 bool BleProvisioning::begin(const String& deviceId) {
   if (active_) return true;
+  // A second start in the same boot would run on a released stack and add the setup UUID to the
+  // advertisement a second time. The caller reports the failure and the device restarts instead.
+  if (startedOnce_) return false;
+  startedOnce_ = true;
   if (requestMutex_ == nullptr) requestMutex_ = xSemaphoreCreateMutex();
   if (requestMutex_ == nullptr) return false;
   locked_ = false;
@@ -109,18 +113,23 @@ bool BleProvisioning::begin(const String& deviceId) {
   // stacks.
   BLEDevice::setMTU(247);
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
-  BLEDevice::setSecurityCallbacks(new SecurityCallbacks(*this));
-  auto* security = new BLESecurity();
-  security_ = security;
-  security->setStaticPIN(pairingCode_.load());
-  security->setCapability(ESP_IO_CAP_OUT);
-  security->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM);
-  security->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-  security->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-  security->setKeySize(16);
+  // The stack keeps these pointers, so they live as long as the firmware. A new set per setup
+  // session would only leak.
+  static SecurityCallbacks securityCallbacks(*this);
+  static ServerCallbacks serverCallbacks(*this);
+  static RequestCallbacks requestCallbacks(*this);
+  static BLESecurity security;
+  BLEDevice::setSecurityCallbacks(&securityCallbacks);
+  security_ = &security;
+  security.setStaticPIN(pairingCode_.load());
+  security.setCapability(ESP_IO_CAP_OUT);
+  security.setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM);
+  security.setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+  security.setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+  security.setKeySize(16);
 
   server_ = BLEDevice::createServer();
-  server_->setCallbacks(new ServerCallbacks(*this));
+  server_->setCallbacks(&serverCallbacks);
   auto* service = server_->createService(kServiceUuid);
   status_ = service->createCharacteristic(kStatusUuid, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   request_ = service->createCharacteristic(kRequestUuid, BLECharacteristic::PROPERTY_WRITE);
@@ -129,7 +138,7 @@ bool BleProvisioning::begin(const String& deviceId) {
   status_->setAccessPermissions(secureRead);
   request_->setAccessPermissions(secureWrite);
   status_->addDescriptor(new BLE2902());
-  request_->setCallbacks(new RequestCallbacks(*this));
+  request_->setCallbacks(&requestCallbacks);
   service->start();
   server_->getAdvertising()->addServiceUUID(kServiceUuid);
   // The advertisement carries flags and the setup service UUID (21 of 31 bytes).
@@ -152,6 +161,7 @@ void BleProvisioning::end() {
   if (!active_) return;
   active_ = false;
   BLEDevice::stopAdvertising();
+  // deinit(true) releases the Bluetooth memory. begin() never runs again in this boot (see startedOnce_).
   BLEDevice::deinit(true);
   server_ = nullptr;
   security_ = nullptr;
@@ -192,6 +202,8 @@ void BleProvisioning::service() {
   const bool disconnected = clientDisconnected_.exchange(false);
   if (locked_) return;
   if (failed || disconnected) rotatePasskey();
+  // Keep first-use setup discoverable after a failed or cancelled attempt.
+  if (disconnected && server_ != nullptr) server_->startAdvertising();
   if (failed && ++failedAttempts_ >= kMaxFailedPairingAttempts) {
     lockOut();
     return;

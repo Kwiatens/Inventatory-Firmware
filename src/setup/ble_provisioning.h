@@ -69,6 +69,9 @@ class BleProvisioning {
   bool statusPending_ = false;
   String pendingStatus_;
   SemaphoreHandle_t requestMutex_ = nullptr;
+  // end() releases the Bluetooth memory, and the library cannot start again after that in the same boot.
+  // The advertising service list is also never cleared. So begin() runs at most once per boot.
+  bool startedOnce_ = false;
 };
 
 }  // namespace inventatory_scan
