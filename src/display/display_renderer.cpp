@@ -133,8 +133,8 @@ DisplayRenderer::HeaderSlot DisplayRenderer::headerSlotFor(const DisplayModel& m
     }
   } else if (page == HeaderPage::Status && model.showPcStatus) {
     slot.text = !model.batteryCharging ? pcStatusText(model)
-                : model.batteryPercent >= 100 ? String("Charged")
-                                              : String("Charging");
+                : (model.batteryChargeDone || model.batteryPercent >= 100) ? String("Charged")
+                                                                           : String("Charging");
     slot.font = style::kFontRegular;
   } else if (page == HeaderPage::Estimate && model.batteryEstimate.length() > 0) {
     slot.text = model.batteryEstimate;

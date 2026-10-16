@@ -695,27 +695,29 @@ void DisplayController::showQuickLabelPrintResult(bool success, const String& me
   markDirty();
 }
 
-void DisplayController::setBatteryStatus(int percent, bool charging, const String& estimate) {
+void DisplayController::setBatteryStatus(int percent, bool charging, bool chargeDone, const String& estimate) {
   if (model_.batteryPercent == percent && model_.batteryCharging == charging &&
-      model_.batteryEstimate == estimate) {
+      model_.batteryChargeDone == chargeDone && model_.batteryEstimate == estimate) {
     return;
   }
   model_.batteryPercent = percent;
   model_.batteryCharging = charging;
+  model_.batteryChargeDone = chargeDone;
   model_.batteryEstimate = estimate;
   markDirty();
 }
 
-void DisplayController::showBatteryCard(bool charging, int percent, const String& estimate,
+void DisplayController::showBatteryCard(bool charging, bool chargeDone, int percent, const String& estimate,
                                         unsigned long dwellMs) {
   overlay_ = DisplayModel();
   overlay_.mode = DisplayUiMode::BatteryCard;
   overlay_.bodyKind = DisplayBodyKind::Task;
   overlay_.rail = DisplayRailStyle::None;
-  overlay_.primary = !charging ? "On battery" : percent >= 100 ? "Charged" : "Charging";
+  overlay_.primary = !charging ? "On battery" : (chargeDone || percent >= 100) ? "Charged" : "Charging";
   overlay_.secondary = estimate.length() > 0 ? estimate : String("Estimating time");
   overlay_.batteryPercent = percent;
   overlay_.batteryCharging = charging;
+  overlay_.batteryChargeDone = chargeDone;
   overlay_.batteryEstimate = estimate;
   overlayActive_ = true;
   overlayStartedAt_ = millis();
