@@ -12,6 +12,7 @@ This document contains the checklist for cutting a release for the Inventatory S
 - [ ] **Host Tests**: `make -C host-tests SANITIZE=address,undefined test` passes on a clean checkout (the CI `host-tests` job runs the same command).
 - [ ] **Hardware Testing**: Run Unity assertions on physical hardware to fulfill the open release gates listed in `docs/release-audit-remediation.md`:
   - `pio test -e waveshare_esp32s3_nano_usb`
+  - Follow [board-day-checklist.md](board-day-checklist.md) for the full ordered procedure and evidence log.
 - [ ] **Secret Scan**: Perform a secret scan of the commit history to ensure no credentials or tokens were accidentally committed.
 - [ ] **Tagging**: Create a git tag for the release in the format `vX.Y.Z`.
 - [ ] **Release Artifacts**: Build `firmware.bin` from a clean checkout of the tagged commit with a placeholder-free private `config.h` that contains no real secrets, and attach it with its SHA-256 sum. CI does not currently upload artifacts, so this step is manual.
