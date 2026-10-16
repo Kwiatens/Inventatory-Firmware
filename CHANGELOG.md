@@ -67,18 +67,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Values shared between the two cores are atomic, and the network mutex is never freed while it is in use.
 - BLE provisioning status is published from the main loop, not from the BLE callback.
 - The low-battery warning screen is aligned: the triangle and its `!` are centred, the countdown bar has no frame, and the countdown line sits under the bar.
+- Repairing an unreadable offline queue is power-safe. The salvaged scans are written first, the queue header is committed last, and the old slots are erased after that. A power cut during the repair leaves the queue repairable again, and no scan is lost or queued twice.
+- A response whose header is exactly 1,024 bytes is accepted, as the limit says. Before, it was refused.
+- A failed OTA update stops its update listener, so it no longer stays open until the next reboot.
+- Bluetooth setup starts at most once per boot. If the normal runtime fails right after setup, the device restarts into pairing. Before, a second start in the same boot advertised a duplicate service UUID, or did nothing.
+- Each setup session no longer allocates new Bluetooth callback objects.
+- A BLE disconnect no longer restarts advertising from inside the Bluetooth callback. Core 1 does it on its next pass.
 
 ### Security
 - The transport HTTP status is published only after the response MAC verifies. A missing counter key fails closed.
-- A sync response with a NUL escape or a repeated name is refused, whether or not the field is read.
+- A sync response with a NUL escape or a repeated name is refused, whether or not the field is read. A repeated name counts as the same name after its escapes are decoded, so `"resultId"` repeats `"resultId"`.
 - An HTTP response with a repeated framing header is refused, and its body is authenticated by its declared length, so a NUL byte cannot truncate it.
 - A provisioning request with a NUL byte in any field is refused.
 
 ### Known issues
-- Charging and the backlight need wiring that the board does not have yet: the dock must drive GPIO38 (header MOSI), and an external transistor must switch the backlight from GPIO2 (header A1). Until then the charging screens never appear and the backlight modes do nothing.
+- Charging and the backlight need wiring that the board does not have yet: the charger status LEDs of the UPS module must reach GPIO4 (red, header A3) and GPIO38 (green, header MOSI), and an external transistor must switch the backlight from GPIO2 (header A1). Until then the charging screens never appear and the backlight modes do nothing.
 - The battery curve is approximate and needs calibrating on the device with a full discharge.
 - A barcode that is not recognised shows no code on the screen.
-- If power is lost while the operator repairs an unreadable offline queue, one queued scan can be lost and another sent twice (the desktop ignores the repeat, because it deduplicates by event id). Repair needs a power-safe commit before release; the host test `test_host_outbox_power_cut_during_repair_does_not_duplicate_events` documents the defect.
+- After a queue repair, an older firmware cannot read the queue. It reports the queue as unreadable, and its repair menu discards the stored scans. Sync the scans to the PC before you flash an older build over a repaired queue.
+- The BLE setup session has no hardware test on a board yet. The host tests cover the parser, the queue and the transport, not the Bluetooth stack.
 
 ## [0.1.0]
 *(Not yet released)*
