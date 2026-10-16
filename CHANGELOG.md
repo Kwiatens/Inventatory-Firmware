@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screen layout numbers that were written inline in the renderer are now named in `display_style.h`, and centred lines share one helper.
 
 ### Added
-- A DigiKey bag's Data Matrix sends its DigiKey part number and manufacturer part number, and a TME bag's QR label sends its TME part number and manufacturer part number, so the desktop records which vendor supplied the part. A TME label needs no product page. Any other Data Matrix is refused with a message, and the part is added by hand. A TME bag's QR code was refused before.
+- A DigiKey bag's Data Matrix sends its DigiKey part number and manufacturer part number, and a TME bag's QR label sends its TME part number and manufacturer part number, so the desktop records which vendor supplied the part. A DigiKey bag is looked up by its DigiKey part number, so a part already in inventory is found. A TME label needs no product page. Any other Data Matrix is refused with a message, and the part is added by hand. A TME bag's QR code was refused before.
 - Holding `*` on an idle screen shows a countdown bar after one second, then powers the device off into deep sleep at four seconds. The `›i` sinks behind the glass. Releasing `*` before then cancels. Pressing `*` wakes it and the firmware restarts.
 - The LiPo voltage is read on GPIO1 through a resistor divider and logged at boot.
 - Operator-confirmed repair of an unreadable offline queue. Readable scans are kept.
