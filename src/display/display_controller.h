@@ -13,8 +13,7 @@ class DisplayController {
  public:
   void begin();
   void tick();
-  void setConnectivity(DisplayConnectivityState state, bool wifiOnline, bool pcOnline,
-                       std::size_t queueDepth);
+  void setConnectivity(DisplayConnectivityState state, std::size_t queueDepth);
   void showSplash();
   // Shows the splash for holdMs, with the mark blooming in first, and keeps the LCD refreshed meanwhile.
   void playBootSplash(unsigned long holdMs);

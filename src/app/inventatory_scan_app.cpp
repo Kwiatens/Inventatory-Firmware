@@ -57,6 +57,17 @@ static_assert(sizeof(kOutboxNamespace) <= 16, "NVS namespace exceeds ESP32's 15-
 // screens take over.
 constexpr unsigned long kBootSplashHoldMs = 1200UL;
 
+// How long each step of starting the network worker may take.
+constexpr unsigned long kNetworkStepTimeoutMs = 1000UL;
+
+// Waits for done() for up to kNetworkStepTimeoutMs; true if it became true in time.
+template <typename Done>
+bool waitFor(Done done) {
+  const unsigned long deadline = millis() + kNetworkStepTimeoutMs;
+  while (!done() && static_cast<long>(deadline - millis()) > 0) delay(1);
+  return done();
+}
+
 }  // namespace
 
 bool InventatoryScanApp::begin() {
@@ -212,38 +223,21 @@ bool InventatoryScanApp::beginNormalRuntime(const ProvisionedSettings& settings)
     if (!startNetworkWorker()) return false;
   }
 
-  const auto startupDeadline = millis() + 1000UL;
-  while (networkTask_.load() != nullptr && !networkInitializationComplete_ &&
-         static_cast<long>(startupDeadline - millis()) > 0) {
-    delay(1);
-  }
-  if (!networkInitializationComplete_ || !networkInitializationSucceeded_ || networkTask_.load() == nullptr) {
-    return false;
-  }
+  const auto taskGone = [this]() { return networkTask_.load() == nullptr; };
+  waitFor([&]() { return taskGone() || networkInitializationComplete_.load(); });
+  if (!networkInitializationComplete_ || !networkInitializationSucceeded_ || taskGone()) return false;
 
-  const auto readyDeadline = millis() + 1000UL;
-  while (networkTask_.load() != nullptr && !networkStarted_ &&
-         static_cast<long>(readyDeadline - millis()) > 0) {
-    delay(1);
-  }
-  if (!networkStarted_ || networkTask_.load() == nullptr) return false;
+  waitFor([&]() { return taskGone() || networkStarted_.load(); });
+  if (!networkStarted_ || taskGone()) return false;
 
   if (networkPaused_) {
-    const auto pauseDeadline = millis() + 1000UL;
-    while (networkTask_.load() != nullptr && !networkPauseAcknowledged_ &&
-           static_cast<long>(pauseDeadline - millis()) > 0) {
-      delay(1);
-    }
-    if (networkTask_.load() != nullptr && !networkPauseAcknowledged_) return false;
+    waitFor([&]() { return taskGone() || networkPauseAcknowledged_.load(); });
+    if (!taskGone() && !networkPauseAcknowledged_) return false;
 
     networkPowerOffRequested_ = false;
     networkPaused_ = false;
-    const auto resumeDeadline = millis() + 1000UL;
-    while (networkTask_.load() != nullptr && networkPauseAcknowledged_ &&
-           static_cast<long>(resumeDeadline - millis()) > 0) {
-      delay(1);
-    }
-    if (networkTask_.load() == nullptr || networkPauseAcknowledged_) return false;
+    waitFor([&]() { return taskGone() || !networkPauseAcknowledged_.load(); });
+    if (taskGone() || networkPauseAcknowledged_) return false;
   }
 
   sendDebugMessage("boot");

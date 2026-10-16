@@ -46,7 +46,6 @@ void setup() {
 #else
   delay(1000); // Wait for Serial to initialize
 #endif
-  Serial.println("Inventatory Scan R1 booting");
   Serial.printf("Reset reason: %d\r\n", static_cast<int>(esp_reset_reason()));
   appReady = app.begin();
 }
