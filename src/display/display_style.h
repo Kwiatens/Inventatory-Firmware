@@ -32,15 +32,25 @@ constexpr int kRailActivityStepsPerLeg = 6;
 constexpr int kContentX = 13;
 constexpr int kContentRight = 125;
 constexpr int kContentW = kContentRight - kContentX;
+// Side margin of centred lines.
+constexpr int kCenterMargin = 4;
 
 constexpr int kTaskPrimaryY = 29;
 constexpr int kTaskSecondaryY = 43;
 
-constexpr int kQuantityItemY = 25;
-constexpr int kQuantityCodeY = 34;
+constexpr int kQuantityItemY = 24;
+constexpr int kQuantityCodeY = 35;
 constexpr int kQuantityPromptY = 48;
 constexpr int kQuantityValueY = 49;
 constexpr int kQuantityCaretY = 50;
+
+constexpr int kTextLineStep = 9;
+// Screens whose item name is too long for one line wrap it over two lines in the regular face.
+constexpr int kTaskWrapY = 25;
+constexpr int kTaskWrapSecondaryY = 48;
+constexpr int kQuantityWrapY = 23;
+constexpr int kResultWrapY = 22;
+constexpr int kResultWrapSecondaryY = 43;
 
 constexpr int kResultPrimaryY = 24;
 constexpr int kResultSecondaryY = 36;
@@ -136,18 +146,37 @@ constexpr int kWarnBarY = 50;
 constexpr int kWarnBarW = 114;
 constexpr int kWarnBarH = 6;
 
-// Soft power-off: the warning keeps the boot mark's place on the left, with the title and detail
-// beside it and the countdown bar along the bottom. The sink's glass edge is the rule that the mark
-// drops behind.
-constexpr int kPowerTitleY = 18;
-constexpr int kPowerDetailY = 31;
-constexpr int kPowerBarX = 44;
-constexpr int kPowerBarY = 46;
-constexpr int kPowerBarW = 78;
+// Soft power-off warning: the title, a countdown bar and a hint, all centred, with nothing else on screen.
+constexpr int kPowerTitleY = 24;
+constexpr int kPowerBarW = 96;
+constexpr int kPowerBarX = (kScreenW - kPowerBarW) / 2;
+constexpr int kPowerBarY = 32;
 constexpr int kPowerBarH = 7;
+constexpr int kPowerHintY = 52;
 // The bar's inside, clear of its one-pixel frame and margin.
 constexpr int kPowerBarFillW = kPowerBarW - 4;
-constexpr int kGlassEdgeY = 56;
+
+// Power-off ending: the mark centred above a short glass rule that it sinks behind, and one line of text
+// under the rule.
+constexpr int kGlassEdgeY = 48;
+constexpr int kGlassEdgeW = 46;
+constexpr int kPowerOffMarkX = (kScreenW - kMarkCols * kBootMarkUnit) / 2;
+constexpr int kPowerOffMarkY = 4;
+constexpr int kPowerOffTextY = 60;
+
+// Display contrast: the value, then a bar under it.
+constexpr int kContrastValueY = 38;
+constexpr int kContrastBarW = 70;
+constexpr int kContrastBarX = (kScreenW - kContrastBarW) / 2;
+constexpr int kContrastBarY = 43;
+constexpr int kContrastBarH = 5;
+
+// Confirmation dialog and pairing screens.
+constexpr int kConfirmPrimaryY = 28;
+constexpr int kConfirmSecondaryY = 41;
+constexpr int kSetupCodeY = 31;
+constexpr int kSetupPrimaryY = 43;
+constexpr int kSetupSecondaryY = 52;
 
 // Setting picker (backlight, auto sleep): one segment per option, the chosen one filled.
 constexpr int kChoiceSegmentW = 12;
