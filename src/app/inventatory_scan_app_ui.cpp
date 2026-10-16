@@ -74,7 +74,7 @@ void InventatoryScanApp::logState(const char* reason) const {
   Serial.print("State update [");
   Serial.print(reason);
   Serial.print("]: ");
-  Serial.println(state_ == State::Idle ? "idle" : state_ == State::AwaitQuantity ? "awaiting quantity" : "menu");
+  Serial.println(state_ == State::Idle ? "idle" : state_ == State::AwaitQuantity ? "awaiting quantity" : "other");
 }
 
 void InventatoryScanApp::openQuickLabels() {
