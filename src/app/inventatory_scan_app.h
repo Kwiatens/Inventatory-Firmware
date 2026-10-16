@@ -72,6 +72,16 @@ class InventatoryScanApp {
                   const String& encodedPartName = String());
   void waitForInventoryResult(const String& eventId);
   void handleKey(const InventatoryKeyEvent& event);
+  void handleDigit(char digit);
+  void handleCancel();
+  void handleAddSubtract(bool add);
+  void confirmReprovision();
+  void confirmRepair();
+  void confirmDiscard();
+  void openMenu();
+  void returnToReady();
+  // A failed result for a problem on the device itself, shown without waiting for the PC.
+  static SyncResult localFailure(const char* id, const char* code, const char* message);
   void requestOtaUpdate();
   void sendDebugMessage(const String& message, const String& level = "info");
   bool startNetworkWorker();

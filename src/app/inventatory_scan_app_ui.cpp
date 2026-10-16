@@ -13,6 +13,16 @@
 
 namespace inventatory_scan {
 
+namespace {
+
+// Moves a setting along its options, stopping at the first and the last.
+template <typename Option>
+Option stepOption(Option current, int step, int count) {
+  return static_cast<Option>(constrain(static_cast<int>(current) + step, 0, count - 1));
+}
+
+}  // namespace
+
 void InventatoryScanApp::enterStandby() {
   if (powerMode_ == PowerMode::Standby) {
     return;
@@ -55,13 +65,7 @@ void InventatoryScanApp::exitStandby() {
 
   if (!scannerReady) {
     Serial.println("Scanner resume failed; verify the GM65 connection and profile.");
-    SyncResult result;
-    result.resultId = "local-scanner";
-    result.eventId = "local-scanner";
-    result.status = "failed";
-    result.code = kScannerFaultCode;
-    result.message = "Check scanner cable";
-    display_.showLocalFailure(result);
+    display_.showLocalFailure(localFailure("local-scanner", kScannerFaultCode, "Check scanner cable"));
   }
 
   if (provisionedSettings_.wifiSsid.length() == 0) {
@@ -105,9 +109,7 @@ void InventatoryScanApp::openBacklightSettings() {
 
 // A and B move along the list. The change takes effect at once and is saved, like the contrast.
 void InventatoryScanApp::stepBacklightMode(int step) {
-  const int current = static_cast<int>(backlightMode_);
-  const int next = constrain(current + step, 0, static_cast<int>(kBacklightModeCount) - 1);
-  backlightMode_ = static_cast<BacklightMode>(next);
+  backlightMode_ = stepOption(backlightMode_, step, kBacklightModeCount);
   persistBacklightMode();
   noteUserActivity();
   openBacklightSettings();
@@ -145,8 +147,7 @@ void InventatoryScanApp::openSleepAfterSettings() {
 
 // A and B move along the list, as for the backlight. The change takes effect at once and is saved.
 void InventatoryScanApp::stepSleepDelay(int step) {
-  const int next = constrain(static_cast<int>(sleepDelay_) + step, 0, static_cast<int>(kSleepDelayCount) - 1);
-  sleepDelay_ = static_cast<SleepDelay>(next);
+  sleepDelay_ = stepOption(sleepDelay_, step, kSleepDelayCount);
   persistSleepDelay();
   noteUserActivity();
   openSleepAfterSettings();
@@ -164,9 +165,7 @@ void InventatoryScanApp::openPowerOffSettings() {
 
 // Moves along the list as the sleep picker does: A towards the shortest, B towards Never.
 void InventatoryScanApp::stepPowerOffDelay(int step) {
-  const int next =
-      constrain(static_cast<int>(powerOffDelay_) + step, 0, static_cast<int>(kPowerOffDelayCount) - 1);
-  powerOffDelay_ = static_cast<PowerOffDelay>(next);
+  powerOffDelay_ = stepOption(powerOffDelay_, step, kPowerOffDelayCount);
   persistPowerOffDelay();
   noteUserActivity();
   openPowerOffSettings();

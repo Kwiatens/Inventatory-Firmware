@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The time left on battery, or to full, now shows from the first reading. Until the device has observed a rate it uses a typical one and marks the time with "~", for example "~6h 20m left". It replaces "Estimating time" on the dock card. The typical rates are `kBatteryPriorDischargeMsPerPercent` and `kBatteryPriorChargeMsPerPercent` and should be calibrated on the device.
 - The power-off warning and the power-off ending are simpler. The warning is a centred title, a countdown bar and "Release * to cancel". The ending is the `›i` sinking behind a short rule, with "Press * to wake" under it.
 - On the quantity screen the item name and its code no longer touch, and "Change quantity by:" is now "Change by:" so a four-digit quantity fits.
+- The backlight picker says "Off after 5 min idle" instead of "Dims after 5 min idle", because the backlight only switches on and off.
 - Screen layout numbers that were written inline in the renderer are now named in `display_style.h`, and centred lines share one helper.
 
 ### Added
