@@ -352,7 +352,7 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
         quickLabelPresets_[quickLabelPresetCount_++] = response.quickLabelPresets[index];
       }
     }
-    if (quickLabelPage_ * 4U >= quickLabelPresetCount_) quickLabelPage_ = 0;
+    if (quickLabelPage_ * kQuickLabelsPerPage >= quickLabelPresetCount_) quickLabelPage_ = 0;
     if (state_ == State::QuickLabels) {
       display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
                                quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
