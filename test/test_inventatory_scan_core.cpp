@@ -557,33 +557,12 @@ void test_fault_rotation_takes_turns() {
   TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(2UL * kFaultRotateMs, 2, kFaultRotateMs));
 }
 
-void test_brand_dot_policy() {
-  // Busy: one slot travels clockwise TL -> TR -> BR -> BL in 200 ms steps.
-  TEST_ASSERT_EQUAL_HEX8(0x01, brandDotBusy(0));
-  TEST_ASSERT_EQUAL_HEX8(0x01, brandDotBusy(199));
-  TEST_ASSERT_EQUAL_HEX8(0x02, brandDotBusy(200));
-  TEST_ASSERT_EQUAL_HEX8(0x08, brandDotBusy(400));
-  TEST_ASSERT_EQUAL_HEX8(0x04, brandDotBusy(600));
-  TEST_ASSERT_EQUAL_HEX8(0x01, brandDotBusy(800));
-  // Progress: one slot per quarter, the next one blinks every 400 ms.
-  TEST_ASSERT_EQUAL_HEX8(0x01, brandDotProgress(0, 0));
-  TEST_ASSERT_EQUAL_HEX8(0x00, brandDotProgress(0, 400));
-  TEST_ASSERT_EQUAL_HEX8(0x03, brandDotProgress(42, 0));
-  TEST_ASSERT_EQUAL_HEX8(0x01, brandDotProgress(42, 400));
-  TEST_ASSERT_EQUAL_HEX8(0x07, brandDotProgress(50, 0));
-  TEST_ASSERT_EQUAL_HEX8(0x03, brandDotProgress(50, 799));
-  TEST_ASSERT_EQUAL_HEX8(0x0F, brandDotProgress(99, 0));
-  TEST_ASSERT_EQUAL_HEX8(0x07, brandDotProgress(99, 400));
-  TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandDotProgress(100, 0));
-  TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandDotProgress(100, 400));
-  TEST_ASSERT_EQUAL_HEX8(kBrandDotFull, brandDotProgress(250, 400));
-  TEST_ASSERT_EQUAL_HEX8(0x00, brandDotProgress(-5, 400));
-  TEST_ASSERT_EQUAL_HEX8(0x09, kBrandDotFault);
+void test_mark_layout() {
   // The update column fits beside the mark on the 128 px screen.
   TEST_ASSERT_TRUE(style::kMarkCols * style::kUpdateMarkUnit + style::kUpdateColumnGap +
                        style::kUpdateColumnW <=
                    style::kScreenW);
-  TEST_ASSERT_TRUE(style::kMarkRows * style::kBootMarkUnit < style::kScreenH);
+  TEST_ASSERT_TRUE(style::kMarkBodyRows * style::kBootMarkUnit < style::kScreenH);
 }
 
 void test_soft_power_off_policy() {
@@ -903,8 +882,13 @@ void test_battery_tracker_learns_runtime() {
   BatteryTracker tracker;
   for (uint32_t second = 0; second <= 1200; ++second) {
     tracker.update(4000U - second / 12U, false, second * 1000UL);
-    if (second < 290) TEST_ASSERT_EQUAL_INT32(-1, tracker.minutesRemaining());
+    if (second == 0) {
+      // No rate yet: the typical rate gives an estimate at once, marked approximate.
+      TEST_ASSERT_TRUE(tracker.estimateApproximate());
+      TEST_ASSERT_TRUE(tracker.minutesRemaining() > 0);
+    }
   }
+  TEST_ASSERT_FALSE(tracker.estimateApproximate());
   TEST_ASSERT_EQUAL_INT(62, tracker.percent());
   const int32_t remaining = tracker.minutesRemaining();
   TEST_ASSERT_TRUE(remaining >= 60 && remaining <= 95);
@@ -934,7 +918,12 @@ void test_battery_estimate_text() {
   TEST_ASSERT_EQUAL_STRING("Full: 1h 20m", text);
   TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 0, true, 100));
   TEST_ASSERT_EQUAL_STRING("Fully charged", text);
-  // No rate yet: nothing is shown rather than a guess.
+  // From the typical rate: marked with "~".
+  TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 380, false, 60, true));
+  TEST_ASSERT_EQUAL_STRING("~6h 20m left", text);
+  TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 80, true, 60, true));
+  TEST_ASSERT_EQUAL_STRING("Full: ~1h 20m", text);
+  // No reading: nothing is shown.
   TEST_ASSERT_FALSE(formatBatteryEstimate(text, sizeof(text), -1, false, 50));
   TEST_ASSERT_EQUAL_STRING("", text);
 }
@@ -1150,7 +1139,7 @@ void setup() {
   RUN_TEST(test_scanner_fault_warning_policy);
   RUN_TEST(test_error_code_catalogue_is_well_formed_and_unique);
   RUN_TEST(test_fault_rotation_takes_turns);
-  RUN_TEST(test_brand_dot_policy);
+  RUN_TEST(test_mark_layout);
   RUN_TEST(test_soft_power_off_policy);
   RUN_TEST(test_boot_bloom_policy);
   RUN_TEST(test_header_page_cycle_policy);
