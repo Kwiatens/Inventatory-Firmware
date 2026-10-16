@@ -54,6 +54,11 @@ constexpr uint8_t kBatteryChargerDebounceSamples = 2;
 // Observed time needed before a runtime rate is trusted and shown.
 constexpr uint32_t kBatteryEstimateMinSpanMs = 300000UL;
 constexpr int32_t kBatteryEstimateMaxMinutes = 9999;
+// Until a rate has been observed the estimate uses these typical times per percent, and the screens
+// mark it with "~". They assume a 1000 mAh cell, about 80 mA in use and about 500 mA from the dock.
+// Calibrate them on the device; a learned rate replaces them after the first observed percent.
+constexpr uint32_t kBatteryPriorDischargeMsPerPercent = 450000UL;
+constexpr uint32_t kBatteryPriorChargeMsPerPercent = 72000UL;
 
 inline uint8_t batteryPercentFromMillivolts(uint32_t millivolts) {
   constexpr std::size_t kPoints = kBatteryCurveCount;
@@ -129,17 +134,22 @@ class BatteryTracker {
   bool charging() const { return valid_ && charging_; }
   // -1 while no reading has been taken.
   int percent() const { return valid_ ? static_cast<int>(percent_) : -1; }
-  // -1 until a rate has been observed, so a time is never shown from guesswork.
+  // -1 while there is no reading. Before a rate has been observed it comes from the typical rate
+  // and estimateApproximate() is true.
   int32_t minutesRemaining() const {
     if (!valid_) return -1;
     const std::size_t slot = charging_ ? 1U : 0U;
-    if (!rateKnown_[slot]) return -1;
+    const uint64_t msPerPercent = rateKnown_[slot] ? msPerPercent_[slot]
+                                  : charging_      ? kBatteryPriorChargeMsPerPercent
+                                                   : kBatteryPriorDischargeMsPerPercent;
     const uint32_t remainingPercent = charging_ ? 100U - percent_ : percent_;
-    const uint64_t minutes = msPerPercent_[slot] * remainingPercent / 60000ULL;
+    const uint64_t minutes = msPerPercent * remainingPercent / 60000ULL;
     return minutes > static_cast<uint64_t>(kBatteryEstimateMaxMinutes)
                ? kBatteryEstimateMaxMinutes
                : static_cast<int32_t>(minutes);
   }
+  // True while the minutes come from the typical rate rather than one observed on this cell.
+  bool estimateApproximate() const { return !rateKnown_[charging_ ? 1U : 0U]; }
   // Discharge thresholds are debounced and never apply while charging.
   BatteryLevel level() const {
     if (!valid_ || charging_) return BatteryLevel::Ok;
@@ -213,10 +223,10 @@ inline bool formatBatteryDuration(char* out, std::size_t capacity, uint32_t minu
 }
 
 // The runtime line for the top bar and the battery cards: "Full: 1h 05m" while
-// charging, "6h 20m left" on battery, "Fully charged" at 100%. Returns false, and
-// writes nothing useful, while no rate is known yet.
+// charging, "6h 20m left" on battery, "Fully charged" at 100%. An estimate from the typical rate
+// (approximate) carries a "~". Returns false, and writes nothing useful, while there is no reading.
 inline bool formatBatteryEstimate(char* out, std::size_t capacity, int32_t minutes, bool charging,
-                                  int percent) {
+                                  int percent, bool approximate = false) {
   if (capacity == 0) return false;
   out[0] = '\0';
   if (charging && percent >= 100) {
@@ -226,7 +236,8 @@ inline bool formatBatteryEstimate(char* out, std::size_t capacity, int32_t minut
   if (minutes < 0) return false;
   char duration[16];
   if (!formatBatteryDuration(duration, sizeof(duration), static_cast<uint32_t>(minutes))) return false;
-  const int written = snprintf(out, capacity, charging ? "Full: %s" : "%s left", duration);
+  const char* const mark = approximate ? "~" : "";
+  const int written = snprintf(out, capacity, charging ? "Full: %s%s" : "%s%s left", mark, duration);
   return written > 0 && static_cast<std::size_t>(written) < capacity;
 }
 

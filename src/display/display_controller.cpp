@@ -44,7 +44,7 @@ void DisplayController::clearContent() {
   // re-arm it after calling this. The battery fields are not content and stay.
   resultUntilMs_ = 0;
   model_.animateEllipsis = false;
-  model_.brandDot = DisplayBrandDot::None;
+  model_.otaProgress = false;
   model_.countdownSeconds = -1;
   model_.countdownPercent = 0;
   model_.choiceIndex = 0;
@@ -163,14 +163,13 @@ void DisplayController::playBootSplash(unsigned long holdMs) {
 }
 
 // Boot keeps the splash on screen until the scanner is ready; a failed stage
-// replaces the product name and shows a static broken dot.
+// replaces the product name.
 void DisplayController::showBoot(const String& stage, const String& code) {
   showSplash();
   model_.mode = DisplayUiMode::Boot;
   if (stage.length() == 0) return;
   model_.primary = stage;
   model_.secondary = code.length() > 0 ? code : String("See USB serial");
-  model_.brandDot = DisplayBrandDot::Fault;
 }
 
 // The soft power-off warning: a countdown bar over the screen beneath, which comes back when the
@@ -387,15 +386,12 @@ void DisplayController::showOta(const String& text, int percent) {
   model_.showPcStatus = false;
   model_.primary = "Updating";
   model_.otaPercent = constrain(percent, 0, 100);
-  // The i's dot carries the status, as in the desktop update wizard.
   if (text == "RESTARTING") {
-    model_.brandDot = DisplayBrandDot::Full;
     model_.secondary = "Restarting";
   } else if (text == "UPDATING") {
-    model_.brandDot = DisplayBrandDot::Progress;
+    model_.otaProgress = true;
     model_.secondary = String(model_.otaPercent) + "%";
   } else {
-    model_.brandDot = DisplayBrandDot::Busy;
     model_.secondary = "Preparing";
   }
   markDirty();
@@ -767,17 +763,6 @@ RenderActivity DisplayController::computeActivity(unsigned long now) const {
   if (!standby_ && shown.mode == DisplayUiMode::Quantity) {
     activity.quantityCursorVisible = !uiActivityAlternate(now);
   }
-  if (!standby_) {
-    switch (shown.brandDot) {
-      case DisplayBrandDot::None: activity.brandDotSlots = 0; break;
-      case DisplayBrandDot::Full: activity.brandDotSlots = kBrandDotFull; break;
-      case DisplayBrandDot::Busy: activity.brandDotSlots = brandDotBusy(now); break;
-      case DisplayBrandDot::Progress:
-        activity.brandDotSlots = brandDotProgress(shown.otaPercent, now);
-        break;
-      case DisplayBrandDot::Fault: activity.brandDotSlots = kBrandDotFault; break;
-    }
-  }
   // Only the screen that is shown animates: the top bar is hidden under an overlay, and the
   // card fill belongs to the card alone.
   if (!overlayActive_) {
@@ -793,7 +778,7 @@ RenderActivity DisplayController::computeActivity(unsigned long now) const {
 
 bool DisplayController::activityEquals(const RenderActivity& a, const RenderActivity& b) {
   return a.alternate == b.alternate && a.quantityCursorVisible == b.quantityCursorVisible &&
-         a.railActivityOffset == b.railActivityOffset && a.brandDotSlots == b.brandDotSlots &&
+         a.railActivityOffset == b.railActivityOffset &&
          a.headerPage == b.headerPage && a.cardFillStep == b.cardFillStep &&
          a.bloomStage == b.bloomStage && a.powerBarFillPx == b.powerBarFillPx;
 }

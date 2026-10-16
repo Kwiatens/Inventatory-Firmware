@@ -93,42 +93,6 @@ constexpr bool uiDeadlineReached(uint32_t now, uint32_t deadline) {
   return deadline != 0 && static_cast<int32_t>(now - deadline) >= 0;
 }
 
-// The dot of the ›i mark is split into four slots, one bit each in reading
-// order: bit 0 top-left, bit 1 top-right, bit 2 bottom-left, bit 3 bottom-right.
-// The slots animate in whole steps, like pixels switching, as in the desktop app.
-constexpr uint8_t kBrandDotFull = 0x0F;
-// A fault: only the top-left and bottom-right slots, a static broken dot that
-// still reads when the main loop has stopped.
-constexpr uint8_t kBrandDotFault = 0x09;
-constexpr unsigned long kBrandDotStepMs = 200UL;
-constexpr unsigned long kBrandDotBlinkMs = 400UL;
-
-// The helpers below are single-return constexpr functions: the ESP32 toolchain
-// compiles them under C++11 rules.
-constexpr uint8_t brandDotClockwise(unsigned long step) {
-  return step == 0UL ? 0x01 : step == 1UL ? 0x02 : step == 2UL ? 0x08 : 0x04;
-}
-
-// Work of unknown length: one lit slot travels clockwise.
-constexpr uint8_t brandDotBusy(unsigned long now) {
-  return brandDotClockwise((now / kBrandDotStepMs) % 4UL);
-}
-
-constexpr uint8_t brandDotSlotsUpTo(int count) {
-  return static_cast<uint8_t>((1U << (count < 0 ? 0 : count > 4 ? 4 : count)) - 1U);
-}
-
-constexpr int brandDotFilledSlots(int percent) {
-  return (percent < 0 ? 0 : percent > 100 ? 100 : percent) * 4 / 100;
-}
-
-// Work of known size: slots fill in reading order, one per quarter, and the
-// slot being filled blinks.
-constexpr uint8_t brandDotProgress(int percent, unsigned long now) {
-  return brandDotSlotsUpTo(brandDotFilledSlots(percent) +
-                           ((now / kBrandDotBlinkMs) % 2UL == 0UL ? 1 : 0));
-}
-
 // Top bar: the right-hand slot cycles through the status, the battery level and,
 // when a runtime rate is known, the time left. The status alone is shown when
 // there is no battery reading.
