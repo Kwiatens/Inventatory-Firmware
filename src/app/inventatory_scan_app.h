@@ -67,6 +67,7 @@ class InventatoryScanApp {
 
   void handleScan(const String& code);
   void pollScanner();
+  void showScanRefusal(const char* logMessage);
   bool queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId = nullptr,
                   const String& manufacturer = String(), const String& manufacturerPartNumber = String(),
                   const String& encodedPartName = String());
@@ -191,6 +192,8 @@ class InventatoryScanApp {
   InventatoryClientConfig clientConfig_;
   QuantityComposer quantity_;
   String scannedCode_;
+  // The main code of a vendor bag, sent as the event code. Empty when the scan is not a vendor bag.
+  String scannedEventCode_;
   String scannedManufacturer_;
   String scannedManufacturerPartNumber_;
   String scannedPartName_;

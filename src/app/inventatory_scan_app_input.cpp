@@ -129,10 +129,18 @@ void InventatoryScanApp::handleScan(const String& code) {
     const auto& lookupCode = decoded.manufacturerPartNumber;
     const auto& manufacturer = decoded.manufacturer;
     const auto& encodedPartName = decoded.encodedPartName;
+    // The desktop recognises a bag by its DigiKey part number, so a Data Matrix without one is refused rather than
+    // added as a part no supported vendor supplied.
+    const auto bagCode = digiKeyBagCodeForSync(decoded.auxiliaryPartNumber, lookupCode, kMaximumBagEventCodeBytes);
+    if (bagCode.length() == 0) {
+      showScanRefusal("Rejected Data Matrix scan that no supported vendor bag carries.");
+      return;
+    }
     const auto forwardedCode = lookupCode.length() > 0 ? lookupCode : encodedPartName;
     const auto defaultQuantity = decoded.quantity;
     resetPending();
     scannedCode_ = forwardedCode;
+    scannedEventCode_ = bagCode;
     scannedManufacturer_ = manufacturer;
     scannedManufacturerPartNumber_ = lookupCode;
     scannedPartName_ = encodedPartName;
@@ -150,6 +158,33 @@ void InventatoryScanApp::handleScan(const String& code) {
     Serial.println(quantity_.displayText().c_str());
     Serial.println("Enter quantity, then press A to add. C cancels.");
     sendDebugMessage("data matrix scan pending", "scan");
+    return;
+  }
+
+  TmeBagLabel tmeLabel;
+  if (parseTmeBagLabel(trimmed, tmeLabel)) {
+    const auto tmeCode = tmeBagCodeForSync(tmeLabel, kMaximumBagEventCodeBytes);
+    if (tmeCode.length() == 0) {
+      showScanRefusal("Rejected TME label scan that is too long.");
+      return;
+    }
+    resetPending();
+    scannedCode_ = tmeLabel.manufacturerPartNumber;
+    scannedEventCode_ = tmeCode;
+    quantity_.setDefaultValue(tmeLabel.quantity);
+    pendingScanType_ = PendingScanType::ComponentDataMatrix;
+    activeLookupCode_ = tmeLabel.manufacturerPartNumber;
+    activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
+    lookupMissCount_ = 0;
+    setAwaitingQuantity();
+    display_.showQuantity("Checking inventory", String("Part ") + scannedCode_,
+                          quantity_.displayText(), quantity_.cursor(), true,
+                          QuantityLookupState::Pending);
+    lastSyncAttempt_ = 0;
+    Serial.print("Decoded default quantity: ");
+    Serial.println(quantity_.displayText().c_str());
+    Serial.println("Enter quantity, then press A to add. C cancels.");
+    sendDebugMessage("tme label scan pending", "scan");
     return;
   }
 
@@ -175,7 +210,7 @@ void InventatoryScanApp::handleScan(const String& code) {
     return;
   }
 
-  Serial.println("Rejected unrecognized scanner data.");
+  showScanRefusal("Rejected unrecognized scanner data.");
 }
 
 SyncResult InventatoryScanApp::localFailure(const char* id, const char* code, const char* message) {
@@ -532,7 +567,8 @@ void InventatoryScanApp::submitCurrent(char action) {
 
     const auto quantity = quantity_.consume(true);
     String eventId;
-    const auto queued = queueEvent(DeviceEventKind::InventoryReceive, scannedCode_, quantity, &eventId,
+    const auto queued = queueEvent(DeviceEventKind::InventoryReceive,
+                                   scannedEventCode_.length() > 0 ? scannedEventCode_ : scannedCode_, quantity, &eventId,
                                    scannedManufacturer_, scannedManufacturerPartNumber_,
                                    scannedPartName_);
     resetPending();
@@ -549,6 +585,14 @@ void InventatoryScanApp::submitCurrent(char action) {
   resetPending();
   if (!queued) return;  // The failure screen is already showing.
   waitForInventoryResult(eventId);
+}
+
+// Shows that a scan was refused. Nothing is queued and no part is added, and the scanner stays ready for the next scan.
+// The screen gives the short reason; the serial log gives the detail.
+void InventatoryScanApp::showScanRefusal(const char* logMessage) {
+  display_.showLocalFailure(localFailure("scan-refused", kScanRejectedCode,
+                                         "Not a supported vendor bag. Add the part by hand"));
+  Serial.println(logMessage);
 }
 
 bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId,
@@ -586,6 +630,7 @@ void InventatoryScanApp::setAwaitingQuantity() {
 
 void InventatoryScanApp::resetPending() {
   scannedCode_.clear();
+  scannedEventCode_.clear();
   scannedManufacturer_.clear();
   scannedManufacturerPartNumber_.clear();
   scannedPartName_.clear();
