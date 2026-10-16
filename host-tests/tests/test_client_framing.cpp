@@ -28,6 +28,10 @@ void test_client_authenticates_a_body_with_a_nul_byte_by_its_full_length();
 void test_client_refuses_a_repeated_content_length();
 void test_client_refuses_a_repeated_mac_header();
 void test_client_refuses_chunked_transfer_encoding();
+void test_client_refuses_a_nul_byte_in_the_header_block();
+void test_client_accepts_a_header_block_of_exactly_the_limit();
+void test_client_refuses_a_header_block_one_byte_over_the_limit();
+void test_client_accepts_a_body_of_exactly_the_limit();
 void test_client_requires_content_length_to_match_the_body();
 void test_client_refuses_a_wrong_mac();
 void test_client_binds_the_status_into_the_mac();
@@ -214,6 +218,14 @@ void test_client_refuses_chunked_transfer_encoding() {
   expectRefused(spec, "chunked transfer encoding");
 }
 
+void test_client_refuses_a_nul_byte_in_the_header_block() {
+  resetNetwork();
+  // A NUL before a later header line could hide that line from C-string header reads on the device.
+  ResponseSpec spec;
+  spec.extraHeaders = std::string("Server: x") + '\0' + "y\r\nTransfer-Encoding: chunked\r\n";
+  expectRefused(spec, "NUL byte in the header block");
+}
+
 void test_client_requires_content_length_to_match_the_body() {
   resetNetwork();
   ResponseSpec longer;
@@ -258,6 +270,43 @@ void test_client_refuses_a_header_block_over_the_limit() {
   ResponseSpec spec;
   spec.extraHeaders = "X-Pad: " + std::string(kMaxHttpHeaderBytes, 'a') + "\r\n";
   expectRefused(spec, "header block over the limit");
+}
+
+// A response whose header block (everything before the blank line) is exactly `headerBytes` long. The
+// probe response has the same fields and a counter of 1, which is what the first request of a fresh store uses.
+ResponseSpec headerBlockSpec(std::size_t headerBytes) {
+  const std::string probe = makeResponse("X-Inventatory-Counter: 1\r\n", ResponseSpec());
+  const std::size_t baseHeader = probe.find("\r\n\r\n");
+  const std::string padName = "X-Pad: ";
+  const std::size_t fixed = padName.size() + 2U;  // the name and its CRLF
+  ResponseSpec spec;
+  spec.extraHeaders = padName + std::string(headerBytes - baseHeader - fixed, 'a') + "\r\n";
+  return spec;
+}
+
+void test_client_accepts_a_header_block_of_exactly_the_limit() {
+  resetNetwork();
+  int httpStatus = 0;
+  std::string body;
+  TEST_ASSERT_TRUE(syncWith(headerBlockSpec(kMaxHttpHeaderBytes), httpStatus, body));
+  TEST_ASSERT_EQUAL_INT(200, httpStatus);
+  TEST_ASSERT_EQUAL_STRING("{\"ok\":true}", body.c_str());
+}
+
+void test_client_refuses_a_header_block_one_byte_over_the_limit() {
+  resetNetwork();
+  expectRefused(headerBlockSpec(kMaxHttpHeaderBytes + 1U), "header block one byte over the limit");
+}
+
+void test_client_accepts_a_body_of_exactly_the_limit() {
+  resetNetwork();
+  int httpStatus = 0;
+  std::string body;
+  ResponseSpec spec;
+  spec.body = std::string(kMaxHttpBodyBytes, 'b');
+  TEST_ASSERT_TRUE(syncWith(spec, httpStatus, body));
+  TEST_ASSERT_EQUAL_INT(200, httpStatus);
+  TEST_ASSERT_EQUAL_UINT32(kMaxHttpBodyBytes, body.size());
 }
 
 void test_client_refuses_a_body_over_the_limit() {
@@ -373,6 +422,10 @@ void runHostClientFramingTests() {
   RUN_TEST(test_client_refuses_a_repeated_content_length);
   RUN_TEST(test_client_refuses_a_repeated_mac_header);
   RUN_TEST(test_client_refuses_chunked_transfer_encoding);
+  RUN_TEST(test_client_refuses_a_nul_byte_in_the_header_block);
+  RUN_TEST(test_client_accepts_a_header_block_of_exactly_the_limit);
+  RUN_TEST(test_client_refuses_a_header_block_one_byte_over_the_limit);
+  RUN_TEST(test_client_accepts_a_body_of_exactly_the_limit);
   RUN_TEST(test_client_requires_content_length_to_match_the_body);
   RUN_TEST(test_client_refuses_a_wrong_mac);
   RUN_TEST(test_client_binds_the_status_into_the_mac);

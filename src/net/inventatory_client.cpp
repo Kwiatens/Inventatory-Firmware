@@ -229,8 +229,22 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
       }
       response += static_cast<char>(raw);
       if (headerEnd < 0) {
-        headerEnd = response.indexOf("\r\n\r\n");
-        if (headerEnd < 0 && !httpHeaderWithinLimit(response.length())) {
+        // A NUL byte in the header block is refused. The header is read with C-string calls that stop at
+        // NUL, so a NUL could hide a later header line. Only the body may contain NUL bytes.
+        if (raw == 0) {
+          client_.stop();
+          return false;
+        }
+        // The header ends at the first CR LF CR LF. Only the newest four bytes can complete it, so
+        // the buffer is not searched again for every byte.
+        const auto length = response.length();
+        if (length >= 4U && response[length - 1U] == '\n' && response[length - 2U] == '\r' &&
+            response[length - 3U] == '\n' && response[length - 4U] == '\r') {
+          headerEnd = static_cast<int>(length - 4U);
+        } else if (length > kMaxHttpHeaderBytes + 4U) {
+          // The header itself may be exactly kMaxHttpHeaderBytes long, followed by the four bytes of the
+          // blank line. Once the header is longer than that, it is refused before the blank line arrives.
+          // The exact size of the header is checked again below, once it is known.
           client_.stop();
           return false;
         }
