@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The host test suite covers the queue migrations, the replay counter and the provisioning parser. A coverage report is available with `make -C host-tests coverage`.
 
 ### Fixed
+- A TME label whose manufacturer part number contains a `*`, such as `DS1023-1*40S21`, is read instead of refused.
+- Scanning a TME label finds the part by its TME part number, so a part already in inventory is found. Before, the scanner asked by the manufacturer part number, and the part showed as not found.
 - A working barcode scanner no longer shows `SCN-01` at every start-up. The module confirms its save command after about 340 ms, and the firmware waited only 150 ms for that confirmation.
 - A Data Matrix that the scanner ends with RS EOT and no line break, as a DigiKey bag's does, is read as a scan. Before, it was dropped without a message.
 - A refused scan says why: an unrecognised scan, a label too long to send, or a Data Matrix without a DigiKey part number. Each one showed "Not a supported vendor bag" before.
