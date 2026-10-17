@@ -176,7 +176,9 @@ void InventatoryScanApp::handleScan(const String& code) {
     scannedEventCode_ = tmeCode;
     quantity_.setDefaultValue(tmeLabel.quantity);
     pendingScanType_ = PendingScanType::ComponentDataMatrix;
-    activeLookupCode_ = tmeLabel.manufacturerPartNumber;
+    // The desktop matches a lookup against the item's SKU, which a TME label fills with its TME symbol. The manufacturer
+    // part number is not stored under any key the lookup searches, so it would never find the part.
+    activeLookupCode_ = tmeLabel.symbol;
     activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
     lookupMissCount_ = 0;
     setAwaitingQuantity();

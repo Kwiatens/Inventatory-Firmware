@@ -65,6 +65,14 @@ void test_bag_codes_for_sync() {
   TEST_ASSERT_FALSE(parseTmeBagLabel("PN:0ZCM0010FF2G https://www.tme.eu/details/0ZCM0010FF2G", rejected));
   // A DigiKey bag's code is not a TME label.
   TEST_ASSERT_FALSE(parseTmeBagLabel(digiKey, rejected));
+
+  // A manufacturer part number may carry a '*' (CONNFLY DS1023-1*40S21). A TME symbol may not.
+  TmeBagLabel asterisk;
+  TEST_ASSERT_TRUE(parseTmeBagLabel("QTY:2 PN:ZL262-40SG MFR:CONNFLY MPN:DS1023-1*40S21 RoHS", asterisk));
+  TEST_ASSERT_TRUE(asterisk.manufacturerPartNumber == "DS1023-1*40S21");
+  TEST_ASSERT_TRUE(tmeBagCodeForSync(asterisk, kMaximumBagEventCodeBytes) == "PN:ZL262-40SG MPN:DS1023-1*40S21");
+  TEST_ASSERT_FALSE(parseTmeBagLabel("PN:ZL262*40SG MPN:DS1023", rejected));
+  TEST_ASSERT_FALSE(parseTmeBagLabel("PN:ZL262-40SG MPN:DS*1023;DROP", rejected));
 }
 
 void test_standardized_scanner_codes() {
