@@ -30,6 +30,11 @@ void test_gm65_payload_bytes_follow_the_printable_rule();
 void test_gm65_frame_terminators_are_cr_lf_and_end_of_transmission();
 void test_gm65_end_of_transmission_ends_a_data_matrix_without_crlf();
 void test_gm65_repeated_separator_trailer_is_not_reported();
+void test_gm65_zone_command_matches_the_manual_examples();
+void test_gm65_deep_sleep_and_wake_are_zone_0xd9_commands();
+void test_gm65_zone_read_reply_is_checked_before_its_value_is_used();
+void test_gm65_lamps_off_keeps_the_other_zone_bits();
+void test_gm65_lamps_are_off_only_when_both_are_off_and_restore_to_standard();
 
 // One assembler shared by every test. It holds a 1 KB buffer, so it lives in static
 // storage instead of on the 8 KiB loop stack. Each test calls reset() first, which
@@ -207,6 +212,69 @@ void test_gm65_repeated_separator_trailer_is_not_reported() {
   TEST_ASSERT_TRUE(frameIs(frames, "B"));
 }
 
+void test_gm65_zone_command_matches_the_manual_examples() {
+  // Manual sections 9.2, 9.3 and 9.4: write 0x3E to address 0x000A, read address 0x000A, and save.
+  uint8_t command[kGm65ZoneCommandLength];
+  gm65ZoneCommand(0x08, 0x000A, 0x3E, command);
+  const uint8_t write[] = {0x7E, 0x00, 0x08, 0x01, 0x00, 0x0A, 0x3E, 0x4C, 0xCF};
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(write, command, sizeof(write));
+
+  gm65ZoneCommand(0x07, 0x000A, 0x01, command);
+  const uint8_t read[] = {0x7E, 0x00, 0x07, 0x01, 0x00, 0x0A, 0x01, 0xEE, 0x8A};
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(read, command, sizeof(read));
+
+  gm65ZoneCommand(0x09, 0x0000, 0x00, command);
+  const uint8_t save[] = {0x7E, 0x00, 0x09, 0x01, 0x00, 0x00, 0x00, 0xDE, 0xC8};
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(save, command, sizeof(save));
+}
+
+void test_gm65_deep_sleep_and_wake_are_zone_0xd9_commands() {
+  // Manual section 9.7: zone 0x00D9 value 0xA5 is deep sleep and 0x00 wakes the module. The sleep itself
+  // is still to be checked on a board.
+  uint8_t command[kGm65ZoneCommandLength];
+  gm65ZoneCommand(0x08, kGm65FunctionZone, kGm65DeepSleep, command);
+  const uint8_t sleep[] = {0x7E, 0x00, 0x08, 0x01, 0x00, 0xD9, 0xA5, 0x3E, 0x69};
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(sleep, command, sizeof(sleep));
+
+  gm65ZoneCommand(0x08, kGm65FunctionZone, kGm65Wake, command);
+  const uint8_t wake[] = {0x7E, 0x00, 0x08, 0x01, 0x00, 0xD9, 0x00, 0xDB, 0x26};
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(wake, command, sizeof(wake));
+}
+
+void test_gm65_zone_read_reply_is_checked_before_its_value_is_used() {
+  // Manual section 9.2: reading address 0x000A returns 0x3E with CRC E4 AC.
+  uint8_t value = 0;
+  const uint8_t reply[] = {0x02, 0x00, 0x00, 0x01, 0x3E, 0xE4, 0xAC};
+  TEST_ASSERT_TRUE(gm65ZoneReadValue(reply, value));
+  TEST_ASSERT_EQUAL_HEX8(0x3E, value);
+
+  const uint8_t badCrc[] = {0x02, 0x00, 0x00, 0x01, 0x3E, 0xE4, 0xAD};
+  TEST_ASSERT_FALSE(gm65ZoneReadValue(badCrc, value));
+  const uint8_t badLength[] = {0x02, 0x00, 0x00, 0x02, 0x3E, 0xE4, 0xAC};
+  TEST_ASSERT_FALSE(gm65ZoneReadValue(badLength, value));
+  const uint8_t badType[] = {0x02, 0x00, 0x01, 0x01, 0x3E, 0xE4, 0xAC};
+  TEST_ASSERT_FALSE(gm65ZoneReadValue(badType, value));
+}
+
+void test_gm65_lamps_off_keeps_the_other_zone_bits() {
+  // Zone 0x0000 bits 5-4 (head lamp) and 3-2 (pointing light) go to 00. Bits 1-0 (scan mode), 6 and 7 stay.
+  TEST_ASSERT_EQUAL_HEX8(0xC3, gm65LampsOffZoneValue(0xFF));
+  TEST_ASSERT_EQUAL_HEX8(0x43, gm65LampsOffZoneValue(0x7F));
+  TEST_ASSERT_EQUAL_HEX8(0x40, gm65LampsOffZoneValue(0x40));
+  TEST_ASSERT_EQUAL_HEX8(0x03, gm65LampsOffZoneValue(0x13));
+}
+
+void test_gm65_lamps_are_off_only_when_both_are_off_and_restore_to_standard() {
+  TEST_ASSERT_TRUE(gm65LampsAreOff(0x00));
+  TEST_ASSERT_TRUE(gm65LampsAreOff(0x43));
+  TEST_ASSERT_FALSE(gm65LampsAreOff(0x14));
+  TEST_ASSERT_FALSE(gm65LampsAreOff(0x10));
+  TEST_ASSERT_FALSE(gm65LampsAreOff(0x04));
+
+  TEST_ASSERT_EQUAL_HEX8(0xD7, gm65LampsStandardZoneValue(0xC3));
+  TEST_ASSERT_EQUAL_HEX8(0x17, gm65LampsStandardZoneValue(0x03));
+}
+
 void registerGm65FrameTests() {
   RUN_TEST(test_gm65_crc16_has_the_xmodem_check_value);
   RUN_TEST(test_gm65_frame_ends_at_carriage_return_line_feed);
@@ -223,4 +291,9 @@ void registerGm65FrameTests() {
   RUN_TEST(test_gm65_frame_terminators_are_cr_lf_and_end_of_transmission);
   RUN_TEST(test_gm65_end_of_transmission_ends_a_data_matrix_without_crlf);
   RUN_TEST(test_gm65_repeated_separator_trailer_is_not_reported);
+  RUN_TEST(test_gm65_zone_command_matches_the_manual_examples);
+  RUN_TEST(test_gm65_deep_sleep_and_wake_are_zone_0xd9_commands);
+  RUN_TEST(test_gm65_zone_read_reply_is_checked_before_its_value_is_used);
+  RUN_TEST(test_gm65_lamps_off_keeps_the_other_zone_bits);
+  RUN_TEST(test_gm65_lamps_are_off_only_when_both_are_off_and_restore_to_standard);
 }
