@@ -23,6 +23,7 @@ void registerGm65FrameTests();
 void registerBleRequestTests();
 void registerBlockedHeadTests();
 void registerTextHelperTests();
+void registerBatteryGaugeTests();
 
 void test_bag_codes_for_sync() {
   // A DigiKey bag: the envelope, the DigiKey part number and the manufacturer part number, 43 characters.
@@ -869,9 +870,9 @@ void test_battery_tracker_guards_and_debounce() {
 
   tracker.update(4000, false, 1000);
   TEST_ASSERT_EQUAL_INT(78, tracker.percent());
-  // A single dip is smoothed: 4000 mV moves a quarter of the way to 3600 mV, to 3900 mV (62%).
+  // A dip is not a change of charge: a sag from the load never moves the percent (see test_battery_gauge.cpp).
   tracker.update(3600, false, 2000);
-  TEST_ASSERT_EQUAL_INT(62, tracker.percent());
+  TEST_ASSERT_EQUAL_INT(78, tracker.percent());
 
   // Low needs four consecutive seconds below 10%; a charging cell never warns.
   BatteryTracker low;
@@ -932,34 +933,6 @@ void test_battery_unreadable_needs_four_bad_readings_in_a_row() {
   blip.update(3900, false, 2000);
   blip.update(0, false, 3000);
   TEST_ASSERT_FALSE(blip.unreadable());
-}
-
-void test_battery_tracker_learns_runtime() {
-  // A steady discharge from 4.00 V (78%) to 3.90 V (62%) over 20 minutes is about
-  // 75 s per percent, so about 77 minutes remain at the end.
-  BatteryTracker tracker;
-  for (uint32_t second = 0; second <= 1200; ++second) {
-    tracker.update(4000U - second / 12U, false, second * 1000UL);
-    if (second == 0) {
-      // No rate yet: the typical rate gives an estimate at once, marked approximate.
-      TEST_ASSERT_TRUE(tracker.estimateApproximate());
-      TEST_ASSERT_TRUE(tracker.minutesRemaining() > 0);
-    }
-  }
-  TEST_ASSERT_FALSE(tracker.estimateApproximate());
-  TEST_ASSERT_EQUAL_INT(62, tracker.percent());
-  const int32_t remaining = tracker.minutesRemaining();
-  TEST_ASSERT_TRUE(remaining >= 60 && remaining <= 95);
-
-  // Charging from 3.90 V (62%) to 4.10 V (90%) over 20 minutes: about 43 s per
-  // percent, with 10% left, so roughly 7 minutes to full.
-  BatteryTracker charging;
-  for (uint32_t second = 0; second <= 1200; ++second) {
-    charging.update(3900U + second / 6U, true, second * 1000UL);
-  }
-  TEST_ASSERT_TRUE(charging.charging());
-  const int32_t toFull = charging.minutesRemaining();
-  TEST_ASSERT_TRUE(toFull >= 4 && toFull <= 12);
 }
 
 void test_charge_state_from_status_leds() {
@@ -1197,6 +1170,7 @@ void setup() {
   registerBleRequestTests();
   registerBlockedHeadTests();
   registerTextHelperTests();
+  registerBatteryGaugeTests();
   RUN_TEST(test_standardized_scanner_codes);
   RUN_TEST(test_bag_codes_for_sync);
   RUN_TEST(test_datamatrix_decoding_fixtures);
@@ -1234,7 +1208,6 @@ void setup() {
   RUN_TEST(test_battery_curve_policy);
   RUN_TEST(test_battery_tracker_guards_and_debounce);
   RUN_TEST(test_battery_unreadable_needs_four_bad_readings_in_a_row);
-  RUN_TEST(test_battery_tracker_learns_runtime);
   RUN_TEST(test_charge_state_from_status_leds);
   RUN_TEST(test_battery_tracker_debounces_charge_done);
   RUN_TEST(test_battery_estimate_text);
