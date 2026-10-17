@@ -67,7 +67,7 @@ class InventatoryScanApp {
 
   void handleScan(const String& code);
   void pollScanner();
-  void showScanRefusal(const char* logMessage);
+  void showScanRefusal(const char* screenMessage, const char* logMessage);
   bool queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId = nullptr,
                   const String& manufacturer = String(), const String& manufacturerPartNumber = String(),
                   const String& encodedPartName = String());

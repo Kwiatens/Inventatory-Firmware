@@ -133,7 +133,8 @@ void InventatoryScanApp::handleScan(const String& code) {
     // added as a part no supported vendor supplied.
     const auto bagCode = digiKeyBagCodeForSync(decoded.auxiliaryPartNumber, lookupCode, kMaximumBagEventCodeBytes);
     if (bagCode.length() == 0) {
-      showScanRefusal("Rejected Data Matrix scan that no supported vendor bag carries.");
+      showScanRefusal("Not a supported vendor bag. Add the part by hand",
+                      "Rejected Data Matrix scan that no supported vendor bag carries.");
       return;
     }
     const auto forwardedCode = lookupCode.length() > 0 ? lookupCode : encodedPartName;
@@ -167,7 +168,7 @@ void InventatoryScanApp::handleScan(const String& code) {
   if (parseTmeBagLabel(trimmed, tmeLabel)) {
     const auto tmeCode = tmeBagCodeForSync(tmeLabel, kMaximumBagEventCodeBytes);
     if (tmeCode.length() == 0) {
-      showScanRefusal("Rejected TME label scan that is too long.");
+      showScanRefusal("Label too long to send. Add the part by hand", "Rejected TME label scan that is too long.");
       return;
     }
     resetPending();
@@ -212,7 +213,7 @@ void InventatoryScanApp::handleScan(const String& code) {
     return;
   }
 
-  showScanRefusal("Rejected unrecognized scanner data.");
+  showScanRefusal("Scan not recognised. Add the part by hand", "Rejected unrecognized scanner data.");
 }
 
 SyncResult InventatoryScanApp::localFailure(const char* id, const char* code, const char* message) {
@@ -591,9 +592,8 @@ void InventatoryScanApp::submitCurrent(char action) {
 
 // Shows that a scan was refused. Nothing is queued and no part is added, and the scanner stays ready for the next scan.
 // The screen gives the short reason; the serial log gives the detail.
-void InventatoryScanApp::showScanRefusal(const char* logMessage) {
-  display_.showLocalFailure(localFailure("scan-refused", kScanRejectedCode,
-                                         "Not a supported vendor bag. Add the part by hand"));
+void InventatoryScanApp::showScanRefusal(const char* screenMessage, const char* logMessage) {
+  display_.showLocalFailure(localFailure("scan-refused", kScanRejectedCode, screenMessage));
   Serial.println(logMessage);
 }
 
