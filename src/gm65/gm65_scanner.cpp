@@ -39,7 +39,7 @@ constexpr ZoneWrite kBootProfile[] = {
     {0x0030, 0x00},  // UPCA off
     {0x0031, 0x00},  // UPCE0 off
     {0x0032, 0x00},  // UPCE1 off
-    {0x0033, 0x00},  // Code128 on
+    {0x0033, 0x00},  // Code128 off (GM65 manual: 0 forbids, 1 allows)
     {0x0036, 0x00},  // Code39 off
     {0x0039, 0x00},  // Code93 off
     {0x003C, 0x00},  // Codabar off
