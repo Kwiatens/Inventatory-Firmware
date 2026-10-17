@@ -215,6 +215,12 @@ void InventatoryScanApp::handleScan(const String& code) {
     return;
   }
 
+  // A code next to the one the operator scanned (on a TME label, for example) can be read after it. While
+  // that scan waits for its quantity, the extra frame is logged and does not replace the scan's screen.
+  if (state_ == State::AwaitQuantity && scannedCode_.length() > 0) {
+    Serial.println("Ignored unrecognized frame while a scan is pending.");
+    return;
+  }
   showScanRefusal("Scan not recognised. Add the part by hand", "Rejected unrecognized scanner data.");
 }
 
