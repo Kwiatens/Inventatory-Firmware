@@ -34,15 +34,18 @@ struct ZoneWrite {
 };
 
 constexpr ZoneWrite kBootProfile[] = {
+    {0x0005, 0x05},  // Read interval 0.5 s between reads (manual default 1.0 s)
+    {0x0006, 0xFF},  // Single-read window 25.5 s before the module stops trying (manual default 5 s)
     {0x000D, 0x00},  // Serial port output, no virtual keyboard
     {0x000E, 0x04},  // Decode success beep on, HID protocol features off
+    {0x0013, 0x94},  // Same barcode not read again within 2.0 s of its last read
     {0x002C, 0x02},  // Full width read area, all barcode types allowed
     {0x002E, 0x00},  // EAN13 off
     {0x002F, 0x00},  // EAN8 off
     {0x0030, 0x00},  // UPCA off
     {0x0031, 0x00},  // UPCE0 off
     {0x0032, 0x00},  // UPCE1 off
-    {0x0033, 0x00},  // Code128 on
+    {0x0033, 0x00},  // Code128 off (GM65 manual: 0 forbids, 1 allows)
     {0x0036, 0x00},  // Code39 off
     {0x0039, 0x00},  // Code93 off
     {0x003C, 0x00},  // Codabar off
@@ -273,14 +276,24 @@ bool Gm65Scanner::poll(String& code) {
     // A frame is reported only when its CR, LF or end-of-transmission terminator arrives. Partial,
     // corrupt and oversized frames are dropped, and nothing is ever reported as a scan without its
     // terminator (see InventatoryScanGm65Frame.h).
-    if (frames_.feed(static_cast<uint8_t>(raw), now) == Gm65FrameAssembler::Event::Frame) {
+    const auto event = frames_.feed(static_cast<uint8_t>(raw), now);
+    if (event == Gm65FrameAssembler::Event::Dropped) {
+      // Diagnostic: only that a frame was discarded. Its contents are never logged.
+      Serial.println("GM65 frame discarded: partial, corrupt or oversized");
+    }
+    if (event == Gm65FrameAssembler::Event::Frame) {
+      // Diagnostic: the length and terminator of each frame. Its contents are never logged.
+      const char* terminator = raw == '\r' ? "CR" : raw == '\n' ? "LF" : "EOT";
+      Serial.printf("GM65 frame: %u bytes, ends with %s\r\n", static_cast<unsigned>(frames_.frameLength()), terminator);
       code.reserve(frames_.frameLength());
       for (std::size_t index = 0; index < frames_.frameLength(); ++index) code += frames_.frame()[index];
       return true;
     }
   }
   // A frame that stopped mid-way is dropped even when no further byte arrives.
-  frames_.expire(millis());
+  if (frames_.expire(millis()) == Gm65FrameAssembler::Event::Dropped) {
+    Serial.println("GM65 frame discarded: partial, corrupt or oversized");
+  }
   return false;
 }
 
