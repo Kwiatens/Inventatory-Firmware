@@ -16,6 +16,9 @@ namespace {
 constexpr unsigned long kStartupSettleMs = 250U;
 // Reply to a zone write: exactly kZoneWriteAckLength bytes, within the timeout.
 constexpr unsigned long kZoneWriteAckTimeoutMs = 150U;
+// The save command writes the module's flash, and the module answers it after about 340 ms (measured on a GM65
+// clone). A 150 ms wait missed that reply, so the whole profile was reported as not acknowledged.
+constexpr unsigned long kSaveAckTimeoutMs = 1000U;
 constexpr unsigned long kZoneWriteAckSettleMs = 20U;
 constexpr size_t kZoneWriteAckLength = 7U;
 constexpr uint8_t kZoneWriteAck[kZoneWriteAckLength] = {0x02, 0x00, 0x00, 0x01, 0x00, 0x33, 0x31};
@@ -103,7 +106,7 @@ void Gm65Scanner::drainRx() {
   }
 }
 
-bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value) {
+bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value, unsigned long ackTimeoutMs) {
   drainRx();
 
   const uint8_t frame[] = {
@@ -132,7 +135,7 @@ bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value) {
   uint8_t reply[kZoneWriteAckLength];
   size_t replyLen = 0;
   unsigned long start = millis();
-  while (replyLen < kZoneWriteAckLength && millis() - start <= kZoneWriteAckTimeoutMs) {
+  while (replyLen < kZoneWriteAckLength && millis() - start <= ackTimeoutMs) {
     if (serial_.available() > 0) {
       reply[replyLen++] = serial_.read();
     } else {
@@ -156,7 +159,7 @@ bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value) {
 }
 
 bool Gm65Scanner::writeZoneBit(uint16_t address, uint8_t value) {
-  return writeZoneByte(0x08, address, value);
+  return writeZoneByte(0x08, address, value, kZoneWriteAckTimeoutMs);
 }
 
 bool Gm65Scanner::applyBootProfile() {
@@ -168,7 +171,7 @@ bool Gm65Scanner::applyBootProfile() {
         break;
       }
     }
-    if (attemptOk && writeZoneByte(0x09, 0x0000, 0x00)) {
+    if (attemptOk && writeZoneByte(0x09, 0x0000, 0x00, kSaveAckTimeoutMs)) {
       serial_.flush();
       delay(50);
       return true;
@@ -191,9 +194,9 @@ bool Gm65Scanner::poll(String& code) {
       frames_.reset();
       continue;
     }
-    // A frame is reported only when its CR or LF terminator arrives. Partial, corrupt
-    // and oversized frames are dropped, and nothing is ever reported as a scan
-    // without its terminator (see InventatoryScanGm65Frame.h).
+    // A frame is reported only when its CR, LF or end-of-transmission terminator arrives. Partial,
+    // corrupt and oversized frames are dropped, and nothing is ever reported as a scan without its
+    // terminator (see InventatoryScanGm65Frame.h).
     if (frames_.feed(static_cast<uint8_t>(raw), now) == Gm65FrameAssembler::Event::Frame) {
       code.reserve(frames_.frameLength());
       for (std::size_t index = 0; index < frames_.frameLength(); ++index) code += frames_.frame()[index];

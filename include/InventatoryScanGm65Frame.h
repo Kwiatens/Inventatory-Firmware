@@ -31,10 +31,17 @@ inline uint16_t gm65Crc16(const uint8_t* bytes, std::size_t length) {
   return crc;
 }
 
-// Printable ASCII, plus the group, record and end-of-transmission separators that
-// ISO 15434 messages use. Any other byte marks the frame as corrupt.
+// Printable ASCII, plus the group and record separators that ISO 15434 messages use. Any
+// other byte marks the frame as corrupt, except a terminator (see gm65IsFrameTerminator).
 inline bool gm65IsPayloadByte(uint8_t byte) {
-  return (byte >= 0x20U && byte <= 0x7EU) || byte == 0x1DU || byte == 0x1EU || byte == 0x04U;
+  return (byte >= 0x20U && byte <= 0x7EU) || byte == 0x1DU || byte == 0x1EU;
+}
+
+// A frame ends at a carriage return, a line feed, or the end-of-transmission byte that closes
+// an ISO 15434 message. The GM65 sends a Data Matrix with no CR or LF after its RS EOT trailer,
+// so the EOT is what ends that scan.
+inline bool gm65IsFrameTerminator(uint8_t byte) {
+  return byte == '\r' || byte == '\n' || byte == 0x04U;
 }
 
 class Gm65FrameAssembler {
@@ -60,9 +67,9 @@ class Gm65FrameAssembler {
     }
     lastByteAt_ = nowMs;
 
-    if (byte == '\r' || byte == '\n') {
+    if (gm65IsFrameTerminator(byte)) {
       if (!partialPending()) return result;
-      if (corrupt_ || discarding_) {
+      if (corrupt_ || discarding_ || !holdsPrintable()) {
         reset();
         return Event::Dropped;
       }
@@ -106,6 +113,16 @@ class Gm65FrameAssembler {
 
  private:
   bool partialPending() const { return !frameReady_ && (length_ > 0U || corrupt_ || discarding_); }
+
+  // A frame made only of separators is not a scan. A captured Data Matrix ends in RS EOT RS EOT,
+  // and the second pair must not be reported as a scan of its own.
+  bool holdsPrintable() const {
+    for (std::size_t index = 0; index < length_; ++index) {
+      const auto byte = static_cast<uint8_t>(buffer_[index]);
+      if (byte != 0x1DU && byte != 0x1EU) return true;
+    }
+    return false;
+  }
 
   char buffer_[kGm65MaxFrameBytes]{};
   std::size_t length_ = 0;

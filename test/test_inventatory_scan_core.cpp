@@ -126,6 +126,27 @@ void test_datamatrix_decoding_fixtures() {
   TEST_ASSERT_FALSE(decodeComponentDataMatrix(oversized, decoded));
 }
 
+void test_digikey_bag_without_aim_prefix_is_a_vendor_bag() {
+  // The GM65 sends a DigiKey bag's Data Matrix with no AIM prefix. The frame ends at its RS EOT trailer, and the
+  // parser reads the DigiKey part number from P and the manufacturer part number from 1P.
+  const String bag = String("[)>") + static_cast<char>(0x1E) + "06" + static_cast<char>(0x1D) +
+      "PIRLML6344TRPBFCT-ND" + static_cast<char>(0x1D) + "1PIRLML6344TRPBF" + static_cast<char>(0x1D) +
+      "30PIRLML6344TRPBFCT-ND" + static_cast<char>(0x1D) + "K" + static_cast<char>(0x1D) + "1K92776734" +
+      static_cast<char>(0x1D) + "Q3" + static_cast<char>(0x1D) + "20Z0000" + static_cast<char>(0x1E);
+  DecodedComponentFields decoded;
+  TEST_ASSERT_TRUE(decodeComponentDataMatrix(bag, decoded));
+  TEST_ASSERT_EQUAL_STRING("IRLML6344TRPBFCT-ND", decoded.auxiliaryPartNumber.c_str());
+  TEST_ASSERT_EQUAL_STRING("IRLML6344TRPBF", decoded.manufacturerPartNumber.c_str());
+  TEST_ASSERT_EQUAL_INT(3, decoded.quantity);
+
+  const String expected = String("[)>") + static_cast<char>(0x1E) + "06" + static_cast<char>(0x1D) +
+      "PIRLML6344TRPBFCT-ND" + static_cast<char>(0x1D) + "1PIRLML6344TRPBF" + static_cast<char>(0x1E) +
+      static_cast<char>(0x04);
+  const auto code = digiKeyBagCodeForSync(decoded.auxiliaryPartNumber, decoded.manufacturerPartNumber,
+                                          kMaximumBagEventCodeBytes);
+  TEST_ASSERT_TRUE(code == expected);
+}
+
 void test_quantity_composer_defaults_and_limit() {
   QuantityComposer composer;
   TEST_ASSERT_EQUAL_STRING("1", composer.displayText().c_str());
@@ -1179,6 +1200,7 @@ void setup() {
   RUN_TEST(test_standardized_scanner_codes);
   RUN_TEST(test_bag_codes_for_sync);
   RUN_TEST(test_datamatrix_decoding_fixtures);
+  RUN_TEST(test_digikey_bag_without_aim_prefix_is_a_vendor_bag);
   RUN_TEST(test_quantity_composer_defaults_and_limit);
   RUN_TEST(test_quantity_composer_never_submits_a_value_it_does_not_show);
   RUN_TEST(test_quantity_composer_cursor_replaces_and_appends);
