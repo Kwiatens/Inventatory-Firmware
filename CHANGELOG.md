@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - The Scan R1 keeps trying a code for longer and tries again sooner after each read. The same barcode is not sent again within two seconds of its last read, so a code held in view is sent once.
+- A code printed next to the scanned one, such as on a TME label, no longer shows "Scan not recognised" over the scan that was read. The scan waiting for its quantity stays on screen.
 - A TME label whose manufacturer part number contains a `*`, such as `DS1023-1*40S21`, is read instead of refused.
 - Scanning a TME label finds the part by its TME part number, so a part already in inventory is found. Before, the scanner asked by the manufacturer part number, and the part showed as not found.
 - A TME label is read when it is scanned. The scanner's line end had been switched off, so the label was dropped.
