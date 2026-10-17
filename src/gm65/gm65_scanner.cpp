@@ -202,14 +202,24 @@ bool Gm65Scanner::poll(String& code) {
     // A frame is reported only when its CR, LF or end-of-transmission terminator arrives. Partial,
     // corrupt and oversized frames are dropped, and nothing is ever reported as a scan without its
     // terminator (see InventatoryScanGm65Frame.h).
-    if (frames_.feed(static_cast<uint8_t>(raw), now) == Gm65FrameAssembler::Event::Frame) {
+    const auto event = frames_.feed(static_cast<uint8_t>(raw), now);
+    if (event == Gm65FrameAssembler::Event::Dropped) {
+      // Diagnostic: only that a frame was discarded. Its contents are never logged.
+      Serial.println("GM65 frame discarded: partial, corrupt or oversized");
+    }
+    if (event == Gm65FrameAssembler::Event::Frame) {
+      // Diagnostic: the length and terminator of each frame. Its contents are never logged.
+      const char* terminator = raw == '\r' ? "CR" : raw == '\n' ? "LF" : "EOT";
+      Serial.printf("GM65 frame: %u bytes, ends with %s\r\n", static_cast<unsigned>(frames_.frameLength()), terminator);
       code.reserve(frames_.frameLength());
       for (std::size_t index = 0; index < frames_.frameLength(); ++index) code += frames_.frame()[index];
       return true;
     }
   }
   // A frame that stopped mid-way is dropped even when no further byte arrives.
-  frames_.expire(millis());
+  if (frames_.expire(millis()) == Gm65FrameAssembler::Event::Dropped) {
+    Serial.println("GM65 frame discarded: partial, corrupt or oversized");
+  }
   return false;
 }
 
