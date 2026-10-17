@@ -16,6 +16,7 @@
 #include "power/battery_monitor.h"
 #include "InventatoryScanOutbox.h"
 #include "storage/outbox_store.h"
+#include "storage/battery_state_store.h"
 #include "storage/device_settings_store.h"
 #include "setup/ble_provisioning.h"
 #include "setup/setup_state_store.h"
@@ -100,6 +101,9 @@ class InventatoryScanApp {
   void enterPowerOff();
   void noteUserActivity();
   void serviceBattery();
+  void saveBatteryStateIfDue(unsigned long now);
+  void saveBatteryState();
+  uint32_t batteryLoadMilliamps() const;
   void serviceBacklight();
   void serviceEnergySaving();
   void startEnergySleepWarning();
@@ -164,6 +168,7 @@ class InventatoryScanApp {
   DisplayController display_;
   BatteryMonitor battery_;
   BatteryTracker batteryTracker_;
+  BatteryStateStore batteryStore_;
   Backlight backlight_;
   BacklightMode backlightMode_ = BacklightMode::On;
   // Energy saving: off by default. The delays apply only while it is on.
@@ -177,6 +182,9 @@ class InventatoryScanApp {
   int energyShownSeconds_ = -1;
   bool batterySampled_ = false;
   unsigned long lastBatterySampleAt_ = 0;
+  // When the gauge state was last written to NVS, and the percent it held then.
+  unsigned long lastBatterySaveAt_ = 0;
+  int batterySavedPercent_ = -1;
   bool lastCharging_ = false;
   // The charger's green "charging complete" LED was lit at the last battery sample.
   bool lastChargeDone_ = false;

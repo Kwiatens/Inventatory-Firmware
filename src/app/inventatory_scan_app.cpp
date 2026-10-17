@@ -85,18 +85,22 @@ bool InventatoryScanApp::begin() {
   battery_.begin();
   display_.playBootSplash(kBootSplashHoldMs);
   keypadInit();
+  // The gauge resumes from the state saved at the last power-off. A first boot takes the voltage.
+  BatteryGaugeState storedBattery;
+  if (batteryStore_.begin() && batteryStore_.load(storedBattery)) batteryTracker_.restore(storedBattery);
   const uint32_t bootMillivolts = battery_.readMillivolts();
   Serial.printf("Battery %lu mV\r\n", static_cast<unsigned long>(bootMillivolts));
   const ChargeState bootCharge = battery_.chargeState();
   batteryTracker_.update(bootMillivolts, bootCharge != ChargeState::Unplugged, millis(),
-                         bootCharge == ChargeState::Done);
+                         bootCharge == ChargeState::Done, batteryLoadMilliamps());
   batterySampled_ = true;
   lastBatterySampleAt_ = millis();
   lastCharging_ = batteryTracker_.charging();
   lastChargeDone_ = batteryTracker_.chargeDone();
   display_.setBatteryStatus(batteryTracker_.percent(), lastCharging_, lastChargeDone_, batteryEstimateText());
-  // A cell that is low and not docked is refused: show why, then sleep again.
-  const int bootPercent = batteryTracker_.percent();
+  // A cell that is low and not docked is refused: show why, then sleep again. Low is judged by the
+  // lower of the estimate and the voltage.
+  const int bootPercent = batteryTracker_.refusePercent();
   if (bootPercent >= 0 && bootPercent <= kBatteryLowPercent && !lastCharging_) {
     powerOffWithNotice(bootPercent <= kBatteryCriticalPercent ? String("Battery empty") : String("Battery low"),
                        String("Charge to power on"));
