@@ -17,6 +17,7 @@ It allows you to interact with your inventory, without having to constantly go b
 ![C++17](https://img.shields.io/badge/C%2B%2B-17-58B9B0?style=flat-square&labelColor=0D1010)
 
 [**Website**](https://kwiatens.github.io/Inventatory-Site/) &nbsp;·&nbsp;
+[Software](https://github.com/Kwiatens/Inventatory-Software) &nbsp;·&nbsp;
 [Documentation](https://kwiatens.github.io/Inventatory-Site/docs/) &nbsp;·&nbsp;
 [Report an issue](https://github.com/Kwiatens/Inventatory-Firmware/issues)
 
