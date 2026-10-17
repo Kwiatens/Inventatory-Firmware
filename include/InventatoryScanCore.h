@@ -223,6 +223,16 @@ struct TmeBagLabel {
   int quantity = 1;
 };
 
+// A TME label's manufacturer part number may carry a '*' (CONNFLY's DS1023-1*40S21), which the desktop reads. A TME
+// symbol may not.
+inline bool isTmeManufacturerPartNumber(const String& value) {
+  if (value.length() == 0 || value.length() > kMaximumBagEventCodeBytes) return false;
+  for (size_t index = 0; index < value.length(); ++index) {
+    if (value[index] != '*' && !isBagIdentifierCharacter(value[index])) return false;
+  }
+  return true;
+}
+
 inline bool parseTmeBagLabel(const String& text, TmeBagLabel& label) {
   label = {};
   const size_t length = text.length();
@@ -255,7 +265,7 @@ inline bool parseTmeBagLabel(const String& text, TmeBagLabel& label) {
       if (numeric && quantity > 0) label.quantity = quantity;
     }
   }
-  return isBagIdentifier(label.symbol) && isBagIdentifier(label.manufacturerPartNumber);
+  return isBagIdentifier(label.symbol) && isTmeManufacturerPartNumber(label.manufacturerPartNumber);
 }
 
 // The code a TME label scan sends: the symbol and the manufacturer part number, as the desktop reads them. Empty when it
