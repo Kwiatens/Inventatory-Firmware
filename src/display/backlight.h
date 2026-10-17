@@ -12,6 +12,7 @@ class Backlight {
   // Configures the pin and leaves the backlight off.
   void begin();
   void setLit(bool lit);
+  bool lit() const { return lit_; }
 
  private:
   bool lit_ = false;
