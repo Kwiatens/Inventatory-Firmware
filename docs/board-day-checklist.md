@@ -98,9 +98,12 @@ and 63.
 - [ ] Plug the charger: card shows "Charging" on Ready only, not over a menu or quantity entry.
 - [ ] Red LED = Charging, green LED = Charged, both off = on battery. The top bar and card agree.
 - [ ] Bounce the charger contact: the card does not re-appear on every flicker.
-- [ ] Time left shows a `~` estimate straight away. Over a long run, the `~` disappears once a rate
-      is learned. **Calibrate** `kBatteryPriorDischargeMsPerPercent` and `kBatteryPriorChargeMsPerPercent`
-      from what you measure (assumed: 1000 mAh cell, 80 mA in use, 500 mA charging).
+- [ ] Time left shows a `~` estimate straight away, and the `~` goes once enough load has been observed.
+      **Calibrate** the load values (`kBatteryLoad*Ma`), `kBatteryNominalCapacityUah`, `kBatteryRestDwellMs`,
+      `kBatteryPriorChargeMsPerPercent` and `kBatteryFloorMv` from the bench run in the battery plan
+      (assumed: 3.7 V nominal LiPo of 1300 mAh, about 80 mA in use, 93.6 s per percent while charging at 500 mA).
+- [ ] Charging: the percent rises, never falls, stops at 99 and shows 100 only when the green LED lights.
+- [ ] A WiFi sync or a scan does not move the percent.
 - [ ] Low battery (10% or less, not docked): warning counts down 60 s, then powers off. Docking cancels it.
 - [ ] Empty (3% or less): "Battery empty" notice, then power off. Boot on a low cell, undocked: refused
       with "Charge to power on".
