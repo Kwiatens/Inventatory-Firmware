@@ -22,6 +22,9 @@ constexpr unsigned long kZoneWriteAckTimeoutMs = 500U;
 // clone). A 150 ms wait missed that reply, so the whole profile was reported as not acknowledged.
 constexpr unsigned long kSaveAckTimeoutMs = 1000U;
 constexpr unsigned long kZoneWriteAckSettleMs = 20U;
+// After a wake the module restarts before it answers. This wait is a first guess, not yet measured on a board: a boot
+// that logs "GM65 profile not acknowledged" means it is too short.
+constexpr unsigned long kModuleRestartMs = 500U;
 constexpr size_t kZoneWriteAckLength = 7U;
 constexpr uint8_t kZoneWriteAck[kZoneWriteAckLength] = {0x02, 0x00, 0x00, 0x01, 0x00, 0x33, 0x31};
 
@@ -61,13 +64,17 @@ constexpr ZoneWrite kBootProfile[] = {
 
 bool Gm65Scanner::begin(uint32_t baudRate) {
   baudRate_ = baudRate;
-  return start();
+  return start(true);
 }
 
-bool Gm65Scanner::start() {
+bool Gm65Scanner::start(bool wakeFirst) {
   frames_.reset();
   openPort();
   delay(100);
+  if (wakeFirst) {
+    wakeModule();
+    restoreLamps();
+  }
   active_ = applyBootProfile();
   profileApplied_ = active_;
   flushInput();
@@ -104,13 +111,35 @@ bool Gm65Scanner::resume() {
     return true;
   }
   if (!profileApplied_) {
-    return start();
+    return start(false);
   }
   openPort();
   flushInput();
   acceptAfterMs_ = millis() + kStartupSettleMs;
   active_ = true;
   return true;
+}
+
+// Lamps off, then deep sleep. The module wakes only when a byte arrives on its UART, and the chip's next boot sends
+// that byte (see wakeModule). Nothing here depends on the module's replies: a missing reply is logged, and the
+// power-off goes on.
+void Gm65Scanner::deepSleep() {
+  if (!active_) {
+    // Standby and a boot refusal both leave the port closed, and the module may be asleep from the last power-off.
+    // A byte wakes it, so it is woken and given time to restart before it hears the commands.
+    openPort();
+    wakeModule();
+  }
+  uint8_t lamps = 0;
+  if (!readZoneBit(kGm65LampZone, lamps)) {
+    Serial.println("GM65 lamp read not acknowledged");
+  } else if (!writeZoneBit(kGm65LampZone, gm65LampsOffZoneValue(lamps))) {
+    Serial.println("GM65 lamps off not acknowledged");
+  }
+  if (!writeZoneByte(0x08, kGm65FunctionZone, kGm65DeepSleep, kZoneWriteAckTimeoutMs)) {
+    Serial.println("GM65 deep sleep not acknowledged");
+  }
+  end();
 }
 
 void Gm65Scanner::flushInput() {
@@ -131,39 +160,15 @@ void Gm65Scanner::drainRx() {
 bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value, unsigned long ackTimeoutMs) {
   drainRx();
 
-  const uint8_t frame[] = {
-      0x7E,
-      0x00,
-      type,
-      0x01,
-      static_cast<uint8_t>((address >> 8U) & 0xFFU),
-      static_cast<uint8_t>(address & 0xFFU),
-      value,
-  };
-  const uint16_t crc = gm65Crc16(frame + 2, sizeof(frame) - 2U);
-  const uint8_t trailer[] = {
-      static_cast<uint8_t>((crc >> 8U) & 0xFFU),
-      static_cast<uint8_t>(crc & 0xFFU),
-  };
-
-  if (serial_.write(frame, sizeof(frame)) != sizeof(frame)) {
-    return false;
-  }
-  if (serial_.write(trailer, sizeof(trailer)) != sizeof(trailer)) {
+  uint8_t command[kGm65ZoneCommandLength];
+  gm65ZoneCommand(type, address, value, command);
+  if (serial_.write(command, sizeof(command)) != sizeof(command)) {
     return false;
   }
   serial_.flush();
 
   uint8_t reply[kZoneWriteAckLength];
-  size_t replyLen = 0;
-  unsigned long start = millis();
-  while (replyLen < kZoneWriteAckLength && millis() - start <= ackTimeoutMs) {
-    if (serial_.available() > 0) {
-      reply[replyLen++] = serial_.read();
-    } else {
-      delay(1);
-    }
-  }
+  const size_t replyLen = readReply(reply, kZoneWriteAckLength, ackTimeoutMs);
 
   delay(kZoneWriteAckSettleMs);
 
@@ -182,6 +187,55 @@ bool Gm65Scanner::writeZoneByte(uint8_t type, uint16_t address, uint8_t value, u
 
 bool Gm65Scanner::writeZoneBit(uint16_t address, uint8_t value) {
   return writeZoneByte(0x08, address, value, kZoneWriteAckTimeoutMs);
+}
+
+bool Gm65Scanner::readZoneBit(uint16_t address, uint8_t& value) {
+  drainRx();
+
+  uint8_t command[kGm65ZoneCommandLength];
+  gm65ZoneCommand(0x07, address, 0x01, command);
+  if (serial_.write(command, sizeof(command)) != sizeof(command)) {
+    return false;
+  }
+  serial_.flush();
+
+  uint8_t reply[kGm65ZoneReplyLength];
+  if (readReply(reply, kGm65ZoneReplyLength, kZoneWriteAckTimeoutMs) != kGm65ZoneReplyLength) {
+    return false;
+  }
+  return gm65ZoneReadValue(reply, value);
+}
+
+size_t Gm65Scanner::readReply(uint8_t* reply, size_t length, unsigned long timeoutMs) {
+  size_t replyLen = 0;
+  const unsigned long startedAt = millis();
+  while (replyLen < length && millis() - startedAt <= timeoutMs) {
+    if (serial_.available() > 0) {
+      reply[replyLen++] = serial_.read();
+    } else {
+      delay(1);
+    }
+  }
+  return replyLen;
+}
+
+// The module wakes on a byte from the chip and then restarts. It does not answer while it sleeps, so the restart is
+// waited for instead of a reply.
+void Gm65Scanner::wakeModule() {
+  uint8_t command[kGm65ZoneCommandLength];
+  gm65ZoneCommand(0x08, kGm65FunctionZone, kGm65Wake, command);
+  serial_.write(command, sizeof(command));
+  serial_.flush();
+  delay(kModuleRestartMs);
+}
+
+// A module that did not restart after a deep sleep still holds the lamps off in RAM, and the profile save would write
+// that into flash. The lamps are switched back on before the save. The firmware never sets both lamps off on purpose.
+void Gm65Scanner::restoreLamps() {
+  uint8_t lamps = 0;
+  if (readZoneBit(kGm65LampZone, lamps) && gm65LampsAreOff(lamps)) {
+    writeZoneBit(kGm65LampZone, gm65LampsStandardZoneValue(lamps));
+  }
 }
 
 bool Gm65Scanner::applyBootProfile() {
