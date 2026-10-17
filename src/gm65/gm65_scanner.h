@@ -23,6 +23,7 @@ class Gm65Scanner {
  private:
   // Opens the UART, applies the boot profile and starts accepting frames after a settle time.
   bool start();
+  void openPort();
   bool applyBootProfile();
   bool writeZoneBit(uint16_t address, uint8_t value);
   bool writeZoneByte(uint8_t type, uint16_t address, uint8_t value, unsigned long ackTimeoutMs);
@@ -32,6 +33,8 @@ class Gm65Scanner {
   Gm65FrameAssembler frames_;
   uint32_t baudRate_ = 9600;
   bool active_ = false;
+  // True once the boot profile was acknowledged and saved. The module keeps it while it is powered.
+  bool profileApplied_ = false;
   unsigned long acceptAfterMs_ = 0;
 };
 
