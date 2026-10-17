@@ -87,6 +87,8 @@ void InventatoryScanApp::enterPowerOff() {
   }
   display_.setStandby(true);
   backlight_.setLit(false);
+  // The chip's sleep does not cut the scanner's power, so the module is put to sleep first.
+  scanner_.deepSleep();
   Serial.println("Powered off. Press * to wake.");
   saveBatteryState();
   esp_deep_sleep_start();

@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A low-battery warning counts down 60 seconds, then powers the device off. A cell too low to run is refused at boot with a notice, and the device sleeps again.
 - The operator can discard a queue that this firmware cannot read. The repair menu offers it after a confirmation, and the device works again straight away.
 
+### Fixed
+- Powering off also puts the GM65 barcode module to sleep, with its lamps off. Before, the chip slept but the module stayed powered and its lamps kept flashing, which drained the battery while the device was off. The module is woken at the next boot, before its profile is applied.
+- Waking from standby no longer waits for the barcode scanner's setup to be sent again. The module keeps its settings while it is powered, so the screen comes back at once and key presses during the wait are no longer lost.
+
 ### Changed
 - The power-off hold is four seconds of `*`, not 1.8 s. The first second opens the countdown, so a short press does nothing.
 - The boot screen is the logo with the name and version and no animated dot. On wake the mark blooms in over the first 0.9 s of the 1.2 s splash hold, and the name appears once it is whole.
