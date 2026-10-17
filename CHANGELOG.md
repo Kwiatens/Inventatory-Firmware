@@ -58,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The host test suite covers the queue migrations, the replay counter and the provisioning parser. A coverage report is available with `make -C host-tests coverage`.
 
 ### Fixed
-- The Scan R1 reads only the centre of its view, so a second label at the edge is not read by mistake. Move a code to the centre to read it. The same barcode is not sent again within two seconds of its last read, so a code held in view is sent once.
+- The Scan R1 keeps trying a code for longer and tries again sooner after each read. The same barcode is not sent again within two seconds of its last read, so a code held in view is sent once.
 - A TME label whose manufacturer part number contains a `*`, such as `DS1023-1*40S21`, is read instead of refused.
 - Scanning a TME label finds the part by its TME part number, so a part already in inventory is found. Before, the scanner asked by the manufacturer part number, and the part showed as not found.
 - A TME label is read when it is scanned. The scanner's line end had been switched off, so the label was dropped.
