@@ -33,7 +33,9 @@ struct ZoneWrite {
 constexpr ZoneWrite kBootProfile[] = {
     {0x000D, 0x00},  // Serial port output, no virtual keyboard
     {0x000E, 0x04},  // Decode success beep on, HID protocol features off
-    {0x002C, 0x02},  // Full width read area, all barcode types allowed
+    {0x0013, 0x94},  // Same barcode not read again within 2.0 s of its last read
+    {0x002C, 0x0A},  // Central read area only, all barcode types allowed
+    {0x002D, 0x3C},  // Central read area is 60% of the view
     {0x002E, 0x00},  // EAN13 off
     {0x002F, 0x00},  // EAN8 off
     {0x0030, 0x00},  // UPCA off
