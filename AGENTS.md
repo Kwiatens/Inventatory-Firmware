@@ -398,7 +398,7 @@ preserved:
   Scanning is paused only during BLE pairing, standby, destructive confirmation
   dialogs, OTA updates, or active label printing.
 - **Top bar battery**: The right-hand slot cycles through the status, the battery level and
-  the runtime estimate (from a typical rate, marked "~", until a rate has been observed) (`headerPageAt`).
+  the runtime estimate (from the load the firmware draws, marked "~" until enough load has been observed) (`headerPageAt`).
   While the dock supplies power the status reads "Charging". The dock connect and disconnect
   show a short full-screen card (`showBatteryCard`); it appears on the Ready screen only.
 - **Top bar fault mark**: A two-pixel `!` sits at the right corner of the top bar while the scanner is not
@@ -414,7 +414,10 @@ preserved:
   such readings in a row it is a standing problem (`PWR-01`). A low or empty battery is a warning with no
   code. Low and critical thresholds need `kBatteryTripSamples`
   consecutive one-second samples. The low warning latches and powers off after 60 s unless the dock connects.
-  A low cell that is not docked is refused at boot with a notice, then the chip sleeps again.
+  A low cell that is not docked is refused at boot with a notice, then the chip sleeps again. The
+  refusal uses the lower of the estimate and the voltage. The percent comes from `BatteryGauge`, not
+  from the voltage: a load or a radio burst does not move it, and the charger's raised voltage never
+  does. Undocked, a cell at or below `kBatteryFloorMv` is critical whatever the percent says.
 - **Backlight**: `Off`, `On`, or an Auto idle timeout (1, 3, 5, 10 min), set under Device
   settings / Display. The warnings and pairing keep the backlight on whatever the setting says.
 - **Energy saving**: a switch under Device settings / Energy saving, off by default. When on, the device
