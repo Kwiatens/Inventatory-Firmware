@@ -35,7 +35,7 @@ endif
 
 SHARED_SRCS := $(wildcard ../test/*.cpp)
 APP_SRCS    := ../src/storage/outbox_store.cpp ../src/setup/setup_state_store.cpp \
-             ../src/net/inventatory_client.cpp
+             ../src/storage/battery_state_store.cpp ../src/net/inventatory_client.cpp
 HOST_SRCS   := $(wildcard tests/*.cpp) main.cpp
 
 OBJS := $(patsubst ../%.cpp,$(BUILD)/%.o,$(SHARED_SRCS) $(APP_SRCS)) \

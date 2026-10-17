@@ -25,6 +25,10 @@ namespace {
 constexpr unsigned long kPowerOffReleaseTimeoutMs = 5000UL;
 // One battery reading per second, so the tracker's trip counters count seconds.
 constexpr unsigned long kBatterySampleIntervalMs = 1000UL;
+// The gauge state is written to NVS when the shown percent has moved this far, when a charge
+// completes, and at least this often on battery.
+constexpr int kBatterySaveStepPercent = 5;
+constexpr unsigned long kBatterySaveIntervalMs = 900000UL;
 // Time the low-battery warning gives the user to dock the scanner before it powers off.
 constexpr unsigned long kLowBatteryShutdownMs = 60000UL;
 // How long a boot refusal or a critical shutdown notice stays up before the chip sleeps.
@@ -84,6 +88,7 @@ void InventatoryScanApp::enterPowerOff() {
   display_.setStandby(true);
   backlight_.setLit(false);
   Serial.println("Powered off. Press * to wake.");
+  saveBatteryState();
   esp_deep_sleep_start();
 }
 
@@ -125,6 +130,37 @@ bool InventatoryScanApp::canShowBatteryCard() const {
          !otaActive_ && !lowBatteryWarning_ && !powerOffWarning_;
 }
 
+// The current the firmware draws now, in milliamps. A placeholder model of its states until the
+// bench measurements are in (battery plan, phase 0).
+uint32_t InventatoryScanApp::batteryLoadMilliamps() const {
+  if (powerMode_ == PowerMode::Standby) return kBatteryLoadStandbyMa;
+  uint32_t milliamps = kBatteryLoadBaseMa + kBatteryLoadScannerMa;
+  if (backlight_.lit()) milliamps += kBatteryLoadBacklightMa;
+  if (wifiStarted_) milliamps += kBatteryLoadWifiMa;
+  return milliamps;
+}
+
+// Writes the gauge state to NVS so the next boot resumes from it. Nothing is written before the
+// first reading.
+void InventatoryScanApp::saveBatteryState() {
+  if (!batteryTracker_.started()) return;
+  batteryStore_.save(batteryTracker_.state());
+  batterySavedPercent_ = batteryTracker_.percent();
+  lastBatterySaveAt_ = millis();
+}
+
+// Saves when the shown percent has moved, when a charge completes, and every kBatterySaveIntervalMs
+// on battery. Few writes keep the NVS partition healthy.
+void InventatoryScanApp::saveBatteryStateIfDue(unsigned long now) {
+  const int percent = batteryTracker_.percent();
+  if (percent < 0) return;
+  const bool moved = batterySavedPercent_ < 0 || percent - batterySavedPercent_ >= kBatterySaveStepPercent ||
+                     batterySavedPercent_ - percent >= kBatterySaveStepPercent;
+  const bool full = percent == 100 && batterySavedPercent_ != 100;
+  const bool due = !batteryTracker_.charging() && now - lastBatterySaveAt_ >= kBatterySaveIntervalMs;
+  if (moved || full || due) saveBatteryState();
+}
+
 void InventatoryScanApp::serviceBattery() {
   const unsigned long now = millis();
   if (batterySampled_ && now - lastBatterySampleAt_ < kBatterySampleIntervalMs) return;
@@ -133,13 +169,14 @@ void InventatoryScanApp::serviceBattery() {
 
   const ChargeState charge = battery_.chargeState();
   batteryTracker_.update(battery_.readMillivolts(), charge != ChargeState::Unplugged, now,
-                         charge == ChargeState::Done);
+                         charge == ChargeState::Done, batteryLoadMilliamps());
   const bool chargeDone = batteryTracker_.chargeDone();
   display_.setBatteryUnreadable(batteryTracker_.unreadable());
   const bool charging = batteryTracker_.charging();
   const int percent = batteryTracker_.percent();
   const String estimate = batteryEstimateText();
   display_.setBatteryStatus(percent, charging, chargeDone, estimate);
+  saveBatteryStateIfDue(now);
 
   if (charging != lastCharging_ || chargeDone != lastChargeDone_) {
     lastCharging_ = charging;

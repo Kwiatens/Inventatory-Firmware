@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The `›i` logo has no dot on any screen. The update screen shows its status in words and the progress bar, and a boot error shows only its text.
-- The time left on battery, or to full, now shows from the first reading. Until the device has observed a rate it uses a typical one and marks the time with "~", for example "~6h 20m left". It replaces "Estimating time" on the dock card. The typical rates are `kBatteryPriorDischargeMsPerPercent` and `kBatteryPriorChargeMsPerPercent` and should be calibrated on the device.
+- The battery percentage no longer follows the cell voltage. The device counts the charge out by the load it draws, and corrects that count from the voltage only after a long rest. While charging it counts the charge in, rises steadily, never falls, and reads 100% when the charger reports done. A radio burst, a scan or the charger's raised voltage no longer moves it.
+- The time left on battery, or to full, uses the same estimate. It shows from the first reading, marked "~" until enough load has been observed, for example "~6h 20m left". It replaces "Estimating time" on the dock card. The load, rest and charge values in `include/InventatoryScanBattery.h` are placeholders until they are calibrated on the device.
 - The power-off warning and the power-off ending are simpler. The warning is a centred title, a countdown bar and "Release * to cancel". The ending is the `›i` sinking behind a short rule, with "Press * to wake" under it.
 - On the quantity screen the item name and its code no longer touch, and "Change quantity by:" is now "Change by:" so a four-digit quantity fits.
 - The backlight picker says "Off after 5 min idle" instead of "Dims after 5 min idle", because the backlight only switches on and off.
