@@ -76,6 +76,9 @@ class OutboxStore {
 
  private:
   static constexpr uint32_t kMagic = 0x48534f51UL;
+  // Firmware before the random start numbered every queue from 1, and the desktop keeps the event ids it has
+  // stored. A queue that is empty below this number moves on to a fresh start, so its next event is not a stored one.
+  static constexpr uint32_t kLowSequenceFloor = 1000000UL;
   // The header version names the slot set the queue uses. Version 5 keeps the "e<n>" keys
   // every queue has been written with so far. Version 6 is the same layout under "f<n>" keys,
   // which repair() writes into before it commits. Older firmware reads version 6 as an unreadable
@@ -143,6 +146,7 @@ class OutboxStore {
   MigrationResult migrateLegacyState();
   bool adoptMigratedRecords(std::size_t count, uint32_t nextSequence);
   bool adoptEmptyOtherVersionHeader(uint32_t nextSequence);
+  void raiseLowSequenceOfEmptyQueue();
   RepairResult discardUnreadableQueue(std::size_t& dropped);
   void resetRecords();
 

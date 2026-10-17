@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A TME label whose manufacturer part number contains a `*`, such as `DS1023-1*40S21`, is read instead of refused.
 - Scanning a TME label finds the part by its TME part number, so a part already in inventory is found. Before, the scanner asked by the manufacturer part number, and the part showed as not found.
 - A TME label is read when it is scanned. The scanner's line end had been switched off, so the label was dropped.
+- A scanner whose event numbers had fallen behind the desktop's records sent scans the desktop silently ignored, so they never showed "Done". The scanner now moves its numbers past the stored ones when its queue is empty at start-up.
 - A working barcode scanner no longer shows `SCN-01` at every start-up. The module confirms its save command after about 340 ms, and the firmware waited only 150 ms for that confirmation.
 - A Data Matrix that the scanner ends with RS EOT and no line break, as a DigiKey bag's does, is read as a scan. Before, it was dropped without a message.
 - A refused scan says why: an unrecognised scan, a label too long to send, or a Data Matrix without a DigiKey part number. Each one showed "Not a supported vendor bag" before.

@@ -23,6 +23,8 @@ void runHostOutboxDurabilityTests();
 
 void test_host_outbox_fresh_device_starts_empty();
 void test_host_outbox_survives_reboot_in_order();
+void test_host_outbox_low_sequence_of_empty_queue_moves_past_stored_ids();
+void test_host_outbox_queued_scans_keep_their_sequence_at_boot();
 void test_host_outbox_persists_every_event_field();
 void test_host_outbox_truncates_fields_to_their_storage_limits();
 void test_host_outbox_rejects_invalid_scans_before_any_write();
@@ -106,6 +108,46 @@ void test_host_outbox_survives_reboot_in_order() {
   TEST_ASSERT_EQUAL_INT(-1, event.value);
   TEST_ASSERT_EQUAL_UINT32(2, event.sequence);
   TEST_ASSERT_EQUAL_UINT32(4, after.nextSequence());
+}
+
+void test_host_outbox_low_sequence_of_empty_queue_moves_past_stored_ids() {
+  // Firmware before the random start numbered events from 1, and the desktop keeps the event ids it has stored. An
+  // empty queue that carries such a low number moves to the fresh start, so its next event is not a stored id.
+  OutboxStore before;
+  TEST_ASSERT_TRUE(bootOutbox(before));
+  expectEnqueue(OutboxStore::EnqueueResult::Queued, adjust(before, "A1", 2));
+  expectEnqueue(OutboxStore::EnqueueResult::Queued, adjust(before, "B2", -1));
+  TEST_ASSERT_TRUE(before.pop());
+  TEST_ASSERT_TRUE(before.pop());
+  TEST_ASSERT_EQUAL_UINT32(3, before.nextSequence());
+
+  host_nvs::reboot();
+  OutboxStore after;
+  TEST_ASSERT_TRUE(after.begin(kNamespace, kDevice, 900000123U) && after.load());
+  TEST_ASSERT_EQUAL_UINT32(0, after.size());
+  TEST_ASSERT_EQUAL_UINT32(900000123U, after.nextSequence());
+
+  // The raised number is stored, so a later boot keeps it and the next event takes it.
+  host_nvs::reboot();
+  OutboxStore later;
+  TEST_ASSERT_TRUE(later.begin(kNamespace, kDevice, 5U) && later.load());
+  TEST_ASSERT_EQUAL_UINT32(900000123U, later.nextSequence());
+  DeviceEventRecord created;
+  expectEnqueue(OutboxStore::EnqueueResult::Queued, adjust(later, "C3", 1, &created));
+  TEST_ASSERT_EQUAL_UINT32(900000123U, created.sequence);
+}
+
+void test_host_outbox_queued_scans_keep_their_sequence_at_boot() {
+  // The number is raised only when the queue is empty, so the ids of queued scans never change.
+  OutboxStore before;
+  TEST_ASSERT_TRUE(bootOutbox(before));
+  expectEnqueue(OutboxStore::EnqueueResult::Queued, adjust(before, "A1", 2));
+
+  host_nvs::reboot();
+  OutboxStore after;
+  TEST_ASSERT_TRUE(after.begin(kNamespace, kDevice, 900000123U) && after.load());
+  TEST_ASSERT_EQUAL_UINT32(1, after.size());
+  TEST_ASSERT_EQUAL_UINT32(2, after.nextSequence());
 }
 
 void test_host_outbox_persists_every_event_field() {
@@ -479,6 +521,8 @@ void test_host_outbox_repair_survives_a_power_cut_at_every_write() {
 void runHostOutboxDurabilityTests() {
   RUN_TEST(test_host_outbox_fresh_device_starts_empty);
   RUN_TEST(test_host_outbox_survives_reboot_in_order);
+  RUN_TEST(test_host_outbox_low_sequence_of_empty_queue_moves_past_stored_ids);
+  RUN_TEST(test_host_outbox_queued_scans_keep_their_sequence_at_boot);
   RUN_TEST(test_host_outbox_persists_every_event_field);
   RUN_TEST(test_host_outbox_truncates_fields_to_their_storage_limits);
   RUN_TEST(test_host_outbox_rejects_invalid_scans_before_any_write);
