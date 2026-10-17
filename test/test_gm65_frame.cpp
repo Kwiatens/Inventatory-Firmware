@@ -27,6 +27,9 @@ void test_gm65_frame_holds_exactly_the_maximum_length();
 void test_gm65_ready_frame_is_released_by_the_next_byte();
 void test_gm65_reset_discards_a_partial_frame();
 void test_gm65_payload_bytes_follow_the_printable_rule();
+void test_gm65_frame_terminators_are_cr_lf_and_end_of_transmission();
+void test_gm65_end_of_transmission_ends_a_data_matrix_without_crlf();
+void test_gm65_repeated_separator_trailer_is_not_reported();
 
 // One assembler shared by every test. It holds a 1 KB buffer, so it lives in static
 // storage instead of on the 8 KiB loop stack. Each test calls reset() first, which
@@ -166,11 +169,42 @@ void test_gm65_payload_bytes_follow_the_printable_rule() {
   TEST_ASSERT_TRUE(gm65IsPayloadByte(0x7E));
   TEST_ASSERT_TRUE(gm65IsPayloadByte(0x1D));
   TEST_ASSERT_TRUE(gm65IsPayloadByte(0x1E));
-  TEST_ASSERT_TRUE(gm65IsPayloadByte(0x04));
+  TEST_ASSERT_FALSE(gm65IsPayloadByte(0x04));
   TEST_ASSERT_FALSE(gm65IsPayloadByte(0x1F));
   TEST_ASSERT_FALSE(gm65IsPayloadByte(0x7F));
   TEST_ASSERT_FALSE(gm65IsPayloadByte(0x80));
   TEST_ASSERT_FALSE(gm65IsPayloadByte(0x00));
+}
+
+void test_gm65_frame_terminators_are_cr_lf_and_end_of_transmission() {
+  TEST_ASSERT_TRUE(gm65IsFrameTerminator('\r'));
+  TEST_ASSERT_TRUE(gm65IsFrameTerminator('\n'));
+  TEST_ASSERT_TRUE(gm65IsFrameTerminator(0x04));
+  TEST_ASSERT_FALSE(gm65IsFrameTerminator(0x1E));
+  TEST_ASSERT_FALSE(gm65IsFrameTerminator('A'));
+}
+
+void test_gm65_end_of_transmission_ends_a_data_matrix_without_crlf() {
+  // The GM65 sends this Data Matrix with no CR or LF: the ISO 15434 trailer RS EOT ends it.
+  frames.reset();
+  feedText(frames, "[)>\x1e" "06\x1d" "PABC-ND\x1e", 0, 1);
+  TEST_ASSERT_TRUE(frames.feed(0x04, 15) == Gm65FrameAssembler::Event::Frame);
+  TEST_ASSERT_TRUE(frameIs(frames, "[)>\x1e" "06\x1d" "PABC-ND\x1e"));
+}
+
+void test_gm65_repeated_separator_trailer_is_not_reported() {
+  // A Data Matrix can end in RS EOT RS EOT. The first pair is the scan; the second holds no
+  // printable byte, so it is dropped rather than reported as a scan of its own.
+  frames.reset();
+  feedText(frames, "PABC\x1e", 0, 1);
+  TEST_ASSERT_TRUE(frames.feed(0x04, 5) == Gm65FrameAssembler::Event::Frame);
+  TEST_ASSERT_TRUE(frames.feed(0x1E, 6) == Gm65FrameAssembler::Event::None);
+  TEST_ASSERT_TRUE(frames.feed(0x04, 7) == Gm65FrameAssembler::Event::Dropped);
+  TEST_ASSERT_EQUAL_UINT32(0, frames.frameLength());
+
+  // The next scan is still accepted.
+  feedText(frames, "B\r", 100, 1);
+  TEST_ASSERT_TRUE(frameIs(frames, "B"));
 }
 
 void registerGm65FrameTests() {
@@ -186,4 +220,7 @@ void registerGm65FrameTests() {
   RUN_TEST(test_gm65_ready_frame_is_released_by_the_next_byte);
   RUN_TEST(test_gm65_reset_discards_a_partial_frame);
   RUN_TEST(test_gm65_payload_bytes_follow_the_printable_rule);
+  RUN_TEST(test_gm65_frame_terminators_are_cr_lf_and_end_of_transmission);
+  RUN_TEST(test_gm65_end_of_transmission_ends_a_data_matrix_without_crlf);
+  RUN_TEST(test_gm65_repeated_separator_trailer_is_not_reported);
 }
