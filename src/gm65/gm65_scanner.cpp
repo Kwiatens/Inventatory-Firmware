@@ -66,14 +66,19 @@ bool Gm65Scanner::begin(uint32_t baudRate) {
 
 bool Gm65Scanner::start() {
   frames_.reset();
-  serial_.setRxBufferSize(1024);
-  serial_.begin(baudRate_, SERIAL_8N1, GM65_RX_PIN, GM65_TX_PIN);
-  serial_.setTimeout(5);
+  openPort();
   delay(100);
   active_ = applyBootProfile();
+  profileApplied_ = active_;
   flushInput();
   acceptAfterMs_ = millis() + kStartupSettleMs;
   return active_;
+}
+
+void Gm65Scanner::openPort() {
+  serial_.setRxBufferSize(1024);
+  serial_.begin(baudRate_, SERIAL_8N1, GM65_RX_PIN, GM65_TX_PIN);
+  serial_.setTimeout(5);
 }
 
 void Gm65Scanner::end() {
@@ -91,7 +96,22 @@ bool Gm65Scanner::suspend() {
   return true;
 }
 
-bool Gm65Scanner::resume() { return active_ || start(); }
+// A wake from standby only reopens the port. The module stays powered through standby and keeps the profile it has,
+// so sending the profile again (25 acknowledged writes) would keep the screen dark for seconds. A profile that was
+// never applied is still sent in full.
+bool Gm65Scanner::resume() {
+  if (active_) {
+    return true;
+  }
+  if (!profileApplied_) {
+    return start();
+  }
+  openPort();
+  flushInput();
+  acceptAfterMs_ = millis() + kStartupSettleMs;
+  active_ = true;
+  return true;
+}
 
 void Gm65Scanner::flushInput() {
   drainRx();
