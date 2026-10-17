@@ -22,9 +22,13 @@ coding agents must operate within explicit operational boundaries:
   `pio test --without-uploading --without-testing`).
 - Running non-destructive embedded tests on attached hardware only when explicitly
   requested by the user.
+- USB flashing of the Scan R1 with a plain upload that does not erase flash, for example
+  `pio run -e waveshare_esp32s3_nano_usb -t upload --upload-port /dev/ttyACM0`. Before
+  uploading, check that no other process holds the serial port. Do not stop another
+  process to free the port without asking the user first.
 
 ### Prohibited without explicit authorization
-- **Never flash firmware to connected hardware** (`pio run -t upload` or `esptool.py`).
+- **Never erase the device's flash** (`pio run -t erase` or `esptool.py erase_flash`). Erasing removes the stored Wi-Fi and pairing data. A plain USB upload is permitted (see above).
 - **Never trigger over-the-air updates** (`pio run -e waveshare_esp32s3_nano_ota -t upload`).
 - **Never erase NVS partitions or trigger provisioning resets** (`SetupStateStore::clear()`).
 - **Never perform destructive electrical or hardware testing**.
@@ -34,8 +38,9 @@ coding agents must operate within explicit operational boundaries:
 
 > [!CAUTION]
 > A general user request to "build", "test", or "verify" firmware grants authority
-> to compile binaries and run non-flashing static checks. It does **not** grant
-> authority to flash connected microcontrollers or reset stored credentials.
+> to compile binaries and run non-flashing static checks. The USB flashing described
+> above is permitted without asking. It does **not** grant authority to erase flash,
+> use over-the-air updates, or reset stored credentials.
 
 ---
 
@@ -577,7 +582,7 @@ When concluding any task, the agent must provide a factual summary containing:
 ## 14. Pre-commit checklist
 
 - [ ] Authority: Checked `README.md`, `SECURITY.md`, and `docs/release-audit-remediation.md`.
-- [ ] Autonomy: No physical flashing, OTA deployment, or credential resets performed.
+- [ ] Autonomy: No flash erase, OTA deployment, or credential resets performed. Any USB upload was a plain upload, as section 1 allows.
 - [ ] Memory safety: Zero dynamic `String` loops, bounded buffers, zero PSRAM respected.
 - [ ] Concurrency: No display calls from Core 0 worker; no blocking network calls on Core 1.
 - [ ] Persistence: NVS namespaces <= 15 chars; outbox pop staged before commit; pop failure retains event.
