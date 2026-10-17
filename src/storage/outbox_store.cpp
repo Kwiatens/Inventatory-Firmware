@@ -229,6 +229,16 @@ bool OutboxStore::loadQueue(const Header& header) {
   return true;
 }
 
+// A failed header write keeps the old sequence: the queue still works, and the next boot tries again.
+void OutboxStore::raiseLowSequenceOfEmptyQueue() {
+  if (count_ != 0 || nextSequence_ >= kLowSequenceFloor || freshSequenceStart_ < kLowSequenceFloor) return;
+  const auto previous = nextSequence_;
+  nextSequence_ = freshSequenceStart_;
+  if (!writeHeader(makeOutboxQueueState(head_, count_, tail_, nextSequence_), generation_)) {
+    nextSequence_ = previous;
+  }
+}
+
 bool OutboxStore::persistQueue() {
   for (std::size_t offset = 0; offset < count_; ++offset) {
     if (!writeSlot((head_ + offset) % kCapacity)) return false;
@@ -327,6 +337,7 @@ bool OutboxStore::load() {
   const auto state = readHeader(header);
   if (state == HeaderState::Valid) {
     if (loadQueue(header)) {
+      raiseLowSequenceOfEmptyQueue();
       loaded_ = true;
       return true;
     }

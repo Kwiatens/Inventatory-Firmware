@@ -14,8 +14,10 @@ namespace inventatory_scan {
 namespace {
 
 constexpr unsigned long kStartupSettleMs = 250U;
-// Reply to a zone write: exactly kZoneWriteAckLength bytes, within the timeout.
-constexpr unsigned long kZoneWriteAckTimeoutMs = 150U;
+// Reply to a zone write: exactly kZoneWriteAckLength bytes, within the timeout. The module takes up to about 190 ms
+// to reply when writes follow each other closely (measured on a GM65 clone). A 150 ms wait missed some replies, and
+// each late reply was then read as the answer to the next write.
+constexpr unsigned long kZoneWriteAckTimeoutMs = 500U;
 // The save command writes the module's flash, and the module answers it after about 340 ms (measured on a GM65
 // clone). A 150 ms wait missed that reply, so the whole profile was reported as not acknowledged.
 constexpr unsigned long kSaveAckTimeoutMs = 1000U;
@@ -52,7 +54,7 @@ constexpr ZoneWrite kBootProfile[] = {
     {0x0051, 0x00},  // RSS expanded off
     {0x0054, 0x01},  // Data Matrix on
     {0x0055, 0x00},  // PDF417 off
-    {0x0060, 0x20},  // Raw serial output with CRLF terminator
+    {0x0060, 0x21},  // Raw serial output; bits 6-5 = 01 select CRLF and bit 0 allows the tail (GM65 manual)
 };
 
 }  // namespace
