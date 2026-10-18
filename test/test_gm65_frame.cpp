@@ -275,7 +275,15 @@ void test_gm65_lamps_are_off_only_when_both_are_off_and_restore_to_standard() {
   TEST_ASSERT_EQUAL_HEX8(0x17, gm65LampsStandardZoneValue(0x03));
 }
 
+void test_gm65_sleep_turns_the_lamps_off_and_sets_manual_read_mode() {
+  // Lamps (bits 5-2) and read mode (bits 1-0) go to 00. The other bits are kept.
+  TEST_ASSERT_EQUAL_HEX8(0xC0, gm65SleepZoneValue(0xD6));
+  TEST_ASSERT_EQUAL_HEX8(0x40, gm65SleepZoneValue(0x7F));
+  TEST_ASSERT_EQUAL_HEX8(0xC0, gm65SleepZoneValue(0xFF));
+}
+
 void registerGm65FrameTests() {
+  RUN_TEST(test_gm65_sleep_turns_the_lamps_off_and_sets_manual_read_mode);
   RUN_TEST(test_gm65_crc16_has_the_xmodem_check_value);
   RUN_TEST(test_gm65_frame_ends_at_carriage_return_line_feed);
   RUN_TEST(test_gm65_line_feed_alone_also_ends_a_frame);
