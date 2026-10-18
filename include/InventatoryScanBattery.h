@@ -5,10 +5,10 @@
 
 // Battery state for the single LiPo cell: the voltage to percent curve, the voltage guards and a
 // gauge that estimates the charge left. The gauge takes the charge out by the load the firmware
-// draws, and corrects the estimate from the cell voltage only at rest, where that voltage follows
-// the open-circuit voltage. A charge is timed rather than read from the voltage, so the charger's
-// raised voltage never moves the percent. No Arduino calls, so the host tests run the same code
-// the device runs.
+// draws, and corrects the estimate from the cell voltage at rest, where that voltage follows the
+// open-circuit voltage, and at boot, where a stored estimate can be stale. A charge is timed rather
+// than read from the voltage, so the charger's raised voltage never moves the percent. No Arduino
+// calls, so the host tests run the same code the device runs.
 
 #include <algorithm>
 #include <cstddef>
@@ -95,6 +95,11 @@ constexpr uint8_t kBatteryRestTrustMaxPercent = 90;
 // kBatteryRestStepMs.
 constexpr uint8_t kBatteryRestTolerancePercent = 2;
 constexpr uint32_t kBatteryRestStepMs = 60000UL;
+// At boot a stored charge more than this many points above the cell's voltage is replaced by the voltage's
+// charge. The gauge cannot count the charge a cell loses while the device is off, so a stored estimate can
+// stay high for hours. A smaller gap is left to the rest correction, which tolerates a sag under load and the
+// ADC's error.
+constexpr uint8_t kBatteryRestoreTolerancePercent = 20;
 // Charging is timed until a full charge has been measured on this cell. This is a guess to replace.
 // The prior assumes the 1300 mAh cell charged at 500 mA: 2.6 h, or 93.6 s per point.
 constexpr uint32_t kBatteryPriorChargeMsPerPercent = 93600UL;
@@ -155,8 +160,7 @@ struct BatteryGaugeState {
 // estimate at most one point per kBatteryDisplayStepMs, and while charging it never falls.
 class BatteryGauge {
  public:
-  // Resumes from a stored state. The first update then keeps the stored charge instead of
-  // reading it from the voltage.
+  // Resumes from a stored state. The first update then checks the stored charge against the voltage.
   void restore(const BatteryGaugeState& state) {
     restored_ = true;
     remainingUah_ = std::min<uint64_t>(state.remainingUah, kBatteryNominalCapacityUah);
@@ -173,7 +177,7 @@ class BatteryGauge {
   void update(uint32_t millivolts, bool charging, bool full, uint32_t loadMilliamps, uint32_t nowMs) {
     const uint32_t stepMs = started_ ? std::min(nowMs - lastMs_, kBatteryMaxStepMs) : 0U;
     lastMs_ = nowMs;
-    if (!started_) start(millivolts, loadMilliamps);
+    if (!started_) start(millivolts, loadMilliamps, charging);
     if (charging && !wasCharging_) beginCharge();
     wasCharging_ = charging;
     // Charged only while the charger is not charging the cell.
@@ -245,15 +249,28 @@ class BatteryGauge {
     return static_cast<uint64_t>(kBatteryNominalCapacityUah) * batteryPercentFromMillivolts(millivolts) / 100U;
   }
 
-  // The first reading takes the cell voltage as the charge, unless a stored state was restored.
-  void start(uint32_t millivolts, uint32_t loadMilliamps) {
+  // The first reading takes the cell voltage as the charge, unless a stored state was restored. A restored
+  // charge is checked against the voltage first.
+  void start(uint32_t millivolts, uint32_t loadMilliamps, bool charging) {
     started_ = true;
-    if (!restored_) {
-      const uint64_t percent = batteryPercentFromMillivolts(millivolts);
-      remainingUah_ = static_cast<uint64_t>(kBatteryNominalCapacityUah) * percent / 100U;
+    if (restored_) {
+      checkRestored(millivolts, charging);
+    } else {
+      remainingUah_ = chargeFromMillivolts(millivolts);
     }
     if (averageCentiMa_ == 0) averageCentiMa_ = loadMilliamps * 100U;
     shownPercent_ = estimatePercent();
+  }
+
+  // A stored charge more than kBatteryRestoreTolerancePercent above the voltage's charge is replaced. The
+  // charger only raises the voltage, so a low voltage counts while charging too. A stored full charge is the
+  // charged hold, which counts no load and needs the charger, so it is replaced unless the LED is lit.
+  void checkRestored(uint32_t millivolts, bool charging) {
+    const int stored = estimatePercent();
+    const int fromVoltage = batteryPercentFromMillivolts(millivolts);
+    const bool tooHigh = stored - fromVoltage > kBatteryRestoreTolerancePercent;
+    const bool heldFull = stored >= 100 && !charging;
+    if (tooHigh || heldFull) remainingUah_ = chargeFromMillivolts(millivolts);
   }
 
   void beginCharge() {
