@@ -105,9 +105,10 @@ Authoritative pin assignments are defined in `src/config/hardware.h` and
 | | Rows 1-4 | `9, 10, 17, 18` (D6-D9) | Scanned and debounced on Core 1; all RTC GPIOs |
 | **Power key (`*`)** | Wake column (column 1) / drive row (row 4) | `5` / `18` | Deep sleep: row 4 held low, other rows held high, column 1 wakes on low (ext1 ANY_LOW) |
 | **LiPo sense** | Divider midpoint (`BATTERY_ADC_PIN`) | `1` (A0, ADC1) | BAT+ -> 100 kOhm -> pin -> 100 kOhm -> GND, 100 nF to GND; ADC2 cannot be used with Wi-Fi |
-| **Charging LED (red)** | High while the UPS module's charger LED is lit, i.e. charging (`hardware::kChargingLedPin`) | `4` (header A3, left pin 4) | Internal pull-down reads an unwired pad as "not lit". Divide or level-shift signals above 3.3 V. Confirm the level with a meter before wiring |
-| **Charge-done LED (green)** | High while the UPS module's charge-complete LED is lit (`hardware::kChargeDoneLedPin`) | `38` (header MOSI, right pin 14) | Replaced the old dock-present line. Same pull-down and level rules as the red LED |
-| **LCD backlight** | Backlight on/off through an external transistor (`hardware::kBacklightPin`) | `2` (header A1, left pin 5) | Active high (`kBacklightOnLevel`). The board has no backlight driver, so the transistor and its gate pull-down must be added |
+| **Charger LED signal** | The UPS module's charging signal, high while the cell charges (`hardware::kChargingLedPin`), through a 1 MOhm / 1 MOhm divider | `4` (header A3, left pin 4; ADC1 channel 3) | Read with the ADC, about 2.2 V lit and about 0 V dark (`kChargeLedLitAboveMv`). No pull resistor: a pull-down pulled the signal to 0 V. A digital wake on this pad needs at least about 2.5 V, so dock sleep stays off (`kDockSleepWakeReliable`) |
+| | Charge-done (green) | Not read | The green pad is no longer connected. Charged is worked out from the cell voltage with the LED dark |
+| **LCD backlight** | Backlight on/off through an external transistor (`hardware::kBacklightPin`) | `38` (header MOSI, right pin 14) | Active high (`kBacklightOnLevel`). The board has no backlight driver, so the transistor and its gate pull-down must be added |
+| **Charger input sense** | Midpoint of a 1 MOhm / 1 MOhm divider on the charger's 5 V input, read with the ADC (`hardware::kConnectorSensePin`) | `2` (header A1, left pin 5; ADC1 channel 1) | About 2.5 V plugged in, 0 V unplugged. No pull resistor. Read with `analogReadMilliVolts`, not as a digital input. GPIO1-10 are the only pins readable while Wi-Fi runs |
 
 GPIO0, GPIO3, GPIO45 and GPIO46 are boot straps or the RGB LED, and GPIO48 drives the board's SCK LED.
 Do not assign them. GPIO19/20 are USB, and GPIO26-37 are flash and in-package PSRAM.
@@ -404,8 +405,9 @@ preserved:
   dialogs, OTA updates, or active label printing.
 - **Top bar battery**: The right-hand slot cycles through the status, the battery level and
   the runtime estimate (from the load the firmware draws, marked "~" until enough load has been observed) (`headerPageAt`).
-  While the dock supplies power the status reads "Charging". The dock connect and disconnect
-  show a short full-screen card (`showBatteryCard`); it appears on the Ready screen only.
+  While the dock supplies power the status reads "Charging", or "Charged" once the cell is full and the
+  charger LED is dark. A bolt sits left of the battery icon while the dock supplies power. The dock connect and
+  disconnect show a short full-screen card (`showBatteryCard`); it appears on the Ready screen only.
 - **Top bar fault mark**: A two-pixel `!` sits at the right corner of the top bar while the scanner is not
   running (`scannerFaultShown`). It is hidden in standby. While it shows, the main screen and the menu
   offer `# Fault info`, and that screen gives the code (`kScannerFaultCode`, `SCN-01`) and what to check.
@@ -433,7 +435,16 @@ preserved:
   each step a 30 s countdown shows on screen. A key press or a scan cancels it: a key press does
   nothing else, a scan is handled as usual. A device asleep on this timer wakes on a short key press.
   After the automatic power off only `*` wakes it, and it restarts. Holding `D` still toggles
-  standby as before.
+  standby as before. On the charger (charging or charged) the device is never put to sleep by this timer.
+- **Dock mode**: row 4 of the Energy saving screen, off by default and independent of the energy saving
+  switch. While it is on, the device goes to standby about 5 s after the charger is plugged in
+  (`kDockPowerOffDelayMs`), and taking the charger off brings it back at once. Standby keeps the chip awake
+  and polls the charger input every `kChargerSampleIntervalMs`, because a deep sleep cannot be woken by the
+  charger pins with the current divider. Dock mode is skipped while a menu or a quantity is in progress.
+- **Charge state**: the charger LED signal (GPIO 4) says charging; the charger input (GPIO 2) says plugged in.
+  Charged is plugged in, the LED dark and the cell at or above `kBatteryChargedMv`. A plugged-in charger that is
+  not charging does not protect a low cell: the discharge thresholds still apply. A plug-in does not wake a
+  device that is off until the charger pins reach at least about 2.6 V.
 
 ---
 
