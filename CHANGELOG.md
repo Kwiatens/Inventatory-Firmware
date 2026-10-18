@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The `›i` logo has no dot on any screen. The update screen shows its status in words and the progress bar, and a boot error shows only its text.
-- The battery percentage no longer follows the cell voltage. The device counts the charge out by the load it draws, and corrects that count from the voltage only after a long rest. While charging it counts the charge in, rises steadily, never falls, and reads 100% when the charger reports done. A radio burst, a scan or the charger's raised voltage no longer moves it.
+- The battery percentage no longer follows the cell voltage. The device counts the charge out by the load it draws, and corrects that count from the voltage only after a long rest. While charging it counts the charge in, rises steadily, never falls, and reads 100% once the cell is full with the charger's LED dark. A radio burst, a scan or the charger's raised voltage no longer moves it.
+- The charger is read through its red LED only; the green LED pad is no longer read. With the LED dark and the cell at 4.10 V or more, the cell is charged: the top bar reads "Charged" at 100%, with the bolt, and it holds there while the voltage stays at 4.00 V or more. Below that the estimate restarts from the voltage.
+- On the charger the device is not refused at boot, warned or shut down for a low or empty cell, and energy saving does not sleep or turn it off. Dock mode is the only automatic power off while it is on the charger.
+- The charger input is read on GPIO2 through the ADC: the midpoint of a 1 MOhm / 1 MOhm divider on the 5 V input, about 2.5 V plugged in and 0 V unplugged. The backlight moved from GPIO2 to GPIO38. Every 10 s the serial log writes the cell voltage, the charger midpoint and the LED state, for the bench check. The charge state does not use the charger input yet.
+- The charger LED signal on GPIO4 is read with the ADC, not as a digital input, and its pull-down is gone. The divider midpoint is about 2.2 V when lit, which a digital input reads as low. The charging icon and the charging state follow the reading. Dock mode does not sleep the device yet, and a plug-in does not wake a device that is off, until the divider puts at least about 2.5 V on the pin.
+- The battery voltage is corrected by a gain measured on the board: the reading was 3.9% low (3553 mV read for a 3696 mV cell), so a cell at 3.7 V no longer reads as 10% and refuses to boot. `hardware::kBatteryReadingScalePpm` holds the gain. It is fitted to one point and needs a second check near 4.1 V.
 - The time left on battery, or to full, uses the same estimate. It shows from the first reading, marked "~" until enough load has been observed, for example "~6h 20m left". It replaces "Estimating time" on the dock card. The load, rest and charge values in `include/InventatoryScanBattery.h` are placeholders until they are calibrated on the device.
 - The power-off warning and the power-off ending are simpler. The warning is a centred title, a countdown bar and "Release * to cancel". The ending is the `›i` sinking behind a short rule, with "Press * to wake" under it.
 - On the quantity screen the item name and its code no longer touch, and "Change quantity by:" is now "Change by:" so a four-digit quantity fits.
@@ -17,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screen layout numbers that were written inline in the renderer are now named in `display_style.h`, and centred lines share one helper.
 
 ### Added
+- Dock mode, row 4 of the Energy saving screen, off by default and independent of the energy saving switch. With it on, the device goes to standby about 5 s after the charger is plugged in: the screen is dark and the scanner and network are paused. Taking the charger off brings it back at once. With dock mode off, a device on the charger stays on.
 - A DigiKey bag's Data Matrix sends its DigiKey part number and manufacturer part number, and a TME bag's QR label sends its TME part number and manufacturer part number, so the desktop records which vendor supplied the part. A DigiKey bag is looked up by its DigiKey part number, so a part already in inventory is found. A TME label needs no product page. Any other Data Matrix is refused with a message, and the part is added by hand. A TME bag's QR code was refused before.
 - Holding `*` on an idle screen shows a countdown bar after one second, then powers the device off into deep sleep at four seconds. The `›i` sinks behind the glass. Releasing `*` before then cancels. Pressing `*` wakes it and the firmware restarts.
 - The LiPo voltage is read on GPIO1 through a resistor divider and logged at boot.
@@ -71,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A working barcode scanner no longer shows `SCN-01` at every start-up. The module confirms its save command after about 340 ms, and the firmware waited only 150 ms for that confirmation.
 - A Data Matrix that the scanner ends with RS EOT and no line break, as a DigiKey bag's does, is read as a scan. Before, it was dropped without a message.
 - A refused scan says why: an unrecognised scan, a label too long to send, or a Data Matrix without a DigiKey part number. Each one showed "Not a supported vendor bag" before.
-- The charger's "charging complete" LED is debounced like the charging state, so a flickering LED does not re-show the dock card. With it lit, the estimate reads "Fully charged" to match the top bar.
+- The charged state is debounced like the charging state, so a flickering charger LED does not re-show the dock card. Charged, the estimate reads "Fully charged" to match the top bar.
 - A sync result no longer replaces a settings or confirmation screen that the operator has open. Only the Ready, quantity and waiting screens take a result.
 - A failed local save is shown instead of an earlier result.
 - Bluetooth setup no longer keeps stale pairing data from an earlier attempt.
@@ -96,7 +102,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A provisioning request with a NUL byte in any field is refused.
 
 ### Known issues
-- Charging and the backlight need wiring that the board does not have yet: the charger status LEDs of the UPS module must reach GPIO4 (red, header A3) and GPIO38 (green, header MOSI), and an external transistor must switch the backlight from GPIO2 (header A1). Until then the charging screens never appear and the backlight modes do nothing.
+- Charging and the backlight need wiring that the board does not have yet: the charger LED of the UPS module must reach GPIO4 (red, header A3) through a 1 MOhm / 1 MOhm divider, and an external transistor must switch the backlight from GPIO38 (header MOSI). Until then the charging screens never appear and the backlight modes do nothing. With the chip's pull-down the lit LED may read as dark, so measure the pin before relying on charging.
+- A full cell taken off the charger reads "Charged" at 100% until its voltage falls below 4.00 V, and only then does the estimate restart from the voltage. A connector-voltage pin would tell the two cases apart.
 - The battery curve is approximate and needs calibrating on the device with a full discharge.
 - A barcode that is not recognised shows no code on the screen.
 - After a queue repair, an older firmware cannot read the queue. It reports the queue as unreadable, and its repair menu discards the stored scans. Sync the scans to the PC before you flash an older build over a repaired queue.

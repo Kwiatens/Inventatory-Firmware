@@ -21,4 +21,12 @@ The scanner's signal pins are also listed in [AGENTS.md](../AGENTS.md), section 
 
 ## Charger LEDs from the UPS module
 
-The red and green LED pads (R+ and G+) feed GPIO 4 and GPIO 38. Measure each pad against GND with the LED lit and off before you connect it to a GPIO. A pad above 3.3 V needs a divider.
+Only the red LED pad (R+) is connected, to GPIO 4 through a 1 MOhm / 1 MOhm divider. The green pad (G+) is not connected: the charged state is worked out from the cell voltage. Measure the red pad against GND with the LED lit and off before you connect it.
+
+The ESP32-S3's internal pull-down (about 45 kOhm) sits in parallel with the lower 1 MOhm, so with the lit pad at the top it reads only a few percent of the pad voltage. Measure the GPIO 4 pin with the LED lit, and check it reads high (above 2.5 V at 3.3 V), before you rely on charging.
+
+## Charger input sense and backlight
+
+The charger's 5 V input goes through a 1 MOhm / 1 MOhm divider. Its midpoint goes to GPIO 2 (header A1), which is read with the ADC, not as a digital input. It reads about 2.5 V with the charger plugged in and 0 V when it is not. Keep the pin free of pull resistors.
+
+The LCD backlight transistor is driven from GPIO 38 (header MOSI, right header pin 14). Its gate needs a pull-down, so the backlight stays off while the chip sleeps.
