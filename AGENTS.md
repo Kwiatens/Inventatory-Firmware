@@ -424,7 +424,8 @@ preserved:
   A low cell that is not docked is refused at boot with a notice, then the chip sleeps again. The
   refusal uses the lower of the estimate and the voltage. The percent comes from `BatteryGauge`, not
   from the voltage: a load or a radio burst does not move it, and the charger's raised voltage never
-  does. Undocked, a cell at or below `kBatteryFloorMv` is critical whatever the percent says.
+  does. The first reading after a boot is the exception: it checks a stored charge against the voltage
+  (`kBatteryRestoreTolerancePercent`). Undocked, a cell at or below `kBatteryFloorMv` is critical whatever the percent says.
 - **Backlight**: `Off`, `On`, or an Auto idle timeout (1, 3, 5, 10 min), set under Device
   settings / Display. The warnings and pairing keep the backlight on whatever the setting says.
 - **Energy saving**: a switch under Device settings / Energy saving, off by default. When on, the device
