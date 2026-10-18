@@ -43,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Powering off also puts the GM65 barcode module to sleep, with its lamps off. Before, the chip slept but the module stayed powered and its lamps kept flashing, which drained the battery while the device was off. The module is woken at the next boot, before its profile is applied.
 - Waking from standby no longer waits for the barcode scanner's setup to be sent again. The module keeps its settings while it is powered, so the screen comes back at once and key presses during the wait are no longer lost.
+- After a power off, the barcode scanner is woken and then probed until it answers, for up to three seconds, before its setup is sent. Before, the setup was sent after a fixed half second, which a module still restarting may not answer. The device then showed `SCN-01` and read no codes until the module was power-cycled. A wake that gets no answer is logged as `GM65 did not wake`.
+- The barcode scanner's lights go off when the device powers off. Before, the head lamp could stay on for about 20 seconds, because the module kept reading. The module now stops reading before it sleeps, and the boot profile sets its normal read mode again.
 
 ### Changed
 - The power-off hold is four seconds of `*`, not 1.8 s. The first second opens the countdown, so a short press does nothing.
