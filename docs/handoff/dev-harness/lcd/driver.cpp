@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
   { SCREEN("display settings"); d.showDisplaySettings(45, "Auto 5m"); tick(d); }
   { SCREEN("contrast"); d.showContrast(45); tick(d); }
   { SCREEN("backlight"); d.showBacklight("Auto 5 min", "Off after 5 min idle", 4, 6); tick(d); }
-  { SCREEN("energy saving"); d.showEnergySaving(true, "5m", "30m"); tick(d); }
+  { SCREEN("energy saving"); d.showEnergySaving(true, "5m", "30m", true); tick(d); }
   { SCREEN("confirm reset"); d.showResetConfirm(); tick(d); }
   { SCREEN("confirm discard"); d.showDiscardConfirm(); tick(d); }
   { SCREEN("confirm repair"); d.showRepairConfirm(true); tick(d); }

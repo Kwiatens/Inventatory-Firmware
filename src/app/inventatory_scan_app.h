@@ -101,6 +101,10 @@ class InventatoryScanApp {
   void enterPowerOff();
   void noteUserActivity();
   void serviceBattery();
+  void serviceChargerInput(unsigned long now);
+  void onPlugged(unsigned long now);
+  void onUnplugged();
+  void serviceDockPowerOff(unsigned long now);
   void saveBatteryStateIfDue(unsigned long now);
   void saveBatteryState();
   uint32_t batteryLoadMilliamps() const;
@@ -144,6 +148,8 @@ class InventatoryScanApp {
   void openEnergySaving();
   void toggleEnergySaving();
   void persistEnergySaving();
+  void toggleDockMode();
+  void persistDockMode();
   void openSleepAfterSettings();
   void stepSleepDelay(int step);
   void persistSleepDelay();
@@ -173,6 +179,12 @@ class InventatoryScanApp {
   BacklightMode backlightMode_ = BacklightMode::On;
   // Energy saving: off by default. The delays apply only while it is on.
   bool energySavingOn_ = false;
+  // Dock mode: the device goes to standby shortly after the charger is plugged in, and taking the charger off
+  // brings it back. Its own switch, so it works with energy saving off too.
+  bool dockMode_ = false;
+  // The standby that dock mode has scheduled, and when it is due.
+  bool dockPowerOffPending_ = false;
+  unsigned long dockPowerOffAt_ = 0;
   SleepDelay sleepDelay_ = SleepDelay::Min5;
   PowerOffDelay powerOffDelay_ = PowerOffDelay::Min30;
   EnergyPhase energyPhase_ = EnergyPhase::Awake;
@@ -185,9 +197,21 @@ class InventatoryScanApp {
   // When the gauge state was last written to NVS, and the percent it held then.
   unsigned long lastBatterySaveAt_ = 0;
   int batterySavedPercent_ = -1;
+  // On the charger (charging or charged) at the last battery sample. It shows the dock card on a change.
   bool lastCharging_ = false;
-  // The charger's green "charging complete" LED was lit at the last battery sample.
+  // Charged at the last battery sample.
   bool lastChargeDone_ = false;
+  // The charger's LED signal is lit (charging), with hysteresis, from hardware::kChargingLedPin.
+  bool chargerLedLit_ = false;
+  // The charger input is plugged in, with hysteresis, from hardware::kConnectorSensePin. Read every
+  // kChargerSampleIntervalMs, so a removal is seen within that time.
+  bool chargerPlugged_ = false;
+  bool lastChargerPlugged_ = false;
+  unsigned long lastChargerSampleAt_ = 0;
+  // Dock mode's standby: the device is off because it is on the charger. Taking the charger off ends it.
+  bool dockStandby_ = false;
+  // When the battery and charger status line was last written to the serial log.
+  unsigned long lastBatteryLogAt_ = 0;
   // Latched when the low-battery warning appears; it clears only when the dock connects.
   bool lowBatteryWarning_ = false;
   unsigned long lowBatteryWarningAt_ = 0;

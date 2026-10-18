@@ -25,6 +25,9 @@ class DeviceSettingsStore {
   bool saveSleepDelay(uint8_t delay);
   uint8_t powerOffDelay() const;
   bool savePowerOffDelay(uint8_t delay);
+  // Dock mode is off when nothing is stored.
+  bool dockModeEnabled() const;
+  bool saveDockModeEnabled(bool enabled);
 
  private:
   bool saveCached(const char* key, uint8_t value, int16_t& last);
@@ -36,6 +39,7 @@ class DeviceSettingsStore {
   int16_t lastEnergySaving_ = -1;
   int16_t lastSleepDelay_ = -1;
   int16_t lastPowerOffDelay_ = -1;
+  int16_t lastDockMode_ = -1;
 };
 
 }  // namespace inventatory_scan

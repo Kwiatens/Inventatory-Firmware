@@ -15,15 +15,18 @@ constexpr uint8_t kSamples = 8;
 // ADC1 (GPIO1-10) keeps reading while Wi-Fi is active; ADC2 does not.
 static_assert(BATTERY_ADC_PIN >= 1 && BATTERY_ADC_PIN <= 10, "BATTERY_ADC_PIN must be an ADC1 pin (GPIO1-10)");
 static_assert(BATTERY_DIVIDER_BOTTOM_OHMS > 0UL, "BATTERY_DIVIDER_BOTTOM_OHMS must be non-zero");
+static_assert(hardware::kConnectorSensePin >= 1 && hardware::kConnectorSensePin <= 10,
+              "kConnectorSensePin must be an ADC1 pin (GPIO1-10)");
 
 }  // namespace
 
 void BatteryMonitor::begin() {
   // 12 dB attenuation covers the divider output for a LiPo (about 2.1 V at 4.2 V with equal resistors).
   analogSetPinAttenuation(BATTERY_ADC_PIN, ADC_11db);
-  // The pull-downs read an unwired or floating LED pad as "not lit".
-  pinMode(hardware::kChargingLedPin, INPUT_PULLDOWN);
-  pinMode(hardware::kChargeDoneLedPin, INPUT_PULLDOWN);
+  // Both charger signals are read through the ADC: their midpoints are about 2.2 V when high, which a
+  // digital input reads as low. They have no pull resistors, because a pull-down pulled the LED signal to 0 V.
+  analogSetPinAttenuation(hardware::kConnectorSensePin, ADC_11db);
+  analogSetPinAttenuation(hardware::kChargingLedPin, ADC_11db);
 }
 
 uint32_t BatteryMonitor::readMillivolts() const {
@@ -32,15 +35,27 @@ uint32_t BatteryMonitor::readMillivolts() const {
     pinSum += analogReadMilliVolts(BATTERY_ADC_PIN);
   }
   const uint64_t pinMillivolts = pinSum / kSamples;
-  // The pin sees battery * bottom / (top + bottom).
-  return static_cast<uint32_t>(pinMillivolts * (BATTERY_DIVIDER_TOP_OHMS + BATTERY_DIVIDER_BOTTOM_OHMS) /
-                               BATTERY_DIVIDER_BOTTOM_OHMS);
+  // The pin sees battery * bottom / (top + bottom). The gain corrects the error measured on this board.
+  const uint64_t cellMillivolts =
+      pinMillivolts * (BATTERY_DIVIDER_TOP_OHMS + BATTERY_DIVIDER_BOTTOM_OHMS) / BATTERY_DIVIDER_BOTTOM_OHMS;
+  return static_cast<uint32_t>(cellMillivolts * hardware::kBatteryReadingScalePpm / 1000000ULL);
 }
 
-ChargeState BatteryMonitor::chargeState() const {
-  const bool redLit = digitalRead(hardware::kChargingLedPin) == hardware::kChargeLedOnLevel;
-  const bool greenLit = digitalRead(hardware::kChargeDoneLedPin) == hardware::kChargeLedOnLevel;
-  return chargeStateFromLeds(redLit, greenLit);
+uint32_t BatteryMonitor::chargingLedMillivolts() const {
+  uint32_t pinSum = 0;
+  for (uint8_t sample = 0; sample < kSamples; ++sample) {
+    pinSum += analogReadMilliVolts(hardware::kChargingLedPin);
+  }
+  return pinSum / kSamples;
+}
+
+
+uint32_t BatteryMonitor::connectorMillivolts() const {
+  uint32_t pinSum = 0;
+  for (uint8_t sample = 0; sample < kSamples; ++sample) {
+    pinSum += analogReadMilliVolts(hardware::kConnectorSensePin);
+  }
+  return pinSum / kSamples;
 }
 
 }  // namespace inventatory_scan
