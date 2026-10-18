@@ -29,10 +29,15 @@ How to use it:
 
 - [ ] GM65 cable checked wire by wire, ground first (see [wiring.md](wiring.md)). Fill in the table there.
 - [ ] GM65 supply voltage matches its label. GM65 TX is 3.3 V logic at GPIO 44.
-- [ ] Charger LED pads (R+, G+) measured against GND with the LED **lit and off**. Record both levels.
-      **Expect:** lit reads high (`kChargeLedOnLevel = 1`) and never above 3.3 V. If a pad is
-      active-low, change `kChargeLedOnLevel` and the pull direction before going on.
-- [ ] Nothing else is wired to GPIO 38 (it now means the green LED, not "dock present").
+- [ ] Charger LED signal (R+) measured against GND with the LED **lit and off**. Record both levels.
+      **Expect:** about 4.4 V on the pad when lit. Through the divider, GPIO 4 reads about 2200 mV lit and about
+      0 mV dark, with no pull resistor. The serial log's "LED lit" or "LED dark" follows it.
+- [ ] GPIO 4 pin, through the 1 MOhm / 1 MOhm divider, reads about 2200 mV with the LED lit and about 0 mV
+      dark. It is read with the ADC. A digital read would see about 2.2 V as low.
+- [ ] The backlight transistor's gate is on GPIO 38 (header MOSI), with its pull-down. GPIO 2 is not used by it.
+- [ ] Charger input divider midpoint is on GPIO 2 (header A1), with no pull resistor. Read the serial log every
+      10 s: about 2500 mV plugged in, 0 mV unplugged. The "Charger input" line marks each change.
+- [ ] Battery reading: the serial log's "Battery" value matches a multimeter on the cell. Record both values.
 - [ ] Battery divider midpoint reads about half of the cell voltage on GPIO 1.
 - [ ] Backlight transistor has its gate pull-down; backlight stays off with the chip in reset.
 
@@ -96,13 +101,17 @@ and 63.
 
 - [ ] Percent tracks the cell within a few percent of a multimeter reading. Record the offset.
 - [ ] Plug the charger: card shows "Charging" on Ready only, not over a menu or quantity entry.
-- [ ] Red LED = Charging, green LED = Charged, both off = on battery. The top bar and card agree.
+- [ ] Red LED lit = Charging. LED dark with the cell at 4.10 V or more = Charged, 100%. LED dark below that =
+      on battery. The top bar and card agree.
 - [ ] Bounce the charger contact: the card does not re-appear on every flicker.
 - [ ] Time left shows a `~` estimate straight away, and the `~` goes once enough load has been observed.
       **Calibrate** the load values (`kBatteryLoad*Ma`), `kBatteryNominalCapacityUah`, `kBatteryRestDwellMs`,
       `kBatteryPriorChargeMsPerPercent` and `kBatteryFloorMv` from the bench run in the battery plan
       (assumed: 3.7 V nominal LiPo of 1300 mAh, about 80 mA in use, 93.6 s per percent while charging at 500 mA).
-- [ ] Charging: the percent rises, never falls, stops at 99 and shows 100 only when the green LED lights.
+      Also calibrate `kBatteryChargedMv` (4.10 V) and `kBatteryChargedReleaseMv` (4.00 V) against a full charge.
+- [ ] Charging: the percent rises, never falls, stops at 99 and shows 100 once the LED goes dark with the cell full.
+- [ ] Unplug a full cell: it reads Charged until its voltage falls below 4.00 V, then the percent restarts from
+      the voltage. This is the known limit of the voltage-only charged state.
 - [ ] A WiFi sync or a scan does not move the percent.
 - [ ] Low battery (10% or less, not docked): warning counts down 60 s, then powers off. Docking cancels it.
 - [ ] Empty (3% or less): "Battery empty" notice, then power off. Boot on a low cell, undocked: refused
@@ -119,6 +128,13 @@ and 63.
 - [ ] A menu, a quantity being typed, an error, a warning, or an update keeps the device awake.
 - [ ] Backlight: Off, On, Auto 1 min. Warnings and pairing stay lit in every mode.
 - [ ] Settings survive a reboot: contrast, backlight, energy saving and both delays.
+- [ ] Dock mode off (Energy saving, row 4): on the charger the device stays on with energy saving on, and is not
+      put to sleep. Plug in while it is off: it wakes, shows the charging card, and stays on.
+- [ ] Dock mode on: plug in, the charging card shows, and the device turns off about 5 s later. Take the charger
+      off: it wakes and stays on. Plug in while it is off: it wakes, shows the card, and turns off again.
+- [ ] Dock mode on: plug in, the screen goes dark about 5 s later. Take the charger off: it comes back at once.
+      The serial log shows "Charger input plugged in" and "Charger input unplugged".
+- [ ] A `*` power off while on the charger wakes only with `*`. A plug-in does not wake a device that is off.
 
 ## 9. BLE pairing (**destructive**: erases pairing; scans are kept)
 
