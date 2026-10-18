@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The operator can discard a queue that this firmware cannot read. The repair menu offers it after a confirmation, and the device works again straight away.
 
 ### Fixed
+- The battery percent is checked against the cell voltage at boot. The device kept the percent it saved at power off, even when the cell had fallen far below it while the device was off: 98% at 3.65 V, for example. A saved charge more than 20 points above the cell's voltage is replaced by the voltage's charge, and a saved full charge is kept only while the cell is on the charger.
 - Powering off also puts the GM65 barcode module to sleep, with its lamps off. Before, the chip slept but the module stayed powered and its lamps kept flashing, which drained the battery while the device was off. The module is woken at the next boot, before its profile is applied.
 - Waking from standby no longer waits for the barcode scanner's setup to be sent again. The module keeps its settings while it is powered, so the screen comes back at once and key presses during the wait are no longer lost.
 
