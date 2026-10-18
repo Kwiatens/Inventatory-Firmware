@@ -35,6 +35,9 @@ inline uint16_t gm65Crc16(const uint8_t* bytes, std::size_t length) {
 constexpr uint16_t kGm65LampZone = 0x0000U;
 constexpr uint8_t kGm65LampBits = 0x3CU;
 constexpr uint8_t kGm65LampsStandard = 0x14U;
+// Zone bit 0x0000 bits 1-0 set the read mode: 10 is continuous, the mode the scanner reads in, and 00 is manual.
+constexpr uint8_t kGm65ReadModeBits = 0x03U;
+constexpr uint8_t kGm65ReadModeManual = 0x00U;
 // Zone bit 0x00D9 is the function zone. Writing 0xA5 puts the module into deep sleep, and writing 0x00 wakes it.
 // The module restarts when it wakes, so its zone bits come back from flash.
 constexpr uint16_t kGm65FunctionZone = 0x00D9U;
@@ -81,6 +84,12 @@ inline uint8_t gm65LampsOffZoneValue(uint8_t zoneValue) {
 // The zone value with both lamps on standard, which is the module's default.
 inline uint8_t gm65LampsStandardZoneValue(uint8_t zoneValue) {
   return static_cast<uint8_t>((zoneValue & ~kGm65LampBits) | kGm65LampsStandard);
+}
+
+// The zone value for deep sleep: both lamps off and manual read mode, so the module stops reading. The other bits are
+// kept. The boot profile writes continuous mode again, and the save never stores the manual mode.
+inline uint8_t gm65SleepZoneValue(uint8_t zoneValue) {
+  return static_cast<uint8_t>((zoneValue & ~(kGm65LampBits | kGm65ReadModeBits)) | kGm65ReadModeManual);
 }
 
 // Printable ASCII, plus the group and record separators that ISO 15434 messages use. Any
