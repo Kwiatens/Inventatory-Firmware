@@ -11,9 +11,15 @@
 //
 // Energy saving sleeps the device after an idle time and turns it off after a further time asleep.
 // Each step is preceded by a countdown on screen, so the scanner never switches off without warning.
+//
+// Dock mode turns the device off shortly after the charger is plugged in. Off here means the standby: the
+// screen is dark and the scanner and network are paused, but the chip stays awake and polls the charger input,
+// so taking the charger off brings the device back at once. A deep sleep cannot do that with the current
+// divider, because the charger pins read about 2.2 V, which a digital wake reads as low.
 
 #include "app/inventatory_scan_app.h"
 #include "InventatoryScanUiPolicy.h"
+#include "config/hardware.h"
 
 #include <esp_sleep.h>
 
@@ -35,9 +41,19 @@ constexpr unsigned long kLowBatteryShutdownMs = 60000UL;
 constexpr unsigned long kBatteryNoticeMs = 4000UL;
 // How long the card stays up after the dock is connected or removed.
 constexpr unsigned long kBatteryCardMs = 2500UL;
+// With dock mode on, the device turns off this long after the charger starts charging it. The charging
+// card shows first.
+constexpr unsigned long kDockPowerOffDelayMs = 5000UL;
+// How often the battery and charger input status line is written to the serial log.
+constexpr unsigned long kBatteryLogIntervalMs = 10000UL;
+// How often the charger LED and charger input are sampled. A removal is seen within this time, even in
+// dock mode's standby, where the battery is not read.
+constexpr unsigned long kChargerSampleIntervalMs = 100UL;
 
 }  // namespace
 
+// Power off into deep sleep. Only '*' wakes the device from it: the charger pins cannot wake a deep sleep with
+// the current divider.
 void InventatoryScanApp::enterPowerOff() {
   const bool fromStandby = powerMode_ == PowerMode::Standby;
   Serial.println("Power off requested.");
@@ -118,8 +134,8 @@ void InventatoryScanApp::noteUserActivity() { lastUserActivityAt_ = millis(); }
 
 String InventatoryScanApp::batteryEstimateText() const {
   char text[32];
-  if (!formatBatteryEstimate(text, sizeof(text), batteryTracker_.minutesRemaining(),
-                             batteryTracker_.charging(), batteryTracker_.chargeDone() ? 100 : batteryTracker_.percent(),
+  if (!formatBatteryEstimate(text, sizeof(text), batteryTracker_.minutesRemaining(), batteryTracker_.docked(),
+                             batteryTracker_.chargeDone() ? 100 : batteryTracker_.percent(),
                              batteryTracker_.estimateApproximate())) {
     return String();
   }
@@ -159,7 +175,7 @@ void InventatoryScanApp::saveBatteryStateIfDue(unsigned long now) {
   const bool moved = batterySavedPercent_ < 0 || percent - batterySavedPercent_ >= kBatterySaveStepPercent ||
                      batterySavedPercent_ - percent >= kBatterySaveStepPercent;
   const bool full = percent == 100 && batterySavedPercent_ != 100;
-  const bool due = !batteryTracker_.charging() && now - lastBatterySaveAt_ >= kBatterySaveIntervalMs;
+  const bool due = !batteryTracker_.docked() && now - lastBatterySaveAt_ >= kBatterySaveIntervalMs;
   if (moved || full || due) saveBatteryState();
 }
 
@@ -169,23 +185,31 @@ void InventatoryScanApp::serviceBattery() {
   batterySampled_ = true;
   lastBatterySampleAt_ = now;
 
-  const ChargeState charge = battery_.chargeState();
-  batteryTracker_.update(battery_.readMillivolts(), charge != ChargeState::Unplugged, now,
-                         charge == ChargeState::Done, batteryLoadMilliamps());
+  const uint32_t batteryMv = battery_.readMillivolts();
+  batteryTracker_.update(batteryMv, chargerLedLit_, now, batteryLoadMilliamps(), chargerPlugged_);
   const bool chargeDone = batteryTracker_.chargeDone();
   display_.setBatteryUnreadable(batteryTracker_.unreadable());
-  const bool charging = batteryTracker_.charging();
+  const bool docked = batteryTracker_.docked();
   const int percent = batteryTracker_.percent();
   const String estimate = batteryEstimateText();
-  display_.setBatteryStatus(percent, charging, chargeDone, estimate);
+  display_.setBatteryStatus(percent, docked, chargeDone, estimate);
   saveBatteryStateIfDue(now);
 
-  if (charging != lastCharging_ || chargeDone != lastChargeDone_) {
-    lastCharging_ = charging;
+  // The status line for the bench check: the cell voltage, the two charger midpoints and their states.
+  if (lastBatteryLogAt_ == 0 || now - lastBatteryLogAt_ >= kBatteryLogIntervalMs) {
+    lastBatteryLogAt_ = now;
+    Serial.printf("Battery %lu mV, charger input %lu mV (%s), LED %lu mV (%s).\r\n",
+                  static_cast<unsigned long>(batteryMv), static_cast<unsigned long>(battery_.connectorMillivolts()),
+                  chargerPlugged_ ? "plugged" : "unplugged", static_cast<unsigned long>(battery_.chargingLedMillivolts()),
+                  chargerLedLit_ ? "lit" : "dark");
+  }
+
+  if (docked != lastCharging_ || chargeDone != lastChargeDone_) {
+    lastCharging_ = docked;
     lastChargeDone_ = chargeDone;
     noteUserActivity();
-    if (charging && lowBatteryWarning_) cancelLowBatteryWarning();
-    if (canShowBatteryCard()) display_.showBatteryCard(charging, chargeDone, percent, estimate, kBatteryCardMs);
+    if (docked && lowBatteryWarning_) cancelLowBatteryWarning();
+    if (canShowBatteryCard()) display_.showBatteryCard(docked, chargeDone, percent, estimate, kBatteryCardMs);
   }
 
   if (lowBatteryWarning_) {
@@ -203,6 +227,56 @@ void InventatoryScanApp::serviceBattery() {
     case BatteryLevel::Ok:
       return;
   }
+}
+
+// Samples the charger's two signals every kChargerSampleIntervalMs, with hysteresis, and acts on the plug-in
+// and removal edges. It runs in every loop, so a removal is seen within that interval even in dock standby.
+void InventatoryScanApp::serviceChargerInput(unsigned long now) {
+  if (now - lastChargerSampleAt_ >= kChargerSampleIntervalMs) {
+    lastChargerSampleAt_ = now;
+    chargerLedLit_ = signalHighNext(chargerLedLit_, battery_.chargingLedMillivolts());
+    chargerPlugged_ = signalHighNext(chargerPlugged_, battery_.connectorMillivolts());
+    if (chargerPlugged_ && !lastChargerPlugged_) onPlugged(now);
+    if (!chargerPlugged_ && lastChargerPlugged_) onUnplugged();
+    lastChargerPlugged_ = chargerPlugged_;
+  }
+  // Dock standby ends when the device is woken some other way, for example by holding D.
+  if (dockStandby_ && powerMode_ != PowerMode::Standby) dockStandby_ = false;
+  serviceDockPowerOff(now);
+}
+
+// The charger was plugged in. A device on energy saving standby wakes for it. With dock mode on, the device
+// goes to standby after kDockPowerOffDelayMs, so the charging card shows first.
+void InventatoryScanApp::onPlugged(unsigned long now) {
+  Serial.println("Charger input plugged in.");
+  if (powerMode_ == PowerMode::Standby) exitStandby();
+  if (!dockMode_) return;
+  Serial.println("Dock mode: standby shortly while on the charger.");
+  dockPowerOffPending_ = true;
+  dockPowerOffAt_ = now + kDockPowerOffDelayMs;
+}
+
+// The charger was taken off. Dock standby ends at once, and the device comes back on. A standby that was
+// scheduled and not yet started is dropped.
+void InventatoryScanApp::onUnplugged() {
+  Serial.println("Charger input unplugged.");
+  dockPowerOffPending_ = false;
+  if (!dockStandby_) return;
+  dockStandby_ = false;
+  exitStandby();
+}
+
+// Dock mode's standby. It starts once the charge card has shown, and only if the device is idle and still on
+// the charger. Otherwise the device stays on.
+void InventatoryScanApp::serviceDockPowerOff(unsigned long now) {
+  if (!dockPowerOffPending_ || static_cast<long>(now - dockPowerOffAt_) < 0) return;
+  dockPowerOffPending_ = false;
+  if (!dockMode_ || !chargerPlugged_ || !canShowBatteryCard()) {
+    Serial.println("Dock mode: standby skipped, the device is in use or no longer on the charger.");
+    return;
+  }
+  dockStandby_ = true;
+  enterStandby();
 }
 
 void InventatoryScanApp::startLowBatteryWarning() {
@@ -269,8 +343,9 @@ void InventatoryScanApp::serviceEnergySaving() {
   EnergyInputs in;
   in.enabled = energySavingOn_;
   in.powerOffSet = powerOffEnabled(powerOffDelay_);
+  // On the charger the device stays awake, so energy saving never sleeps it. Dock mode turns it off instead.
   in.idleReady = powerMode_ == PowerMode::Normal && state_ == State::Idle && !setupMode_ &&
-                 !lowBatteryWarning_ && !powerOffWarning_ && !display_.errorVisible();
+                 !lowBatteryWarning_ && !powerOffWarning_ && !display_.errorVisible() && !chargerPlugged_;
   in.updating = otaRequested_ || otaActive_;
   in.sleepRemainingMs = energyRemainingMs(now, lastUserActivityAt_, sleepDelayMs(sleepDelay_));
   in.offRemainingMs = energyRemainingMs(now, sleepStartedAt_, powerOffDelayMs(powerOffDelay_));

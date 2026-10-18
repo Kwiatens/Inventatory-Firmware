@@ -59,6 +59,11 @@ constexpr uint8_t kBatteryTripSamples = 4;
 // The charger line must read the new state this many samples in a row before the state
 // changes. A dock contact that bounces must not restart the charge or re-show the card.
 constexpr uint8_t kBatteryChargerDebounceSamples = 2;
+// Charged: the charger is plugged in, its LED is dark, and the cell reads at least kBatteryChargedMv. The
+// voltage only guards against a low cell on a charger that is not charging it. Leaving the state needs the
+// lower kBatteryChargedReleaseMv, so a reading near the edge does not flicker.
+constexpr uint32_t kBatteryChargedMv = 4000;
+constexpr uint32_t kBatteryChargedReleaseMv = 3900;
 // Observed time on battery needed before the time left is shown without a "~".
 constexpr uint32_t kBatteryEstimateMinSpanMs = 300000UL;
 constexpr int32_t kBatteryEstimateMaxMinutes = 9999;
@@ -125,18 +130,15 @@ enum class BatteryLevel : uint8_t {
   Critical,
 };
 
-// The charger's two status LEDs. Red lit: charging. Green lit: charging complete. Neither
-// lit: on battery, or the charger has not started. Red wins if both read lit.
-enum class ChargeState : uint8_t {
-  Unplugged,
-  Charging,
-  Done,
-};
+// The two charger signals, the LED and the charger input, are read on the ADC through 1 MOhm / 1 MOhm
+// midpoints: about 2200 mV when high and about 0 mV when low. A signal counts as high above
+// kSignalHighAboveMv and as low below kSignalLowBelowMv. Between the two the last state holds, so a reading
+// on the edge does not flicker.
+constexpr uint32_t kSignalHighAboveMv = 1600;
+constexpr uint32_t kSignalLowBelowMv = 800;
 
-inline ChargeState chargeStateFromLeds(bool redLit, bool greenLit) {
-  if (redLit) return ChargeState::Charging;
-  if (greenLit) return ChargeState::Done;
-  return ChargeState::Unplugged;
+inline bool signalHighNext(bool high, uint32_t midpointMv) {
+  return high ? midpointMv >= kSignalLowBelowMv : midpointMv > kSignalHighAboveMv;
 }
 
 // What the gauge keeps across a power-off. A charge rate of zero means no full charge has been
@@ -165,33 +167,41 @@ class BatteryGauge {
     if (averageCentiMa_ != 0) observedMs_ = kBatteryEstimateMinSpanMs;
   }
 
-  // One valid reading, once a second. charging and chargeDone are already debounced. loadMilliamps
-  // is the current the firmware draws now, 0 when unknown.
-  void update(uint32_t millivolts, bool charging, bool chargeDone, uint32_t loadMilliamps, uint32_t nowMs) {
+  // One valid reading, once a second. charging and full are already debounced: full means the cell is
+  // charged and the charger is no longer charging it. loadMilliamps is the current the firmware draws
+  // now, 0 when unknown.
+  void update(uint32_t millivolts, bool charging, bool full, uint32_t loadMilliamps, uint32_t nowMs) {
     const uint32_t stepMs = started_ ? std::min(nowMs - lastMs_, kBatteryMaxStepMs) : 0U;
     lastMs_ = nowMs;
     if (!started_) start(millivolts, loadMilliamps);
     if (charging && !wasCharging_) beginCharge();
     wasCharging_ = charging;
+    // Charged only while the charger is not charging the cell.
+    const bool done = full && !charging;
 
     if (charging) {
-      if (chargeDone) {
-        remainingUah_ = kBatteryNominalCapacityUah;
-        if (chargeTiming_) learnCharge();
-      } else {
-        chargeElapsedMs_ += stepMs;
-        addCharge(stepMs);
-      }
+      chargeElapsedMs_ += stepMs;
+      addCharge(stepMs);
       restMs_ = 0;
       restStepMs_ = 0;
     } else {
-      removeCharge(stepMs, loadMilliamps);
+      if (done) {
+        // Charged: the estimate holds at 100 until the voltage falls and the load takes charge out again.
+        remainingUah_ = kBatteryNominalCapacityUah;
+        dischargeRemainder_ = 0;
+        if (chargeTiming_) learnCharge();
+      } else {
+        // Off the charger after a charged hold: the hold counted no load, so the estimate restarts from the voltage.
+        if (chargedBefore_) remainingUah_ = chargeFromMillivolts(millivolts);
+        removeCharge(stepMs, loadMilliamps);
+      }
       trackAverage(stepMs, loadMilliamps);
       if (observedMs_ < kBatteryEstimateMinSpanMs) observedMs_ += stepMs;
       trackRest(stepMs, loadMilliamps);
-      correctAtRest(millivolts, stepMs);
+      if (!done) correctAtRest(millivolts, stepMs);
     }
-    updateShown(stepMs, charging && chargeDone);
+    chargedBefore_ = done;
+    updateShown(stepMs, done);
   }
 
   // The estimate, rounded, 0 to 100.
@@ -230,6 +240,11 @@ class BatteryGauge {
   }
 
  private:
+  // The charge that the open-circuit percent at this voltage stands for.
+  uint64_t chargeFromMillivolts(uint32_t millivolts) const {
+    return static_cast<uint64_t>(kBatteryNominalCapacityUah) * batteryPercentFromMillivolts(millivolts) / 100U;
+  }
+
   // The first reading takes the cell voltage as the charge, unless a stored state was restored.
   void start(uint32_t millivolts, uint32_t loadMilliamps) {
     started_ = true;
@@ -363,6 +378,8 @@ class BatteryGauge {
   bool wasCharging_ = false;
   bool started_ = false;
   bool restored_ = false;
+  // The previous reading was in the charged hold.
+  bool chargedBefore_ = false;
 };
 
 // Tracks the battery from one reading per second. The voltage guards the readings, the charger
@@ -373,11 +390,12 @@ class BatteryTracker {
   // Resumes the gauge from a stored state. Call it before the first update.
   void restore(const BatteryGaugeState& state) { gauge_.restore(state); }
 
-  // chargeDone: the charger reports that charging is complete. Like `charging`, it must read the new
-  // state for kBatteryChargerDebounceSamples samples in a row before it changes.
-  // loadMilliamps: the current the firmware draws now, 0 when unknown.
-  void update(uint32_t millivolts, bool charging, uint32_t nowMs, bool chargeDone = false,
-              uint32_t loadMilliamps = 0) {
+  // charging: the charger's LED is lit. It must read the new state for kBatteryChargerDebounceSamples
+  // samples in a row before it changes. loadMilliamps: the current the firmware draws now, 0 when unknown.
+  // plugged: the charger input is connected, already debounced by the caller. Charged is worked out here:
+  // plugged in, the LED dark, and the cell at or above kBatteryChargedMv.
+  void update(uint32_t millivolts, bool charging, uint32_t nowMs, uint32_t loadMilliamps = 0,
+              bool plugged = false) {
     if (millivolts < kBatteryMinimumValidMv || millivolts > kBatteryMaximumValidMv) {
       valid_ = false;
       if (invalidSamples_ < 255U) ++invalidSamples_;
@@ -392,9 +410,7 @@ class BatteryTracker {
     lastMillivolts_ = millivolts;
     if (firstSample) {
       charging_ = charging;
-      chargeDone_ = chargeDone;
       chargerFlipSamples_ = 0;
-      doneFlipSamples_ = 0;
     } else if (charging != charging_) {
       if (chargerFlipSamples_ < 255U) ++chargerFlipSamples_;
       if (chargerFlipSamples_ >= kBatteryChargerDebounceSamples) {
@@ -404,10 +420,15 @@ class BatteryTracker {
     } else {
       chargerFlipSamples_ = 0;
     }
-    if (chargeDone == chargeDone_) {
+    const bool full =
+        plugged && !charging_ && millivolts >= (chargeDone_ ? kBatteryChargedReleaseMv : kBatteryChargedMv);
+    if (firstSample) {
+      chargeDone_ = full;
+      doneFlipSamples_ = 0;
+    } else if (full == chargeDone_) {
       doneFlipSamples_ = 0;
     } else if (++doneFlipSamples_ >= kBatteryChargerDebounceSamples) {
-      chargeDone_ = chargeDone;
+      chargeDone_ = full;
       doneFlipSamples_ = 0;
     }
     gauge_.update(millivolts, charging_, chargeDone_, loadMilliamps, nowMs);
@@ -420,9 +441,13 @@ class BatteryTracker {
   // True only after kBatteryTripSamples readings in a row were outside the valid range, so a
   // single bad sample never shows a fault.
   bool unreadable() const { return invalidSamples_ >= kBatteryTripSamples; }
+  // The charger's LED is lit: the cell is charging.
   bool charging() const { return valid_ && charging_; }
-  // Charging, and the charger says it is complete.
-  bool chargeDone() const { return charging() && chargeDone_; }
+  // The charger is plugged in, its LED is dark, and the cell is full. The hold ends when the charger is
+  // taken off, and the estimate then restarts from the voltage.
+  bool chargeDone() const { return valid_ && chargeDone_ && !charging_; }
+  // On the charger: charging, or charged.
+  bool docked() const { return valid_ && (charging_ || chargeDone_); }
   // True once a reading has started the gauge.
   bool started() const { return gauge_.started(); }
   // The percent on the display. -1 while no reading has been taken.
@@ -440,8 +465,9 @@ class BatteryTracker {
   // True while the minutes rest on the prior rate rather than on this cell's observed behaviour.
   bool estimateApproximate() const { return gauge_.estimateApproximate(); }
   BatteryGaugeState state() const { return gauge_.state(); }
-  // Discharge thresholds are debounced and never apply while charging. The voltage floor counts
-  // like the others: an undocked cell at or below kBatteryFloorMv is critical whatever the gauge says.
+  // Discharge thresholds are debounced and never apply while the charger's LED is lit. A charger that is
+  // plugged in but not charging does not protect a low cell, so the thresholds still apply then. The voltage
+  // floor counts like the others: a cell at or below kBatteryFloorMv is critical whatever the gauge says.
   BatteryLevel level() const {
     if (!valid_ || charging_) return BatteryLevel::Ok;
     if (criticalSamples_ >= kBatteryTripSamples || floorSamples_ >= kBatteryTripSamples) {

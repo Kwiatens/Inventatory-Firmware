@@ -579,8 +579,9 @@ void DisplayController::showBacklight(const String& label, const String& detail,
   showChoice(DisplayUiMode::Backlight, "Backlight", label, detail, index, count);
 }
 
-// Energy saving: the switch, then the two delays. Each delay opens its own picker.
-void DisplayController::showEnergySaving(bool enabled, const String& sleepLabel, const String& powerOffLabel) {
+// Energy saving: the switch, then the two delays, then dock mode. Each delay opens its own picker.
+void DisplayController::showEnergySaving(bool enabled, const String& sleepLabel, const String& powerOffLabel,
+                                         bool dockMode) {
   clearContent();
   model_.mode = DisplayUiMode::EnergySaving;
   model_.bodyKind = DisplayBodyKind::List;
@@ -590,6 +591,7 @@ void DisplayController::showEnergySaving(bool enabled, const String& sleepLabel,
   appendListRow(model_, String("1  Enabled  ") + (enabled ? "On" : "Off"));
   appendListRow(model_, "2  Sleep after  " + sleepLabel);
   appendListRow(model_, "3  Turn off after  " + powerOffLabel);
+  appendListRow(model_, String("4  Dock mode  ") + (dockMode ? "On" : "Off"));
   model_.actions = "C Back";
   markDirty();
 }

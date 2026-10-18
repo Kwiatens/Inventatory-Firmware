@@ -943,30 +943,70 @@ void test_battery_unreadable_needs_four_bad_readings_in_a_row() {
   TEST_ASSERT_FALSE(blip.unreadable());
 }
 
-void test_charge_state_from_status_leds() {
-  TEST_ASSERT_TRUE(chargeStateFromLeds(false, false) == ChargeState::Unplugged);
-  TEST_ASSERT_TRUE(chargeStateFromLeds(true, false) == ChargeState::Charging);
-  TEST_ASSERT_TRUE(chargeStateFromLeds(false, true) == ChargeState::Done);
-  // Both lit is a wiring fault; the red LED wins, so the device keeps charging.
-  TEST_ASSERT_TRUE(chargeStateFromLeds(true, true) == ChargeState::Charging);
+void test_signal_high_has_hysteresis() {
+  // The charger signal midpoints read about 2200 mV when high, and about 0 mV when low.
+  TEST_ASSERT_TRUE(signalHighNext(false, 2200));
+  TEST_ASSERT_FALSE(signalHighNext(false, 0));
+  // Between the two thresholds the last state holds.
+  TEST_ASSERT_TRUE(signalHighNext(true, 1200));
+  TEST_ASSERT_FALSE(signalHighNext(false, 1200));
+  TEST_ASSERT_FALSE(signalHighNext(true, 500));
 }
 
-void test_battery_tracker_debounces_charge_done() {
+void test_battery_tracker_debounces_charged() {
+  // Charged: plugged in, the LED dark, and the cell at or above kBatteryChargedMv.
   BatteryTracker tracker;
-  tracker.update(4000, true, 0);
+  tracker.update(4000, true, 0, 0, true);
   TEST_ASSERT_FALSE(tracker.chargeDone());
-  // One sample of the done LED is a flicker, not the end of charging.
-  tracker.update(4000, true, 1000, true);
+  // The LED goes dark with the charger still plugged in. One reading is a flicker, not the end of charging.
+  tracker.update(4150, false, 1000, 0, true);
   TEST_ASSERT_FALSE(tracker.chargeDone());
-  tracker.update(4000, true, 2000, false);
-  tracker.update(4000, true, 3000, true);
-  TEST_ASSERT_FALSE(tracker.chargeDone());
-  tracker.update(4000, true, 4000, true);
+  tracker.update(4150, false, 2000, 0, true);
+  tracker.update(4150, false, 3000, 0, true);
   TEST_ASSERT_TRUE(tracker.chargeDone());
-  // It reads done only while charging.
-  tracker.update(4000, false, 5000, true);
-  tracker.update(4000, false, 6000, true);
+  TEST_ASSERT_TRUE(tracker.docked());
+  TEST_ASSERT_FALSE(tracker.charging());
+  // The LED lights again: charging, and no longer charged.
+  tracker.update(4150, true, 4000, 0, true);
+  tracker.update(4150, true, 5000, 0, true);
+  TEST_ASSERT_TRUE(tracker.charging());
   TEST_ASSERT_FALSE(tracker.chargeDone());
+}
+
+void test_battery_tracker_charged_needs_plugged_in_and_full_voltage() {
+  // Plugged in with the LED dark, but the cell reads 3.9 V: the charger is not charging it, so it is not charged.
+  BatteryTracker low;
+  low.update(3900, false, 0, 0, true);
+  low.update(3900, false, 1000, 0, true);
+  low.update(3900, false, 2000, 0, true);
+  TEST_ASSERT_FALSE(low.chargeDone());
+  TEST_ASSERT_FALSE(low.docked());
+  // Charged holds down to the release voltage while the charger stays plugged in.
+  BatteryTracker full;
+  full.update(4150, false, 0, 0, true);
+  full.update(4150, false, 1000, 0, true);
+  full.update(4150, false, 2000, 0, true);
+  TEST_ASSERT_TRUE(full.chargeDone());
+  full.update(3950, false, 3000, 0, true);
+  full.update(3950, false, 4000, 0, true);
+  full.update(3950, false, 5000, 0, true);
+  TEST_ASSERT_TRUE(full.chargeDone());
+  // A cell that falls below the release voltage is no longer charged, even on the charger.
+  full.update(3850, false, 6000, 0, true);
+  full.update(3850, false, 7000, 0, true);
+  full.update(3850, false, 8000, 0, true);
+  TEST_ASSERT_FALSE(full.chargeDone());
+  // Taken off the charger, the cell is on battery.
+  BatteryTracker unplugged;
+  unplugged.update(4150, false, 0, 0, true);
+  unplugged.update(4150, false, 1000, 0, true);
+  unplugged.update(4150, false, 2000, 0, true);
+  TEST_ASSERT_TRUE(unplugged.chargeDone());
+  unplugged.update(4150, false, 3000);
+  unplugged.update(4150, false, 4000);
+  unplugged.update(4150, false, 5000);
+  TEST_ASSERT_FALSE(unplugged.chargeDone());
+  TEST_ASSERT_FALSE(unplugged.docked());
 }
 
 void test_battery_estimate_text() {
@@ -1216,8 +1256,9 @@ void setup() {
   RUN_TEST(test_battery_curve_policy);
   RUN_TEST(test_battery_tracker_guards_and_debounce);
   RUN_TEST(test_battery_unreadable_needs_four_bad_readings_in_a_row);
-  RUN_TEST(test_charge_state_from_status_leds);
-  RUN_TEST(test_battery_tracker_debounces_charge_done);
+  RUN_TEST(test_signal_high_has_hysteresis);
+  RUN_TEST(test_battery_tracker_debounces_charged);
+  RUN_TEST(test_battery_tracker_charged_needs_plugged_in_and_full_voltage);
   RUN_TEST(test_battery_estimate_text);
   RUN_TEST(test_datamatrix_size_guard_is_exact_at_512_bytes);
   RUN_TEST(test_manufacturer_part_number_length_bounds);

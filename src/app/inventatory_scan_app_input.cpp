@@ -410,6 +410,8 @@ void InventatoryScanApp::handleDigit(char digit) {
         openSleepAfterSettings();
       } else if (digit == '3') {
         openPowerOffSettings();
+      } else if (digit == '4') {
+        toggleDockMode();
       }
       return;
     case State::Idle:

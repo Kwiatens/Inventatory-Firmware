@@ -43,18 +43,24 @@ void test_gauge_charger_voltage_does_not_move_the_percent() {
   TEST_ASSERT_TRUE(tracker.percent() >= 63 && tracker.percent() <= 65);
   TEST_ASSERT_TRUE(tracker.charging());
 
-  tracker.update(kMvAt95, true, nowMs, true);
-  tracker.update(kMvAt95, true, nowMs + 1000UL, true);
+  // The LED goes dark with the cell at 4.15 V: charged, and the percent reads 100.
+  tracker.update(kMvAt95, false, nowMs, 0, true);
+  tracker.update(kMvAt95, false, nowMs + 1000UL, 0, true);
+  tracker.update(kMvAt95, false, nowMs + 2000UL, 0, true);
   TEST_ASSERT_TRUE(tracker.chargeDone());
   TEST_ASSERT_EQUAL_INT(100, tracker.percent());
 }
 
 void test_gauge_load_takes_the_charge_out_at_its_rate() {
-  // 80 mA for an hour is 80 mAh: about 6 points of a 1300 mAh cell, from full to 94.
+  // 80 mA for an hour is 80 mAh: about 6 points of a 1300 mAh cell, from full to 94. The cell is off the
+  // charger and below the charged voltage, so the load counts.
+  BatteryGaugeState stored;
+  stored.remainingUah = kBatteryNominalCapacityUah;
   BatteryTracker tracker;
-  tracker.update(4200, false, 0, false, 80);
+  tracker.restore(stored);
+  tracker.update(3950, false, 0, 80);
   for (uint32_t second = 1; second <= 3600; ++second) {
-    tracker.update(4200, false, second * 1000UL, false, 80);
+    tracker.update(3950, false, second * 1000UL, 80);
   }
   TEST_ASSERT_EQUAL_INT(94, tracker.estimatePercent());
   TEST_ASSERT_EQUAL_INT(94, tracker.percent());
@@ -65,13 +71,13 @@ void test_gauge_voltage_sag_under_load_does_not_move_the_percent() {
   // The percent must match the other cell at every second.
   BatteryTracker steady;
   BatteryTracker sagging;
-  steady.update(kMvAt50, false, 0, false, 80);
-  sagging.update(kMvAt50, false, 0, false, 80);
+  steady.update(kMvAt50, false, 0, 80);
+  sagging.update(kMvAt50, false, 0, 80);
   for (uint32_t second = 1; second <= 600; ++second) {
     const uint32_t nowMs = second * 1000UL;
     const bool burst = second % 10 < 3;
-    steady.update(kMvAt50, false, nowMs, false, 80);
-    sagging.update(burst ? kMvAt50 - 200U : kMvAt50, false, nowMs, false, 80);
+    steady.update(kMvAt50, false, nowMs, 80);
+    sagging.update(burst ? kMvAt50 - 200U : kMvAt50, false, nowMs, 80);
     TEST_ASSERT_EQUAL_INT(steady.percent(), sagging.percent());
     TEST_ASSERT_TRUE(sagging.level() == BatteryLevel::Ok);
   }
@@ -84,10 +90,10 @@ void test_gauge_rest_corrects_a_drifted_estimate_slowly() {
   stored.remainingUah = chargeAt(60);
   BatteryTracker tracker;
   tracker.restore(stored);
-  tracker.update(kMvAt50, false, 0, false, 0);
+  tracker.update(kMvAt50, false, 0, 0);
   int previous = tracker.estimatePercent();
   for (uint32_t second = 1; second <= 4500; ++second) {
-    tracker.update(kMvAt50, false, second * 1000UL, false, 0);
+    tracker.update(kMvAt50, false, second * 1000UL, 0);
     if (second < 3600) TEST_ASSERT_EQUAL_INT(60, tracker.estimatePercent());
     if (second % 60 == 0) {
       const int change = previous - tracker.estimatePercent();
@@ -105,23 +111,42 @@ void test_gauge_load_prevents_the_rest_correction() {
   stored.remainingUah = chargeAt(60);
   BatteryTracker tracker;
   tracker.restore(stored);
-  tracker.update(kMvAt50, false, 0, false, 80);
+  tracker.update(kMvAt50, false, 0, 80);
   for (uint32_t second = 1; second <= 7200; ++second) {
-    tracker.update(kMvAt50, false, second * 1000UL, false, 80);
+    tracker.update(kMvAt50, false, second * 1000UL, 80);
   }
   TEST_ASSERT_EQUAL_INT(48, tracker.estimatePercent());
 }
 
-void test_gauge_rest_does_not_correct_above_the_trusted_band() {
-  // Above 90% the open-circuit reading is not trusted. The full event anchors that end instead.
+void test_gauge_rest_at_full_voltage_reads_charged() {
+  // At rest with the LED dark and the cell at 4.15 V, the cell is charged: the estimate reads 100 at once,
+  // whatever it held before. The open-circuit correction covers the band below kBatteryChargedMv.
   BatteryGaugeState stored;
   stored.remainingUah = chargeAt(60);
   BatteryTracker tracker;
   tracker.restore(stored);
   for (uint32_t second = 0; second <= 4000; ++second) {
-    tracker.update(kMvAt95, false, second * 1000UL);
+    tracker.update(kMvAt95, false, second * 1000UL, 0, true);
   }
-  TEST_ASSERT_EQUAL_INT(60, tracker.estimatePercent());
+  TEST_ASSERT_TRUE(tracker.chargeDone());
+  TEST_ASSERT_EQUAL_INT(100, tracker.estimatePercent());
+}
+
+void test_gauge_charged_hold_reseeds_from_the_voltage_when_it_ends() {
+  // Unplugged from a full cell, the estimate holds at 100 while the voltage stays charged, since the hold
+  // counts no load. Once the voltage falls below the release point it restarts from the voltage, so it is
+  // not left about 20 points high.
+  BatteryTracker tracker;
+  tracker.update(kMvAt95, false, 0, 0, true);
+  for (uint32_t second = 1; second <= 600; ++second) {
+    tracker.update(4050, false, second * 1000UL, 80, true);
+  }
+  TEST_ASSERT_EQUAL_INT(100, tracker.estimatePercent());
+  tracker.update(3950, false, 601000UL, 80);
+  tracker.update(3950, false, 602000UL, 80);
+  TEST_ASSERT_FALSE(tracker.chargeDone());
+  // 3950 mV is 70% on the curve.
+  TEST_ASSERT_TRUE(tracker.estimatePercent() >= 69 && tracker.estimatePercent() <= 71);
 }
 
 void test_gauge_empty_at_rest_reads_zero() {
@@ -144,35 +169,38 @@ void test_gauge_full_charge_teaches_the_rate() {
     nowMs = second * 1000UL;
     tracker.update(kMvAt40, true, nowMs);
   }
-  tracker.update(kMvAt95, true, nowMs + 1000UL, true);
-  tracker.update(kMvAt95, true, nowMs + 2000UL, true);
+  // The LED goes dark at 4.15 V. The charge ends there, and its rate is learned.
+  tracker.update(kMvAt95, false, nowMs + 1000UL, 0, true);
+  tracker.update(kMvAt95, false, nowMs + 2000UL, 0, true);
+  tracker.update(kMvAt95, false, nowMs + 3000UL, 0, true);
   const uint32_t learned = tracker.state().chargeMsPerPercent;
   TEST_ASSERT_TRUE(learned >= 58000U && learned <= 62000U);
   TEST_ASSERT_EQUAL_INT(100, tracker.percent());
 }
 
 void test_gauge_done_at_boot_teaches_nothing() {
-  // A boot that finds the charger already done has not timed a charge, so it learns no rate.
+  // A boot that finds the cell charged, with the LED dark, has not timed a charge, so it learns no rate.
   BatteryTracker tracker;
-  tracker.update(kMvAt95, true, 0, true);
-  tracker.update(kMvAt95, true, 1000, true);
-  tracker.update(kMvAt95, true, 2000, true);
+  tracker.update(kMvAt95, false, 0, 0, true);
+  tracker.update(kMvAt95, false, 1000, 0, true);
+  tracker.update(kMvAt95, false, 2000, 0, true);
   TEST_ASSERT_EQUAL_UINT32(0U, tracker.state().chargeMsPerPercent);
   TEST_ASSERT_EQUAL_INT(100, tracker.percent());
 }
 
 void test_gauge_charge_stops_at_99_until_the_charger_is_done() {
-  // From 95% the prior rate would pass 100% in about 6 minutes. The estimate stops at 99 until the
-  // charger reports done, and then it reads 100.
+  // From 95% the prior rate would pass 100% in about 6 minutes. The estimate stops at 99 while the LED
+  // is lit, and then it reads 100 once the LED goes dark with the cell full.
   BatteryTracker tracker;
-  tracker.update(kMvAt95, false, 0);
+  tracker.update(kMvAt95, true, 0);
   for (uint32_t second = 1; second <= 7200; ++second) {
     tracker.update(kMvAt95, true, second * 1000UL);
   }
   TEST_ASSERT_EQUAL_INT(99, tracker.estimatePercent());
   TEST_ASSERT_EQUAL_INT(99, tracker.percent());
-  tracker.update(kMvAt95, true, 7201000UL, true);
-  tracker.update(kMvAt95, true, 7202000UL, true);
+  tracker.update(kMvAt95, false, 7201000UL, 0, true);
+  tracker.update(kMvAt95, false, 7202000UL, 0, true);
+  tracker.update(kMvAt95, false, 7203000UL, 0, true);
   TEST_ASSERT_EQUAL_INT(100, tracker.percent());
 }
 
@@ -212,9 +240,9 @@ void test_gauge_gap_longer_than_a_step_is_not_load() {
 void test_gauge_time_left_on_battery_follows_the_load() {
   // 50% of 1300 mAh is 650 mAh. Six minutes at 100 mA take 10 mAh, leaving 640 mAh: 384 minutes.
   BatteryTracker tracker;
-  tracker.update(kMvAt50, false, 0, false, 100);
+  tracker.update(kMvAt50, false, 0, 100);
   for (uint32_t second = 1; second <= 360; ++second) {
-    tracker.update(kMvAt50, false, second * 1000UL, false, 100);
+    tracker.update(kMvAt50, false, second * 1000UL, 100);
     if (second == 200) TEST_ASSERT_TRUE(tracker.estimateApproximate());
   }
   TEST_ASSERT_FALSE(tracker.estimateApproximate());
@@ -264,13 +292,13 @@ void test_tracker_refuses_a_low_cell_by_the_lower_reading() {
 
 void test_tracker_state_resumes_the_same_estimate() {
   BatteryTracker first;
-  first.update(kMvAt50, false, 0, false, 100);
+  first.update(kMvAt50, false, 0, 100);
   for (uint32_t second = 1; second <= 120; ++second) {
-    first.update(kMvAt50, false, second * 1000UL, false, 100);
+    first.update(kMvAt50, false, second * 1000UL, 100);
   }
   BatteryTracker resumed;
   resumed.restore(first.state());
-  resumed.update(kMvAt50, false, 0, false, 100);
+  resumed.update(kMvAt50, false, 0, 100);
   TEST_ASSERT_EQUAL_INT(first.estimatePercent(), resumed.estimatePercent());
   TEST_ASSERT_EQUAL_INT(first.minutesRemaining(), resumed.minutesRemaining());
   // The stored average is an observed one, so the time left is not marked approximate.
@@ -283,7 +311,8 @@ void registerBatteryGaugeTests() {
   RUN_TEST(test_gauge_voltage_sag_under_load_does_not_move_the_percent);
   RUN_TEST(test_gauge_rest_corrects_a_drifted_estimate_slowly);
   RUN_TEST(test_gauge_load_prevents_the_rest_correction);
-  RUN_TEST(test_gauge_rest_does_not_correct_above_the_trusted_band);
+  RUN_TEST(test_gauge_rest_at_full_voltage_reads_charged);
+  RUN_TEST(test_gauge_charged_hold_reseeds_from_the_voltage_when_it_ends);
   RUN_TEST(test_gauge_empty_at_rest_reads_zero);
   RUN_TEST(test_gauge_full_charge_teaches_the_rate);
   RUN_TEST(test_gauge_done_at_boot_teaches_nothing);

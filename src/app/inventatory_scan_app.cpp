@@ -43,16 +43,16 @@ constexpr bool pinIsClaimed(int pin, const int* pins, std::size_t count) {
 
 static_assert(!pinIsReserved(hardware::kBacklightPin), "kBacklightPin is a strap, LED, USB or flash pin");
 static_assert(!pinIsReserved(hardware::kChargingLedPin), "kChargingLedPin is a strap, LED, USB or flash pin");
-static_assert(!pinIsReserved(hardware::kChargeDoneLedPin), "kChargeDoneLedPin is a strap, LED, USB or flash pin");
 static_assert(!pinIsClaimed(hardware::kBacklightPin, kClaimedPins, kClaimedPinCount),
               "kBacklightPin is already used by the keypad, scanner, battery or LCD");
 static_assert(!pinIsClaimed(hardware::kChargingLedPin, kClaimedPins, kClaimedPinCount),
               "kChargingLedPin is already used by the keypad, scanner, battery or LCD");
-static_assert(!pinIsClaimed(hardware::kChargeDoneLedPin, kClaimedPins, kClaimedPinCount),
-              "kChargeDoneLedPin is already used by the keypad, scanner, battery or LCD");
 static_assert(hardware::kBacklightPin != hardware::kChargingLedPin, "backlight and charging LED share a pin");
-static_assert(hardware::kBacklightPin != hardware::kChargeDoneLedPin, "backlight and charging LED share a pin");
-static_assert(hardware::kChargingLedPin != hardware::kChargeDoneLedPin, "the two charging LEDs share a pin");
+static_assert(!pinIsReserved(hardware::kConnectorSensePin), "kConnectorSensePin is a strap, LED, USB or flash pin");
+static_assert(!pinIsClaimed(hardware::kConnectorSensePin, kClaimedPins, kClaimedPinCount),
+              "kConnectorSensePin is already used by the keypad, scanner, battery or LCD");
+static_assert(hardware::kConnectorSensePin != hardware::kBacklightPin, "charger input and backlight share a pin");
+static_assert(hardware::kConnectorSensePin != hardware::kChargingLedPin, "charger input and charging LED share a pin");
 
 // ESP32 NVS namespaces are limited to 15 characters plus the terminator.
 constexpr char kOutboxNamespace[] = "inv_outbox";
@@ -90,18 +90,21 @@ bool InventatoryScanApp::begin() {
   if (batteryStore_.begin() && batteryStore_.load(storedBattery)) batteryTracker_.restore(storedBattery);
   const uint32_t bootMillivolts = battery_.readMillivolts();
   Serial.printf("Battery %lu mV\r\n", static_cast<unsigned long>(bootMillivolts));
-  const ChargeState bootCharge = battery_.chargeState();
-  batteryTracker_.update(bootMillivolts, bootCharge != ChargeState::Unplugged, millis(),
-                         bootCharge == ChargeState::Done, batteryLoadMilliamps());
+  // The charger signals are sampled once at boot. Their state is not an edge, so nothing starts at boot.
+  chargerLedLit_ = signalHighNext(false, battery_.chargingLedMillivolts());
+  chargerPlugged_ = signalHighNext(false, battery_.connectorMillivolts());
+  lastChargerPlugged_ = chargerPlugged_;
+  lastChargerSampleAt_ = millis();
+  batteryTracker_.update(bootMillivolts, chargerLedLit_, millis(), batteryLoadMilliamps(), chargerPlugged_);
   batterySampled_ = true;
   lastBatterySampleAt_ = millis();
-  lastCharging_ = batteryTracker_.charging();
+  lastCharging_ = batteryTracker_.docked();
   lastChargeDone_ = batteryTracker_.chargeDone();
   display_.setBatteryStatus(batteryTracker_.percent(), lastCharging_, lastChargeDone_, batteryEstimateText());
-  // A cell that is low and not docked is refused: show why, then sleep again. Low is judged by the
-  // lower of the estimate and the voltage.
+  // A cell that is low and not charging is refused: show why, then sleep again. Low is judged by the lower
+  // of the estimate and the voltage. A charger that is plugged in but not charging does not count as charging.
   const int bootPercent = batteryTracker_.refusePercent();
-  if (bootPercent >= 0 && bootPercent <= kBatteryLowPercent && !lastCharging_) {
+  if (bootPercent >= 0 && bootPercent <= kBatteryLowPercent && !chargerLedLit_) {
     powerOffWithNotice(bootPercent <= kBatteryCriticalPercent ? String("Battery empty") : String("Battery low"),
                        String("Charge to power on"));
   }
@@ -144,6 +147,7 @@ bool InventatoryScanApp::begin() {
     display_.setContrast(lcdContrast_);
     backlightMode_ = backlightModeFromStored(deviceSettings_.backlightMode());
     energySavingOn_ = deviceSettings_.energySavingEnabled();
+    dockMode_ = deviceSettings_.dockModeEnabled();
     sleepDelay_ = sleepDelayFromStored(deviceSettings_.sleepDelay());
     powerOffDelay_ = powerOffDelayFromStored(deviceSettings_.powerOffDelay());
   }
@@ -165,6 +169,7 @@ bool InventatoryScanApp::begin() {
 }
 
 void InventatoryScanApp::loop() {
+  serviceChargerInput(millis());
   serviceBattery();
   serviceEnergySaving();
   serviceBacklight();
