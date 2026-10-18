@@ -22,6 +22,7 @@ bool DeviceSettingsStore::begin() {
   lastEnergySaving_ = energySavingEnabled() ? 1 : 0;
   lastSleepDelay_ = sleepDelay();
   lastPowerOffDelay_ = powerOffDelay();
+  lastDockMode_ = dockModeEnabled() ? 1 : 0;
   return true;
 }
 
@@ -69,6 +70,12 @@ uint8_t DeviceSettingsStore::powerOffDelay() const {
 
 bool DeviceSettingsStore::savePowerOffDelay(uint8_t delay) {
   return saveCached("off_after", static_cast<uint8_t>(powerOffDelayFromStored(delay)), lastPowerOffDelay_);
+}
+
+bool DeviceSettingsStore::dockModeEnabled() const { return prefs_.getUChar("dock", 0) != 0; }
+
+bool DeviceSettingsStore::saveDockModeEnabled(bool enabled) {
+  return saveCached("dock", enabled ? 1 : 0, lastDockMode_);
 }
 
 }  // namespace inventatory_scan

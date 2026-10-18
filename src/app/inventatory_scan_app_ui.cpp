@@ -124,7 +124,7 @@ void InventatoryScanApp::persistBacklightMode() {
 void InventatoryScanApp::openEnergySaving() {
   state_ = State::EnergySaving;
   display_.showEnergySaving(energySavingOn_, String(sleepDelayShortLabel(sleepDelay_)),
-                            String(powerOffDelayShortLabel(powerOffDelay_)));
+                            String(powerOffDelayShortLabel(powerOffDelay_)), dockMode_);
 }
 
 // The delays are kept while energy saving is off, so switching it back on restores them.
@@ -137,6 +137,18 @@ void InventatoryScanApp::toggleEnergySaving() {
 
 void InventatoryScanApp::persistEnergySaving() {
   if (!deviceSettings_.saveEnergySavingEnabled(energySavingOn_)) Serial.println("Could not save energy saving.");
+}
+
+// Dock mode is its own switch, so it works with energy saving on or off.
+void InventatoryScanApp::toggleDockMode() {
+  dockMode_ = !dockMode_;
+  persistDockMode();
+  noteUserActivity();
+  openEnergySaving();
+}
+
+void InventatoryScanApp::persistDockMode() {
+  if (!deviceSettings_.saveDockModeEnabled(dockMode_)) Serial.println("Could not save dock mode.");
 }
 
 void InventatoryScanApp::openSleepAfterSettings() {
