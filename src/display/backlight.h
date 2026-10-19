@@ -5,8 +5,7 @@
 
 namespace inventatory_scan {
 
-// On/off control for the LCD backlight (see hardware::kBacklightPin). Brightness is not
-// controlled, so the pin is only written when the state changes.
+// On/off only, no brightness control. The pin is written only when the state changes.
 class Backlight {
  public:
   // Configures the pin and leaves the backlight off.

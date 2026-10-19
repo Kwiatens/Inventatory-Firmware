@@ -23,10 +23,8 @@ constexpr int kStemColumn = 4;
 // Lightning bolt, 5 x 7: one byte per row, bit 0 at the left.
 constexpr uint8_t kBoltRows[style::kBoltH] = {0x18, 0x0C, 0x06, 0x1F, 0x18, 0x0C, 0x06};
 
-// Low-battery warning triangle, 16 x 14, with the '!' cut out. Drawn from a bitmap rather than
-// a geometric triangle, so the sides step evenly and the '!' is exactly centred. Two bytes per
-// row, low byte first, bit 0 at the left, as drawXBMP expects. The column between pixels 7 and 8
-// is the centre line.
+// Low-battery triangle, 16 x 14, with the '!' cut out; a bitmap keeps the sides even.
+// Two bytes per row, low byte first, bit 0 at the left (drawXBMP format).
 constexpr uint8_t kWarnIconRows[style::kWarnIconH * 2] = {
     0x80, 0x01,  // .......##.......
     0xC0, 0x03,  // ......####......
@@ -85,7 +83,7 @@ void DisplayRenderer::drawClipped(int x, int y, int maxWidth, const String& valu
   if (lcd_.getStrWidth(clipped.c_str()) <= maxWidth) lcd_.drawStr(x, y, clipped.c_str());
 }
 
-// One line centred on the screen, clipped to the screen width less a margin on each side.
+// One centred line, clipped to the screen less a margin on each side.
 void DisplayRenderer::drawCentered(const uint8_t* font, int baselineY, const String& text) {
   lcd_.setFont(font);
   const int width = std::min(static_cast<int>(lcd_.getStrWidth(text.c_str())),
@@ -126,9 +124,8 @@ String DisplayRenderer::pcStatusText(const DisplayModel& model) const {
   }
 }
 
-// The top bar's right slot for one page. While charging, the status page reads
-// "Charging" in place of the PC status. A page with nothing to show, such as the
-// estimate before a rate is known, returns an empty slot; drawHeader then falls back.
+// Top bar right slot for one page. Charging replaces the PC status on the status page. An empty
+// slot (such as an estimate before a rate is known) makes drawHeader fall back.
 DisplayRenderer::HeaderSlot DisplayRenderer::headerSlotFor(const DisplayModel& model, HeaderPage page) {
   HeaderSlot slot;
   if (model.pageText.length() > 0) {
@@ -183,8 +180,7 @@ void DisplayRenderer::drawHeaderSlot(const HeaderSlot& slot, int rightX) {
   lcd_.drawStr(x, style::kHeaderBaselineY, slot.text.c_str());
 }
 
-// A battery outline with its nub, filled from the left in proportion to the
-// charge. The fill is at least one pixel while any charge is left.
+// Battery outline with nub, filled from the left by charge; at least 1 px while any charge is left.
 void DisplayRenderer::drawBatteryIcon(int x, int y, int percent) {
   const int bodyW = style::kBatteryBodyW;
   const int bodyH = style::kBatteryBodyH;
@@ -200,8 +196,7 @@ void DisplayRenderer::drawBatteryIcon(int x, int y, int percent) {
 
 void DisplayRenderer::drawBolt(int x, int y) { lcd_.drawXBMP(x, y, style::kBoltW, style::kBoltH, kBoltRows); }
 
-// The top bar's fault mark: a "!" two pixels wide, drawn in pixels so that no font glyph can clip it. The
-// status slot ends just left of it.
+// Top bar fault "!", drawn in pixels so no font glyph can clip it.
 void DisplayRenderer::drawFaultMark(int rightX) {
   const int x = rightX - style::kFaultMarkW + 1;
   lcd_.drawBox(x, style::kFaultMarkY, style::kFaultMarkW, style::kFaultMarkBarH);
@@ -221,8 +216,7 @@ void DisplayRenderer::drawHeader(const DisplayModel& model, const RenderActivity
 
   const auto page = static_cast<HeaderPage>(activity.headerPage);
   HeaderSlot slot = headerSlotFor(model, page);
-  // A long runtime line or status gives way to the percentage rather than to nothing. The fault
-  // mark leaves less room, so the status is the line that most often has to give way.
+  // A long estimate or status gives way to the percentage; the fault mark leaves less room.
   if ((page == HeaderPage::Estimate || page == HeaderPage::Status) &&
       !displayHeaderCanShowStatus(titleWidth, slot.width, available, style::kHeaderStatusGap)) {
     slot = headerSlotFor(model, HeaderPage::Battery);
@@ -235,7 +229,7 @@ void DisplayRenderer::drawHeader(const DisplayModel& model, const RenderActivity
               showRight ? available - slot.width - style::kHeaderStatusGap : available, header);
   if (showRight) drawHeaderSlot(slot, slotRight);
   if (markWidth > 0) drawFaultMark(style::kHeaderRightX);
-  // The divider always spans the whole bar, under the fault mark as well.
+  // The divider spans the whole bar, fault mark included.
   lcd_.drawHLine(style::kHeaderLeftX, style::kHeaderDividerY, style::kHeaderRightX - style::kHeaderLeftX);
 }
 
@@ -266,7 +260,7 @@ void DisplayRenderer::drawTask(const DisplayModel& model) {
     drawWrapped(style::kContentX, style::kTaskWrapY, style::kContentW, primary, 2, style::kTextLineStep);
   }
   const int secondaryY = primaryFits ? style::kTaskSecondaryY : style::kTaskWrapSecondaryY;
-  // A fault puts its error code on the line below the problem, in place of the normal text.
+  // A fault shows its error code in place of the normal text.
   if (model.errorCode.length() > 0) {
     drawErrorCodeLine(style::kContentX, secondaryY, model.errorCode);
     return;
@@ -343,8 +337,7 @@ void DisplayRenderer::drawErrorCodeLine(int x, int baselineY, const String& code
   drawClipped(x + labelWidth, baselineY, style::kHeaderRightX - x - labelWidth, code);
 }
 
-// The fault screen: the error code on the first line, and the explanation on the last two lines of the
-// list.
+// Fault screen: error code on the first line, explanation on the last two list rows.
 void DisplayRenderer::drawFault(const DisplayModel& model) {
   const int width = style::kScreenW - 2 * style::kListX;
   drawErrorCodeLine(style::kListX, style::kListFirstY, model.errorCode);
@@ -361,8 +354,7 @@ void DisplayRenderer::drawContrast(const DisplayModel& model) {
   lcd_.drawBox(style::kContrastBarX + 2, style::kContrastBarY + 2, ((style::kContrastBarW - 4) * level) / 63, 1);
 }
 
-// The option name, then one segment per option with the chosen one filled, then
-// what the option does.
+// Option name, one segment per option (the chosen one filled), then what it does.
 void DisplayRenderer::drawChoice(const DisplayModel& model) {
   drawCentered(style::kFontValue, style::kChoiceLabelY, model.primary);
 
@@ -450,8 +442,7 @@ void DisplayRenderer::drawMark(int x, int bodyY, int unit) {
   lcd_.drawBox(x + kStemColumn * unit, bodyY, unit, style::kMarkBodyRows * unit);
 }
 
-// Boot: the mark on the left, centred vertically, with the name beside it and
-// the flashed firmware version in the bottom-right corner.
+// Boot: mark on the left, name beside it, firmware version in the bottom-right corner.
 void DisplayRenderer::drawBoot(const DisplayModel& model, const RenderActivity& activity) {
   const int unit = style::kBootMarkUnit;
   const int bodyY = (style::kScreenH - style::kMarkBodyRows * unit) / 2;
@@ -509,7 +500,7 @@ void DisplayRenderer::drawUpdate(const DisplayModel& model) {
     drawClipped(textX, valueY, style::kUpdateColumnW, model.secondary);
     lcd_.setFont(style::kFontHeading);
     drawClipped(textX, titleY, style::kUpdateColumnW, model.primary);
-    // Pixel blocks like the website's dashed indicator; unlit blocks keep a floor.
+    // Pixel blocks; unlit blocks keep a one-line floor.
     const int lit = (constrain(model.otaPercent, 0, 100) * style::kUpdateBarBlocks + 50) / 100;
     for (int block = 0; block < style::kUpdateBarBlocks; ++block) {
       const int blockX = textX + block * (style::kUpdateBarBlockW + 1);
@@ -531,8 +522,7 @@ void DisplayRenderer::drawUpdate(const DisplayModel& model) {
   drawClipped(textX, titleY, style::kUpdateColumnW, model.primary);
 }
 
-// The full-screen card that appears when the dock is connected or removed. The
-// fill rises in steps, and a bolt marks charging.
+// Full-screen card on dock connect or removal: fill rises in steps; a bolt marks charging.
 void DisplayRenderer::drawBatteryCard(const DisplayModel& model, const RenderActivity& activity) {
   const int x = style::kCardBatteryX;
   const int y = style::kCardBatteryY;
@@ -566,8 +556,7 @@ void DisplayRenderer::drawBatteryCard(const DisplayModel& model, const RenderAct
   drawClipped(style::kCardTextX, style::kCardValueY, textW, percentText);
 }
 
-// The low-battery warning: a triangle, the title, the detail, a bar that empties as the shutdown
-// nears, and the countdown line under the bar.
+// Low-battery warning: triangle, title, detail, a bar that empties toward shutdown, countdown line.
 void DisplayRenderer::drawCountdownWarning(const DisplayModel& model) {
   lcd_.drawXBMP(style::kWarnIconX, style::kWarnIconY, style::kWarnIconW, style::kWarnIconH, kWarnIconRows);
 
@@ -585,8 +574,7 @@ void DisplayRenderer::drawCountdownWarning(const DisplayModel& model) {
   }
 }
 
-// The soft power-off warning: the title, a bar that drains as the countdown runs down, and a hint. The bar
-// is the only countdown on the screen.
+// Soft power-off warning: title, draining countdown bar, hint. The bar is the only countdown.
 void DisplayRenderer::drawPowerWarning(const DisplayModel& model, const RenderActivity& activity) {
   drawCentered(style::kFontHeading, style::kPowerTitleY, model.primary);
   lcd_.drawFrame(style::kPowerBarX, style::kPowerBarY, style::kPowerBarW, style::kPowerBarH);
@@ -596,16 +584,15 @@ void DisplayRenderer::drawPowerWarning(const DisplayModel& model, const RenderAc
   drawCentered(style::kFontRegular, style::kPowerHintY, model.secondary);
 }
 
-// The power-off ending: the ›i, dropped by activity.markOffsetY and cut at a short glass rule, with one
-// line of text under it. The rule is drawn last.
+// Power-off ending: the mark, offset by markOffsetY and cut at the glass rule, with one line below.
 void DisplayRenderer::drawPowerOff(const DisplayModel& model, const RenderActivity& activity) {
   drawMarkBehindGlass(style::kPowerOffMarkX, style::kPowerOffMarkY + activity.markOffsetY, style::kBootMarkUnit);
   lcd_.drawHLine((style::kScreenW - style::kGlassEdgeW) / 2, style::kGlassEdgeY, style::kGlassEdgeW);
   drawCentered(style::kFontRegular, style::kPowerOffTextY, model.primary);
 }
 
-// The wake bloom: stage 1 draws the top of the stem, stage 3 the whole stem, then the chevron draws out
-// from its tip, the middle arms first, and stage 6 completes it. Stage 0 is blank.
+// Wake bloom: the stem grows over stages 1-3; the chevron draws out from its tip over stages 4-6.
+// Stage 0 is blank.
 void DisplayRenderer::drawMarkBloom(int x, int bodyY, int unit, int stage) {
   const int stemRows = stage >= 3 ? style::kMarkBodyRows : stage == 2 ? 3 : stage == 1 ? 1 : 0;
   if (stemRows > 0) lcd_.drawBox(x + kStemColumn * unit, bodyY, unit, stemRows * unit);

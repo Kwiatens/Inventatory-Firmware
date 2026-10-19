@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host stand-in for the ESP32 TCP client. Bytes written by the code under test are
-// recorded. The first read gives the request to the test's responder, and the bytes it
-// returns are what the "server" sends. The framing rules can then be tested with any
-// byte sequence, including malformed ones.
+// Host TCP client stand-in. Writes are recorded; the first read passes the request to the
+// test's responder, whose bytes the "server" sends. Framing tests can use any byte sequence.
 #pragma once
 
 #include "Arduino.h"

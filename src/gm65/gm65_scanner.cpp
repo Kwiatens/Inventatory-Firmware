@@ -14,23 +14,21 @@ namespace inventatory_scan {
 namespace {
 
 constexpr unsigned long kStartupSettleMs = 250U;
-// Reply to a zone write: exactly kZoneWriteAckLength bytes, within the timeout. The module takes up to about 190 ms
-// to reply when writes follow each other closely (measured on a GM65 clone). A 150 ms wait missed some replies, and
-// each late reply was then read as the answer to the next write.
+// A zone write reply can take up to about 190 ms when writes follow closely (GM65 clone). A shorter
+// wait reads a late reply as the answer to the next write.
 constexpr unsigned long kZoneWriteAckTimeoutMs = 500U;
-// The save command writes the module's flash, and the module answers it after about 340 ms (measured on a GM65
-// clone). A 150 ms wait missed that reply, so the whole profile was reported as not acknowledged.
+// The save command writes flash and is answered after about 340 ms (GM65 clone). A shorter wait
+// fails the whole profile.
 constexpr unsigned long kSaveAckTimeoutMs = 1000U;
 constexpr unsigned long kZoneWriteAckSettleMs = 20U;
-// After a wake the module restarts before it answers, and the restart time is not measured yet. The module is probed
-// until it answers, for up to kModuleWakeWindowMs. The wake is sent again when there is still no answer after
-// kModuleWakeResendMs, because a wake byte sent to a sleeping module can be lost.
+// After a wake the module restarts before answering, and the restart time is not measured. It is
+// probed for up to kModuleWakeWindowMs. The wake is resent after kModuleWakeResendMs of silence,
+// since a wake byte can be lost.
 constexpr unsigned long kModuleWakeWindowMs = 3000U;
 constexpr unsigned long kModuleWakeResendMs = 1000U;
 constexpr size_t kZoneWriteAckLength = 7U;
 constexpr uint8_t kZoneWriteAck[kZoneWriteAckLength] = {0x02, 0x00, 0x00, 0x01, 0x00, 0x33, 0x31};
-// Zones read back for the diagnostic log: lamps and read mode, read interval, single-read window, automatic deep sleep,
-// and the light sleep idle time (bits 7-4 of 0x000E).
+// Zones read back for the diagnostic log.
 constexpr uint16_t kLoggedZones[] = {0x0000, 0x0005, 0x0006, 0x0007, 0x0008, 0x000E};
 
 struct ZoneWrite {
@@ -39,8 +37,8 @@ struct ZoneWrite {
 };
 
 constexpr ZoneWrite kBootProfile[] = {
-    {0x0000, 0xD6},  // Continuous read, lamps standard, open LED on success, sound on (manual 9.7). Written at every boot,
-                     // so a manual read mode left in RAM by a power-off is not saved to flash.
+    {0x0000, 0xD6},  // Continuous read, lamps standard, open LED on success, sound on (manual 9.7).
+                     // Sent every boot, so a RAM-only manual read mode never reaches flash.
     {0x0005, 0x05},  // Read interval 0.5 s between reads (manual default 1.0 s)
     {0x0006, 0xFF},  // Single-read window 25.5 s before the module stops trying (manual default 5 s)
     {0x000D, 0x00},  // Serial port output, no virtual keyboard
@@ -67,7 +65,7 @@ constexpr ZoneWrite kBootProfile[] = {
     {0x0051, 0x00},  // RSS expanded off
     {0x0054, 0x01},  // Data Matrix on
     {0x0055, 0x00},  // PDF417 off
-    {0x0060, 0x21},  // Raw serial output; bits 6-5 = 01 select CRLF and bit 0 allows the tail (GM65 manual)
+    {0x0060, 0x21},  // Raw serial output; bits 6-5 = 01 select CRLF, bit 0 allows the tail (GM65 manual)
 };
 
 }  // namespace
@@ -81,7 +79,7 @@ bool Gm65Scanner::start() {
   frames_.reset();
   openPort();
   delay(100);
-  // A module that does not wake would refuse every write too, so the profile is not sent to it.
+  // A module that does not wake refuses every write too, so skip the profile.
   if (!wakeModule()) {
     return false;
   }
@@ -116,9 +114,8 @@ bool Gm65Scanner::suspend() {
   return true;
 }
 
-// A wake from standby only reopens the port. The module stays powered through standby and keeps the profile it has,
-// so sending the profile again (25 acknowledged writes) would keep the screen dark for seconds. A profile that was
-// never applied is still sent in full. The wake check returns at once while the module is awake.
+// A wake from standby only reopens the port: the module keeps its powered profile. Resending the
+// profile would darken the screen for seconds; a never-applied profile is still sent in full.
 bool Gm65Scanner::resume() {
   if (active_) {
     return true;
@@ -133,14 +130,12 @@ bool Gm65Scanner::resume() {
   return true;
 }
 
-// Lamps off and manual read mode, then deep sleep. In continuous mode the module keeps reading, so its head lamp stays
-// on after the lamps are set off. The module wakes only when a byte arrives on its UART, and the chip's next boot sends
-// that byte (see wakeModule). Nothing here depends on the module's replies: a missing reply is logged, and the
-// power-off goes on.
+// Lamps off and manual read mode, then deep sleep: continuous reading would keep the lamp on.
+// The module wakes only on a UART byte, which the next boot sends (see wakeModule).
+// Missing replies are logged; the power-off goes on regardless.
 void Gm65Scanner::deepSleep() {
   if (!active_) {
-    // Standby and a boot refusal both leave the port closed, and the module may be asleep from the last power-off.
-    // A byte wakes it, so it is woken and probed until it answers before it hears the commands.
+    // After standby or a boot refusal the module may be asleep; wake and probe it first.
     openPort();
     wakeModule();
   }
@@ -234,8 +229,8 @@ size_t Gm65Scanner::readReply(uint8_t* reply, size_t length, unsigned long timeo
   return replyLen;
 }
 
-// Diagnostic: the zone values the module reports now. Only reads are sent, and a missing reply is shown as "none".
-// The values are configuration, not scanned data, so they may be logged.
+// Diagnostic: zone values as the module reports them; a missing reply shows as "none". Configuration,
+// not scan data, so safe to log.
 void Gm65Scanner::logZones(const char* label) {
   Serial.printf("GM65 zones %s:", label);
   for (const uint16_t zone : kLoggedZones) {
@@ -249,9 +244,8 @@ void Gm65Scanner::logZones(const char* label) {
   Serial.println();
 }
 
-// The module wakes on a byte from the chip and then restarts, and it does not answer while it sleeps. A lamp read
-// probes it until it answers. The wake is sent again when there is no answer for kModuleWakeResendMs, because the
-// byte sent to a sleeping module can be lost. Returns false when there is no answer within kModuleWakeWindowMs.
+// The module restarts on a wake byte and does not answer while asleep; a lamp read probes it.
+// The wake is resent after kModuleWakeResendMs of silence, since a wake byte can be lost.
 bool Gm65Scanner::wakeModule() {
   const unsigned long startedAt = millis();
   unsigned long wakeSentAt = startedAt;
@@ -313,16 +307,14 @@ bool Gm65Scanner::poll(String& code) {
       frames_.reset();
       continue;
     }
-    // A frame is reported only when its CR, LF or end-of-transmission terminator arrives. Partial,
-    // corrupt and oversized frames are dropped, and nothing is ever reported as a scan without its
-    // terminator (see InventatoryScanGm65Frame.h).
+    // A frame is reported only once its CR, LF or end-of-transmission terminator arrives.
     const auto event = frames_.feed(static_cast<uint8_t>(raw), now);
     if (event == Gm65FrameAssembler::Event::Dropped) {
-      // Diagnostic: only that a frame was discarded. Its contents are never logged.
+      // Log only that a frame was discarded; its contents are never logged.
       Serial.println("GM65 frame discarded: partial, corrupt or oversized");
     }
     if (event == Gm65FrameAssembler::Event::Frame) {
-      // Diagnostic: the length and terminator of each frame. Its contents are never logged.
+      // Log only the length and terminator; contents are never logged.
       const char* terminator = raw == '\r' ? "CR" : raw == '\n' ? "LF" : "EOT";
       Serial.printf("GM65 frame: %u bytes, ends with %s\r\n", static_cast<unsigned>(frames_.frameLength()), terminator);
       code.reserve(frames_.frameLength());
@@ -330,7 +322,7 @@ bool Gm65Scanner::poll(String& code) {
       return true;
     }
   }
-  // A frame that stopped mid-way is dropped even when no further byte arrives.
+  // A stalled partial frame is dropped even when no further bytes arrive.
   if (frames_.expire(millis()) == Gm65FrameAssembler::Event::Dropped) {
     Serial.println("GM65 frame discarded: partial, corrupt or oversized");
   }

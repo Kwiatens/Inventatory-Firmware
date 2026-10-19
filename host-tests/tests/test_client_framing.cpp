@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Response framing for the sync client, run against the real InventatoryClient with
-// a scripted server (see host-tests/shim/WiFiClient.h). The rules under test are the
-// transport v1 limits (AGENTS.md section 8): a bounded header and body, an exact
-// Content-Length, no chunked encoding, one of each framing header, and a response MAC
-// that covers the status and the whole body. Every refusal must leave httpStatus at 0.
+// Response framing for the sync client, run against the real client with a scripted server.
+// Transport v1 limits (AGENTS.md section 8): bounded header and body, exact Content-Length,
+// no chunked encoding, single framing headers, MAC over status and body; refusals give status 0.
 #include <unity.h>
 
 #include <cstdlib>
@@ -52,8 +50,7 @@ namespace {
 const char kToken[] = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const char kDeviceId[] = "Inventatory-SCAN-R1";
 
-// Converts a std::string to the firmware's String without losing NUL bytes, which the
-// String(const char*) constructor would truncate.
+// Keeps NUL bytes, which String(const char*) would truncate.
 String toFirmwareString(const std::string& text) {
   String out;
   for (const char ch : text) out += ch;
@@ -74,8 +71,7 @@ std::string counterOf(const std::string& request) {
   return request.substr(start + key.size(), end - start - key.size());
 }
 
-// What a server sends back for one request. The defaults are a correct response, so
-// each test changes only the field it is about.
+// Server response for one request. Defaults are a valid response; each test changes one field.
 struct ResponseSpec {
   int status = 200;
   std::string body = "{\"ok\":true}";
@@ -112,7 +108,7 @@ std::string makeResponse(const std::string& request, const ResponseSpec& spec) {
   return text;
 }
 
-// Runs one sync exchange with the given response. Returns whether the client accepted it.
+// Runs one sync with this response; returns whether the client accepted it.
 bool syncWith(const ResponseSpec& spec, int& httpStatus, std::string& body) {
   HostConnection& net = hostNetwork();
   net.responder = [spec](const std::string& request) { return makeResponse(request, spec); };
@@ -148,8 +144,7 @@ void resetNetwork() {
   provisionTransport();
 }
 
-// The caller sets up the network first (resetNetwork, then any condition), so a
-// condition is never undone by this helper.
+// Does not reset the network, so a condition the caller set is kept.
 void expectRefused(const ResponseSpec& spec, const char* name) {
   int httpStatus = -1;
   std::string body;
@@ -172,7 +167,7 @@ void test_client_accepts_a_signed_response() {
 }
 
 void test_client_reports_a_signed_status_other_than_200() {
-  // A 201 that the MAC covers is accepted and reported, so the status is both bound and used.
+  // A signed 201 is accepted and reported: the status is bound into the MAC and used.
   resetNetwork();
   ResponseSpec spec;
   spec.status = 201;
@@ -184,8 +179,7 @@ void test_client_reports_a_signed_status_other_than_200() {
 }
 
 void test_client_authenticates_a_body_with_a_nul_byte_by_its_full_length() {
-  // A C-string copy stopped at the NUL and then authenticated a truncated body. The body
-  // is now copied by its declared length, so the MAC over all five bytes verifies.
+  // Regression: a C-string copy cut the body at the NUL before the MAC check.
   resetNetwork();
   ResponseSpec spec;
   spec.body = std::string("ab") + '\0' + "cd";
@@ -220,7 +214,7 @@ void test_client_refuses_chunked_transfer_encoding() {
 
 void test_client_refuses_a_nul_byte_in_the_header_block() {
   resetNetwork();
-  // A NUL before a later header line could hide that line from C-string header reads on the device.
+  // A NUL could hide a later header line from C-string reads on the device.
   ResponseSpec spec;
   spec.extraHeaders = std::string("Server: x") + '\0' + "y\r\nTransfer-Encoding: chunked\r\n";
   expectRefused(spec, "NUL byte in the header block");
@@ -272,13 +266,13 @@ void test_client_refuses_a_header_block_over_the_limit() {
   expectRefused(spec, "header block over the limit");
 }
 
-// A response whose header block (everything before the blank line) is exactly `headerBytes` long. The
-// probe response has the same fields and a counter of 1, which is what the first request of a fresh store uses.
+// Response whose header block (up to the blank line) is exactly headerBytes long.
+// Counter 1 is the first counter of a fresh store.
 ResponseSpec headerBlockSpec(std::size_t headerBytes) {
   const std::string probe = makeResponse("X-Inventatory-Counter: 1\r\n", ResponseSpec());
   const std::size_t baseHeader = probe.find("\r\n\r\n");
   const std::string padName = "X-Pad: ";
-  const std::size_t fixed = padName.size() + 2U;  // the name and its CRLF
+  const std::size_t fixed = padName.size() + 2U;  // CRLF
   ResponseSpec spec;
   spec.extraHeaders = padName + std::string(headerBytes - baseHeader - fixed, 'a') + "\r\n";
   return spec;
@@ -325,7 +319,7 @@ void test_client_refuses_a_response_without_a_blank_line() {
 
 void test_client_refuses_a_status_line_without_http() {
   resetNetwork();
-  // The status cannot be read, so it is 0, and the MAC is over 0. A status below 100 is refused.
+  // Unreadable status is 0; the MAC covers 0, and a status below 100 is refused.
   ResponseSpec spec;
   spec.statusLine = "200 OK";
   spec.macStatus = 0;

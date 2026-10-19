@@ -3,7 +3,7 @@
 
 #pragma once
 
-// Workbench design system for the 128x64 monochrome Scan R1 LCD.
+// Layout constants for the 128x64 monochrome Scan R1 LCD.
 
 #include <U8g2lib.h>
 
@@ -32,7 +32,6 @@ constexpr int kRailActivityStepsPerLeg = 6;
 constexpr int kContentX = 13;
 constexpr int kContentRight = 125;
 constexpr int kContentW = kContentRight - kContentX;
-// Side margin of centred lines.
 constexpr int kCenterMargin = 4;
 
 constexpr int kTaskPrimaryY = 29;
@@ -45,7 +44,7 @@ constexpr int kQuantityValueY = 49;
 constexpr int kQuantityCaretY = 50;
 
 constexpr int kTextLineStep = 9;
-// Screens whose item name is too long for one line wrap it over two lines in the regular face.
+// Two-line wrap for long item names, in the regular face.
 constexpr int kTaskWrapY = 25;
 constexpr int kTaskWrapSecondaryY = 48;
 constexpr int kQuantityWrapY = 23;
@@ -63,8 +62,7 @@ constexpr std::size_t kListMaxRows = 4;
 
 constexpr int kFooterBaselineY = 62;
 constexpr int kFooterTextX = 3;
-// Give the key highlight a visible top edge and an even one-pixel horizontal
-// margin around the glyph.
+// Key chip: a visible top edge and an even one-pixel side margin around the glyph.
 constexpr int kChipPadX = 1;
 constexpr int kChipTopPadY = 1;
 constexpr int kChipBottomPadY = 1;
@@ -72,20 +70,18 @@ constexpr int kChipRadius = 1;
 constexpr int kChipLabelGap = 2;
 constexpr int kChipGroupGap = 5;
 
-// The ›i mark, as on the website and desktop app: a 5 x 5 grid of square cells
-// holding the chevron (columns 0-2) and the stem (column 4), with no dot. No drop shadow: on a 1-bit LCD
-// the dithered shade muddies the chevron.
+// The ›i mark: a 5 x 5 cell grid, chevron in columns 0-2 and stem in column 4, no dot.
+// No drop shadow: dithering muddies the chevron on a 1-bit LCD.
 constexpr int kMarkCols = 5;
 constexpr int kMarkBodyRows = 5;
 
-// Boot: the mark on the left, its body centred like the update screen, and the
-// name beside it.
+// Boot: mark on the left, body centred like the update screen, name beside it.
 constexpr int kBootMarkUnit = 6;
 constexpr int kBootMarkX = 5;
 constexpr int kBootColumnGap = 9;
 constexpr int kBootLineGap = 4;
 
-// Update: the mark on the left, status on the right. The mark is centred on the screen and the status block on that body.
+// Update: mark on the left, status on the right, centred on the screen body.
 constexpr int kUpdateMarkUnit = 6;
 constexpr int kUpdateColumnGap = 13;
 constexpr int kUpdateTitleGap = 4;
@@ -96,8 +92,7 @@ constexpr int kUpdateBarBlockW = 4;
 constexpr int kUpdateBarBlockH = 5;
 constexpr int kUpdateColumnW = kUpdateBarBlocks * (kUpdateBarBlockW + 1) - 1;
 
-// Top bar battery: an 11 x 7 body with a 1 x 3 nub, then a bolt for charging. The
-// icon sits above the header baseline, and the bolt sits left of the icon.
+// Top bar battery icon, above the header baseline; the charging bolt sits left of it.
 constexpr int kHeaderIconY = 2;
 constexpr int kBatteryBodyW = 11;
 constexpr int kBatteryBodyH = 7;
@@ -108,8 +103,7 @@ constexpr int kBoltW = 5;
 constexpr int kBoltH = 7;
 constexpr int kBoltGap = 2;
 
-// Top bar fault mark: a "!" two pixels wide, drawn in pixels. The bar covers rows 1 to 5, one row of
-// gap follows, and the dot is a square of rows 7 and 8, so the mark spans the header's cap height.
+// Fault "!" mark: bar on rows 1-5, gap on row 6, dot on rows 7-8; spans the header cap height.
 constexpr int kFaultMarkW = 2;
 constexpr int kFaultMarkY = 1;
 constexpr int kFaultMarkBarH = 5;
@@ -128,10 +122,8 @@ constexpr int kCardTitleY = 28;
 constexpr int kCardDetailY = 39;
 constexpr int kCardValueY = 58;
 
-// Low-battery warning: a triangle, the title and detail beside it, the countdown bar, and the
-// countdown line under the bar. The title, detail and countdown line share one left edge
-// (kWarnTextX). The widest countdown line ("Powering off in 10 s") is 95 px, so the text column
-// must start at 30 or less to fit before the right margin (kHeaderRightX).
+// Low-battery warning. Title, detail and countdown line share kWarnTextX, which must be 30 or less
+// so the widest countdown line ("Powering off in 10 s", 95 px) fits before kHeaderRightX.
 constexpr int kWarnIconX = 7;
 constexpr int kWarnIconY = 14;
 constexpr int kWarnIconW = 16;
@@ -141,13 +133,13 @@ constexpr int kWarnTitleY = 20;
 constexpr int kWarnDetailY = 31;
 constexpr int kWarnBarX = 7;
 constexpr int kWarnBarY = 39;
-// A notice with no bar keeps its line right under the detail (kWarnNoticeY).
+// A notice without a bar sits right under the detail.
 constexpr int kWarnCountdownY = 57;
 constexpr int kWarnNoticeY = 42;
 constexpr int kWarnBarW = 114;
 constexpr int kWarnBarH = 6;
 
-// Soft power-off warning: the title, a countdown bar and a hint, all centred, with nothing else on screen.
+// Soft power-off warning: centred title, countdown bar and hint; nothing else on screen.
 constexpr int kPowerTitleY = 24;
 constexpr int kPowerBarW = 96;
 constexpr int kPowerBarX = (kScreenW - kPowerBarW) / 2;
@@ -157,15 +149,13 @@ constexpr int kPowerHintY = 52;
 // The bar's inside, clear of its one-pixel frame and margin.
 constexpr int kPowerBarFillW = kPowerBarW - 4;
 
-// Power-off ending: the mark centred above a short glass rule that it sinks behind, and one line of text
-// under the rule.
+// Power-off ending: the mark sinks behind the glass rule, with one line of text below it.
 constexpr int kGlassEdgeY = 48;
 constexpr int kGlassEdgeW = 46;
 constexpr int kPowerOffMarkX = (kScreenW - kMarkCols * kBootMarkUnit) / 2;
 constexpr int kPowerOffMarkY = 12;
 constexpr int kPowerOffTextY = 60;
 
-// Display contrast: the value, then a bar under it.
 constexpr int kContrastValueY = 38;
 constexpr int kContrastBarW = 70;
 constexpr int kContrastBarX = (kScreenW - kContrastBarW) / 2;
@@ -179,7 +169,7 @@ constexpr int kSetupCodeY = 31;
 constexpr int kSetupPrimaryY = 43;
 constexpr int kSetupSecondaryY = 52;
 
-// Setting picker (backlight, auto sleep): one segment per option, the chosen one filled.
+// Setting picker: one segment per option, the chosen one filled.
 constexpr int kChoiceSegmentW = 12;
 constexpr int kChoiceSegmentGap = 3;
 constexpr int kChoiceLabelY = 24;
@@ -187,10 +177,8 @@ constexpr int kChoiceSegmentY = 31;
 constexpr int kChoiceDetailY = 47;
 constexpr int kChoiceSegmentH = 6;
 
-// Three bitmap fonts for the workflow screens: warm sans body, strong sans
-// headings, and monospace values/codes. All are designed for small monochrome
-// displays. The product name on the boot screen uses one larger bold face,
-// ASCII-only to keep it small in flash.
+// Bitmap fonts: sans body, bold sans headings, monospace values and codes. The boot brand face
+// is ASCII-only to keep flash small.
 static const uint8_t* const kFontRegular = u8g2_font_helvR08_tf;
 static const uint8_t* const kFontHeading = u8g2_font_helvB08_tf;
 static const uint8_t* const kFontValue = u8g2_font_profont15_tf;
