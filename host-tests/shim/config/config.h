@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host test configuration. The network code includes "config/config.h"; on the host
-// that resolves to this file, so the build never reads a private device configuration.
-// The values match config.example.h, and contain no secrets.
+// Host config: includes resolve here, so the build never reads the private config.h.
+// Values match config.example.h and contain no secrets.
 #pragma once
 
 const char DEVICE_ID[] = "Inventatory-SCAN-R1";

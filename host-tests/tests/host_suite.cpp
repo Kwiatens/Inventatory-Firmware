@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Runs the host-only Unity session. Each test that needs the NVS fault
-// injection is declared here and listed below; main.cpp calls runHostSuite().
+// Host-only Unity session; main.cpp calls runHostSuite().
 #include <unity.h>
 
 void test_nvs_shim_enforces_namespace_length();

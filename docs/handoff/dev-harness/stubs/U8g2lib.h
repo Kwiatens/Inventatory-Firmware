@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Stub U8g2: logs drawing operations so a script can rasterize them. Font metrics approximate the real fonts.
+// Stub U8g2: logs draw ops for render.py to rasterize. Font metrics are approximate.
 #pragma once
 #include <Arduino.h>
 #include <cstdint>

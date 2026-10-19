@@ -28,7 +28,7 @@ bool dShortPressPending_ = false;
 bool hashShortPressPending_ = false;
 // '*' holds power the device off only after it has been seen released since boot.
 bool starPowerArmed_ = false;
-// Where the '*' power-off hold stands: warned at kPowerOffWarnMs, committed at kPowerOffCommitMs.
+// Stages of the '*' power-off hold: warned at kPowerOffWarnMs, committed at kPowerOffCommitMs.
 enum class PowerHold {
   Idle,
   Warned,
@@ -54,12 +54,12 @@ const byte kRowPins[kRows] = {KEYPAD_ROW_1_PIN, KEYPAD_ROW_2_PIN, KEYPAD_ROW_3_P
 const byte kColumnPins[kColumns] = {KEYPAD_COLUMN_1_PIN, KEYPAD_COLUMN_2_PIN, KEYPAD_COLUMN_3_PIN,
                                     KEYPAD_COLUMN_4_PIN};
 
-// The '*' key is row 4, column 1 of kKeyTable: the only key that can wake the chip from deep sleep.
+// '*' is row 4, column 1 of kKeyTable, the only key that can wake the chip from deep sleep.
 constexpr int kStarRow = 3;
 constexpr int kStarColumn = 0;
 static_assert(kKeyTable[kStarRow][kStarColumn] == '*', "kStarRow and kStarColumn must address the * key");
 
-// ESP32-S3 RTC GPIOs are 0-21. Deep sleep keeps levels and pulls only on these pins, and only they can wake the chip.
+// ESP32-S3 RTC GPIOs are 0-21; only these keep levels in deep sleep and can wake the chip.
 constexpr bool isRtcGpio(int pin) {
   return pin >= 0 && pin <= 21;
 }
@@ -77,9 +77,8 @@ struct Key {
   unsigned long pressedAt = 0;  // when this key entered PRESSED (each key times its own hold)
 };
 
-// Scanned 4x4 matrix. A key leaves IDLE or PRESSED/HOLD only after two
-// consecutive scans (20 ms apart) agree, which rejects contact bounce. Rows
-// are inputs with pull-ups; one column at a time is pulled low.
+// Scanned 4x4 matrix. A key changes state only after two consecutive scans (20 ms apart) agree,
+// which rejects contact bounce. Rows are pulled up; one column at a time is driven low.
 class MatrixKeypad {
  public:
   MatrixKeypad() {
@@ -171,7 +170,7 @@ int findKeyIndexForChar(MatrixKeypad& keypadRef, char keyChar) {
   return -1;
 }
 
-// Deep sleep leaves RTC holds on the matrix pins. Release them and return the pins to normal GPIO use.
+// Deep sleep leaves RTC holds on the matrix pins; release them and return to normal GPIO.
 void releaseMatrixRtcPins() {
   for (byte r = 0; r < kRows; ++r) {
     const auto pin = static_cast<gpio_num_t>(kRowPins[r]);
@@ -187,10 +186,9 @@ void releaseMatrixRtcPins() {
 
 MatrixKeypad keypad;
 
-// The '*' power-off hold, checked on every poll because it runs on the clock. A warning starts once
-// '*' has been held alone for kPowerOffWarnMs, and the power-off commits at kPowerOffCommitMs.
-// Releasing '*' before the commit, or pressing D or # while it is held, cancels. A hold that a combo
-// has blocked waits for its release. Only a '*' seen released since boot can warn.
+// The '*' power-off hold, checked on every poll. A warning starts once '*' is held alone for
+// kPowerOffWarnMs; the power-off commits at kPowerOffCommitMs. Releasing '*', or pressing D or #,
+// cancels. A hold blocked by a combo waits for release. Only a '*' seen released since boot can warn.
 bool powerHoldEvent(int starIndex, InventatoryKeyEvent& event) {
   const Key& star = keypad.key[starIndex];
   const int dIndex = findKeyIndexForChar(keypad, 'D');
@@ -237,7 +235,7 @@ bool powerHoldEvent(int starIndex, InventatoryKeyEvent& event) {
 void keypadInit() {
   releaseMatrixRtcPins();
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1) {
-    // Diagnostic: the '*' column level as the chip wakes. Low with '*' released means the line was pulled low.
+    // Diagnostic: '*' column level at wake. Low with '*' released means the line was pulled low.
     pinMode(kColumnPins[kStarColumn], INPUT_PULLUP);
     Serial.printf("Woke from deep sleep on the * column; level %d\r\n", digitalRead(kColumnPins[kStarColumn]));
   }
@@ -380,7 +378,7 @@ bool keypadPowerKeyDown() {
 }
 
 bool keypadArmPowerKeyWake() {
-  // Rows: the '*' row is held low; the other rows are held high so no key can pull the wake column down.
+  // Rows: the '*' row is held low; the others are held high so no key can pull the wake column down.
   for (byte r = 0; r < kRows; ++r) {
     const auto pin = static_cast<gpio_num_t>(kRowPins[r]);
     rtc_gpio_init(pin);
@@ -395,7 +393,7 @@ bool keypadArmPowerKeyWake() {
     rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
     rtc_gpio_pulldown_dis(pin);
     rtc_gpio_pullup_en(pin);
-    // The hold latches this pad's RTC input setup through deep sleep. Without it the wake line can float low and wake the chip.
+    // The hold keeps this pad's RTC input setup in deep sleep; else the wake line can float low.
     rtc_gpio_hold_en(pin);
   }
 

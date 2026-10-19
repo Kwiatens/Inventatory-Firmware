@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host stand-in for the ESP32 mDNS client. The tests decide whether a query finds the server.
+// Host mDNS stand-in; tests decide whether a query finds the server.
 #pragma once
 
 #include "Arduino.h"

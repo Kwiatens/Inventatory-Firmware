@@ -57,7 +57,7 @@ enum class DisplayBodyKind {
   Contrast,
   Confirm,
   Setup,
-  // A setting picker: one segment per option. The backlight and the energy saving delays use it.
+  // Setting picker: one segment per option.
   Choice,
 };
 
@@ -82,7 +82,7 @@ struct RenderActivity {
   uint8_t headerPage = 0;
   // Battery card fill, 0 .. kBatteryCardFillSteps.
   uint8_t cardFillStep = 0;
-  // Boot mark bloom stage, 0 .. kBootBloomStages. The full mark is kBootBloomStages.
+  // Boot mark bloom stage, 0 .. kBootBloomStages (full mark).
   int bloomStage = kBootBloomStages;
   // Rows the mark has dropped behind the glass during the power-off sink.
   int markOffsetY = 0;
@@ -96,7 +96,6 @@ struct DisplayModel {
   DisplayRailStyle rail = DisplayRailStyle::Activity;
   DisplayConnectivityState connectivity = DisplayConnectivityState::Offline;
   bool showPcStatus = true;
-  // The update screen shows the percentage and a progress bar.
   bool otaProgress = false;
   bool animateEllipsis = false;
   bool receiveQuantity = false;
@@ -105,7 +104,7 @@ struct DisplayModel {
   String primary;
   String secondary;
   String tertiary;
-  // The scanner's error code. The body draws it as "Error code" with the code in bold.
+  // Scanner error code, drawn in bold under "Error code".
   String errorCode;
   String actions;
   String pageText;
@@ -116,11 +115,11 @@ struct DisplayModel {
   uint32_t setupCode = 0;
   String listRows[5];
   std::size_t listRowCount = 0;
-  // The scanner is not running. Not content, so clearContent() leaves it alone.
+  // Scanner not running. Not content, so clearContent() leaves it alone.
   bool scannerFault = false;
-  // A standing problem of any kind is on show, so the top bar's warning mark is drawn. Not content either.
+  // Any standing problem; draws the top bar warning mark. Not content.
   bool problemMark = false;
-  // Battery in the top bar and on the battery cards. batteryPercent < 0 means unknown.
+  // batteryPercent < 0 means unknown.
   int batteryPercent = -1;
   bool batteryCharging = false;
   // The cell is full with the charger's LED dark; the top bar reads "Charged".

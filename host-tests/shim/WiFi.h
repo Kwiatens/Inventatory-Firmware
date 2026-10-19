@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host stand-in for the ESP32 WiFi API: only the calls the network client makes.
+// Host WiFi stand-in: only the calls the network client makes.
 #pragma once
 
 #include "Arduino.h"

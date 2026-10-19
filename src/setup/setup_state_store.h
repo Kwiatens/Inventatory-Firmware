@@ -16,8 +16,8 @@ struct ProvisionedSettings {
   String deviceToken;
 };
 
-// Stores only validated provisioning data.  Inventory events intentionally use
-// their own NVS namespace, so resetting setup never destroys the outbox.
+// Stores validated data only. Inventory events use their own NVS namespace, so a setup reset
+// never destroys the outbox.
 class SetupStateStore {
  public:
   bool begin();
@@ -33,9 +33,8 @@ class SetupStateStore {
   static constexpr uint32_t kMagic = 0x49534554UL;  // "ISET"
   static constexpr uint16_t kVersion = 1;
 
-  // Counters are reserved in NVS in blocks: the persisted value is a ceiling at or
-  // above every counter handed out, so a reset can only skip counters, never
-  // reuse one, while the NVS write rate drops by the block size.
+  // Counters reserve NVS space in blocks: the persisted value is a ceiling over every counter handed
+  // out. A reset skips counters but never reuses one, and NVS writes drop by the block size.
   static constexpr std::uint64_t kCounterBlock = 32;
 
   mutable Preferences prefs_;

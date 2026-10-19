@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// The "Sync blocked" rule (AGENTS.md section 7): after five refusals of the queue's
-// head event in a row, the operator is told the queue is stuck. Pure logic, so the
-// host suite can check the rule directly.
+// "Sync blocked" rule (AGENTS.md section 7): five refusals of the queue head in a row block it.
 #pragma once
 
 #include <cstdint>
@@ -14,9 +12,8 @@ class BlockedHeadTracker {
  public:
   static constexpr uint8_t kThreshold = 5;
 
-  // The head event was refused: an authenticated 4xx or 5xx response, or a 200
-  // response that did not acknowledge it. Returns true on the refusal that blocks
-  // the queue, so the caller can update the screen once.
+  // Head event refused (authenticated 4xx/5xx, or a 200 without its ack).
+  // True only on the refusal that blocks the queue.
   bool recordRefusal() {
     if (streak_ < kThreshold) ++streak_;
     if (streak_ == kThreshold && !blocked_) {
@@ -26,8 +23,7 @@ class BlockedHeadTracker {
     return false;
   }
 
-  // The head event was acknowledged, so the queue is moving again. Returns true when
-  // this clears a block, so the caller can update the screen once.
+  // Head event acknowledged. True when this clears a block.
   bool recordProgress() {
     const bool wasBlocked = blocked_;
     streak_ = 0;

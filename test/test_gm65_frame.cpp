@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Frame assembly for the GM65 scanner, driven with replayed byte streams and an
-// explicit clock. The rule under test: a scan is reported only with its terminator,
-// so a barcode that stalls mid-frame is dropped rather than split into two wrong
-// scans (finding F7). Runs on the board and on the host.
+// GM65 frame assembly with replayed bytes and an explicit clock. A scan is reported only
+// with its terminator, so a barcode that stalls mid-frame is dropped, not split.
 #include <unity.h>
 
 #include <cstring>
@@ -36,9 +34,7 @@ void test_gm65_zone_read_reply_is_checked_before_its_value_is_used();
 void test_gm65_lamps_off_keeps_the_other_zone_bits();
 void test_gm65_lamps_are_off_only_when_both_are_off_and_restore_to_standard();
 
-// One assembler shared by every test. It holds a 1 KB buffer, so it lives in static
-// storage instead of on the 8 KiB loop stack. Each test calls reset() first, which
-// clears every field that affects behaviour.
+// Static, so the 1 KB buffer stays off the 8 KiB loop stack. Each test calls reset() first.
 static Gm65FrameAssembler frames;
 
 namespace {
@@ -101,8 +97,7 @@ void test_gm65_partial_frame_is_dropped_after_an_idle_gap() {
 }
 
 void test_gm65_stale_fragment_cannot_join_a_later_frame() {
-  // Even when the caller does not run expire(), the next byte after a long gap must
-  // not extend the old fragment.
+  // Without expire(), a byte after a long gap must not extend the old fragment.
   frames.reset();
   feedText(frames, "12345", 0, 1);
   TEST_ASSERT_TRUE(frames.feed('6', 100) == Gm65FrameAssembler::Event::Dropped);
@@ -198,8 +193,7 @@ void test_gm65_end_of_transmission_ends_a_data_matrix_without_crlf() {
 }
 
 void test_gm65_repeated_separator_trailer_is_not_reported() {
-  // A Data Matrix can end in RS EOT RS EOT. The first pair is the scan; the second holds no
-  // printable byte, so it is dropped rather than reported as a scan of its own.
+  // A Data Matrix can end in RS EOT RS EOT. The second pair has no printable byte: dropped.
   frames.reset();
   feedText(frames, "PABC\x1e", 0, 1);
   TEST_ASSERT_TRUE(frames.feed(0x04, 5) == Gm65FrameAssembler::Event::Frame);
@@ -207,7 +201,6 @@ void test_gm65_repeated_separator_trailer_is_not_reported() {
   TEST_ASSERT_TRUE(frames.feed(0x04, 7) == Gm65FrameAssembler::Event::Dropped);
   TEST_ASSERT_EQUAL_UINT32(0, frames.frameLength());
 
-  // The next scan is still accepted.
   feedText(frames, "B\r", 100, 1);
   TEST_ASSERT_TRUE(frameIs(frames, "B"));
 }
@@ -229,8 +222,7 @@ void test_gm65_zone_command_matches_the_manual_examples() {
 }
 
 void test_gm65_deep_sleep_and_wake_are_zone_0xd9_commands() {
-  // Manual section 9.7: zone 0x00D9 value 0xA5 is deep sleep and 0x00 wakes the module. The sleep itself
-  // is still to be checked on a board.
+  // Manual section 9.7. Sleep is not yet checked on a board.
   uint8_t command[kGm65ZoneCommandLength];
   gm65ZoneCommand(0x08, kGm65FunctionZone, kGm65DeepSleep, command);
   const uint8_t sleep[] = {0x7E, 0x00, 0x08, 0x01, 0x00, 0xD9, 0xA5, 0x3E, 0x69};
@@ -257,7 +249,7 @@ void test_gm65_zone_read_reply_is_checked_before_its_value_is_used() {
 }
 
 void test_gm65_lamps_off_keeps_the_other_zone_bits() {
-  // Zone 0x0000 bits 5-4 (head lamp) and 3-2 (pointing light) go to 00. Bits 1-0 (scan mode), 6 and 7 stay.
+  // Zone 0x0000: bits 5-4 (head lamp) and 3-2 (pointing light) go to 00; the rest stay.
   TEST_ASSERT_EQUAL_HEX8(0xC3, gm65LampsOffZoneValue(0xFF));
   TEST_ASSERT_EQUAL_HEX8(0x43, gm65LampsOffZoneValue(0x7F));
   TEST_ASSERT_EQUAL_HEX8(0x40, gm65LampsOffZoneValue(0x40));
