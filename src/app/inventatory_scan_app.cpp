@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Inventatory Scan R1 application controller implementation.
-
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
@@ -20,8 +18,7 @@ namespace inventatory_scan {
 
 namespace {
 
-// Pins that the board already drives or reads, from config.h and hardware.h. The backlight and
-// charger LEDs must not share one with them, nor with each other.
+// Pins the board already drives or reads. The backlight and charger pins must not reuse one.
 constexpr int kClaimedPins[] = {
     KEYPAD_COLUMN_1_PIN, KEYPAD_COLUMN_2_PIN, KEYPAD_COLUMN_3_PIN, KEYPAD_COLUMN_4_PIN,
     KEYPAD_ROW_1_PIN,    KEYPAD_ROW_2_PIN,    KEYPAD_ROW_3_PIN,    KEYPAD_ROW_4_PIN,
@@ -31,7 +28,7 @@ constexpr int kClaimedPins[] = {
 };
 constexpr std::size_t kClaimedPinCount = sizeof(kClaimedPins) / sizeof(kClaimedPins[0]);
 
-// Strapping pins, the RGB and SCK LEDs, USB, and the in-package flash and PSRAM (see AGENTS.md section 3).
+// Straps, RGB and SCK LEDs, USB, in-package flash and PSRAM (AGENTS.md section 3).
 constexpr bool pinIsReserved(int pin) {
   return pin == 0 || pin == 3 || pin == 45 || pin == 46 || pin == 48 || pin == 19 || pin == 20 ||
          (pin >= 26 && pin <= 37);
@@ -54,15 +51,14 @@ static_assert(!pinIsClaimed(hardware::kConnectorSensePin, kClaimedPins, kClaimed
 static_assert(hardware::kConnectorSensePin != hardware::kBacklightPin, "charger input and backlight share a pin");
 static_assert(hardware::kConnectorSensePin != hardware::kChargingLedPin, "charger input and charging LED share a pin");
 
-// ESP32 NVS namespaces are limited to 15 characters plus the terminator.
+// NVS namespaces are limited to 15 characters plus the terminator.
 constexpr char kOutboxNamespace[] = "inv_outbox";
 static_assert(sizeof(kOutboxNamespace) <= 16, "NVS namespace exceeds ESP32's 15-character limit");
 
-// The boot splash stays up this long, the mark blooming in over its first part, before the normal
-// screens take over.
+// Boot splash hold; the mark blooms in over its first part.
 constexpr unsigned long kBootSplashHoldMs = 1200UL;
 
-// How long each step of starting the network worker may take.
+// Per-step timeout when starting the network worker.
 constexpr unsigned long kNetworkStepTimeoutMs = 1000UL;
 
 // Waits for done() for up to kNetworkStepTimeoutMs; true if it became true in time.
@@ -78,19 +74,19 @@ bool waitFor(Done done) {
 bool InventatoryScanApp::begin() {
   Serial.println("Inventatory Scan R1 booting");
   display_.begin();
-  // The backlight is lit for the splash; the configured mode takes over in the loop.
+  // Lit for the splash; the configured mode takes over in loop().
   backlight_.begin();
   backlight_.setLit(true);
   lastUserActivityAt_ = millis();
   battery_.begin();
   display_.playBootSplash(kBootSplashHoldMs);
   keypadInit();
-  // The gauge resumes from the state saved at the last power-off. A first boot takes the voltage.
+  // Gauge resumes from the state saved at power-off; a first boot uses the voltage.
   BatteryGaugeState storedBattery;
   if (batteryStore_.begin() && batteryStore_.load(storedBattery)) batteryTracker_.restore(storedBattery);
   const uint32_t bootMillivolts = battery_.readMillivolts();
   Serial.printf("Battery %lu mV\r\n", static_cast<unsigned long>(bootMillivolts));
-  // The charger signals are sampled once at boot. Their state is not an edge, so nothing starts at boot.
+  // Charger signals are sampled once here. A level at boot is not an edge, so nothing starts.
   chargerLedLit_ = signalHighNext(false, battery_.chargingLedMillivolts());
   chargerPlugged_ = signalHighNext(false, battery_.connectorMillivolts());
   lastChargerPlugged_ = chargerPlugged_;
@@ -101,8 +97,8 @@ bool InventatoryScanApp::begin() {
   lastCharging_ = batteryTracker_.docked();
   lastChargeDone_ = batteryTracker_.chargeDone();
   display_.setBatteryStatus(batteryTracker_.percent(), lastCharging_, lastChargeDone_, batteryEstimateText());
-  // A cell that is low and not charging is refused: show why, then sleep again. Low is judged by the lower
-  // of the estimate and the voltage. A charger that is plugged in but not charging does not count as charging.
+  // A low cell that is not charging is refused: show why, then sleep again. Judged by the lower of
+  // the estimate and the voltage; a plugged-in charger that is not lit does not count as charging.
   const int bootPercent = batteryTracker_.refusePercent();
   if (bootPercent >= 0 && bootPercent <= kBatteryLowPercent && !chargerLedLit_) {
     powerOffWithNotice(bootPercent <= kBatteryCriticalPercent ? String("Battery empty") : String("Battery low"),
@@ -129,8 +125,7 @@ bool InventatoryScanApp::begin() {
   clientConfig_.fallbackHost = FALLBACK_HOST;
   clientConfig_.fallbackPort = FALLBACK_PORT;
 
-  // A new or erased outbox starts its event sequence at a random point, so event ids
-  // cannot repeat ids the desktop already holds for this device.
+  // A new or erased outbox starts at a random sequence point, so event ids cannot repeat.
   if (!outbox_.begin(kOutboxNamespace, DEVICE_ID, freshOutboxSequenceStart(esp_random()))) {
     Serial.println("Outbox storage unavailable; scans cannot be queued until NVS recovers.");
   } else {
@@ -173,7 +168,7 @@ void InventatoryScanApp::loop() {
   serviceBattery();
   serviceEnergySaving();
   serviceBacklight();
-  // Every screen, including setup, shows the fault mark while the scanner is not running.
+  // Fault mark on every screen, setup included, while the scanner is not running.
   display_.setScannerFault(scannerFaulted());
   if (setupMode_) {
     InventatoryKeyEvent event;
@@ -204,7 +199,7 @@ void InventatoryScanApp::loop() {
     return;
   }
 
-  // Drain UART before any Wi-Fi operation that may briefly block.
+  // Drain UART before Wi-Fi work, which may block briefly.
   pollScanner();
 
   if (serviceOta()) {
@@ -215,7 +210,7 @@ void InventatoryScanApp::loop() {
 
   processNetworkResult();
   maybeSync();
-  // Drain anything received while the HTTP client was active.
+  // Drain bytes received during the HTTP call.
   pollScanner();
   updateConnectivityDisplay();
   display_.tick();
@@ -310,9 +305,8 @@ void InventatoryScanApp::serviceProvisioning() {
   if (!setupWifiConnecting_) return;
   if (WiFi.status() == WL_CONNECTED) {
     setupWifiConnecting_ = false;
-    // Keep the record incomplete until the normal runtime has actually been
-    // started. A reset while BLE is being torn down must return to setup mode,
-    // not boot into a credentialed but unreachable runtime.
+    // Keep the record incomplete until the runtime starts, so a reset during BLE teardown
+    // returns to setup rather than booting into an unreachable runtime.
     if (!setupStore_.savePending(provisionedSettings_)) {
       provisioning_.setResult(false, "SAVE FAILED");
       display_.showSetup(provisioning_.pairingCode(), "SAVE FAILED");
@@ -321,15 +315,14 @@ void InventatoryScanApp::serviceProvisioning() {
     }
     Serial.println("Provisioning: credentials staged");
     provisioning_.setResult(true, "WIFI OK");
-    // Give the subscribed desktop client a scheduling window to receive the
-    // terminal notification before BLE is deinitialized below.
+    // Let the desktop client receive the terminal notification before BLE is torn down.
     delay(300);
     provisioning_.end();
     setupMode_ = false;
     scanner_.flushInput();
     if (!beginNormalRuntime(provisionedSettings_) || !setupStore_.commit()) {
-      // Bluetooth was released above and cannot start again in this boot. The setup record is still
-      // incomplete, so the restarted device opens pairing again.
+      // Bluetooth was released and cannot restart this boot. The setup record is still incomplete,
+      // so the restart opens pairing again.
       Serial.println("Provisioning: normal runtime did not become ready; restarting into BLE setup");
       display_.showBoot("Network error", kNetworkStartFailedCode);
       display_.tick();

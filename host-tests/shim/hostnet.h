@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// State shared by the host stand-ins for WiFi, mDNS and the TCP client. The tests set
-// the network conditions here and read back the bytes the code under test sent.
+// Network state shared by the host WiFi, mDNS and TCP stand-ins. Tests set conditions here.
 #pragma once
 
 #include "Arduino.h"
@@ -18,12 +17,11 @@ struct HostConnection {
   bool connectSucceeds = true;
   IPAddress serverAddress{192, 168, 1, 20};
   uint16_t serverPort = 8787;
-  std::string request;   // bytes the code under test wrote on the current connection
-  std::string response;  // bytes the server sends back, produced by the responder
+  std::string request;   // bytes written by the code under test on the current connection
+  std::string response;  // bytes the server sends, from the responder
   std::size_t readPos = 0;
   bool responded = false;
-  // Called with the request the first time the code reads. Returns the response bytes.
-  // With no responder the server stays silent, which exercises the response timeout.
+  // Called on the first read with the request; returns the response. Unset: server stays silent.
   std::function<std::string(const std::string& request)> responder;
 };
 

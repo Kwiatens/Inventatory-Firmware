@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host stand-in for U8g2lib.h. display_style.h only takes the addresses of the
-// font bitmaps; the host tests never draw, so placeholder arrays are enough.
+// Host stand-in: display_style.h only takes font addresses, and host tests never draw.
 #pragma once
 
 #include <cstdint>

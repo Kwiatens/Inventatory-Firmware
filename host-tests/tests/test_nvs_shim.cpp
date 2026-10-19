@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Checks the NVS stand-in itself. The durability tests trust it to behave like
-// the ESP32 Preferences API, so these tests pin down the parts they depend on.
+// Checks the NVS stand-in against the ESP32 Preferences behaviour the durability tests rely on.
 #include <unity.h>
 
 #include <cstdint>
@@ -31,7 +30,6 @@ void test_nvs_shim_read_only_begin_needs_existing_namespace() {
   prefs.end();
 
   TEST_ASSERT_TRUE(prefs.begin("inv_outbox", true));
-  // A read-only handle cannot write.
   TEST_ASSERT_EQUAL_UINT32(0, prefs.putBytes("hdr", kPayload, sizeof(kPayload)));
   TEST_ASSERT_FALSE(prefs.remove("hdr"));
   TEST_ASSERT_FALSE(prefs.clear());
@@ -69,7 +67,7 @@ void test_nvs_shim_power_cut_fails_every_later_write() {
   TEST_ASSERT_EQUAL_UINT32(sizeof(kPayload), prefs.putBytes("b", kPayload, sizeof(kPayload)));
   TEST_ASSERT_EQUAL_UINT32(sizeof(kPayload), prefs.putBytes("c", kPayload, sizeof(kPayload)));
 
-  // The budget is spent: the power is cut, so nothing else reaches storage.
+  // Budget spent: after the power cut, no further writes reach storage.
   TEST_ASSERT_EQUAL_UINT32(0, prefs.putBytes("d", kPayload, sizeof(kPayload)));
   TEST_ASSERT_FALSE(prefs.remove("a"));
   TEST_ASSERT_FALSE(prefs.clear());

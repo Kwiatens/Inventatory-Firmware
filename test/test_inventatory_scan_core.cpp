@@ -26,7 +26,7 @@ void registerTextHelperTests();
 void registerBatteryGaugeTests();
 
 void test_bag_codes_for_sync() {
-  // A DigiKey bag: the envelope, the DigiKey part number and the manufacturer part number, 43 characters.
+  // A DigiKey bag code: envelope, DigiKey and manufacturer part numbers (43 characters).
   const auto digiKey = digiKeyBagCodeForSync("445-15749-1-ND", "MLZ2012M3R3HT000", kMaximumBagEventCodeBytes);
   TEST_ASSERT_EQUAL_UINT(43U, digiKey.length());
   TEST_ASSERT_EQUAL_INT(0, digiKey.indexOf("[)>"));
@@ -36,14 +36,13 @@ void test_bag_codes_for_sync() {
   TEST_ASSERT_EQUAL_INT(0x1D, static_cast<int>(static_cast<unsigned char>(digiKey[6])));
   TEST_ASSERT_EQUAL_INT(0x04, static_cast<int>(static_cast<unsigned char>(digiKey[digiKey.length() - 1U])));
 
-  // Without a manufacturer part number the envelope and the DigiKey part number are still sent.
+  // No manufacturer part number: envelope and DigiKey part number only.
   const auto bare = digiKeyBagCodeForSync("445-15749-1-ND", "", kMaximumBagEventCodeBytes);
   TEST_ASSERT_EQUAL_UINT(24U, bare.length());
-  // A manufacturer part number that does not fit is left out, and the DigiKey part number still identifies the bag.
+  // A manufacturer part number that does not fit is left out.
   TEST_ASSERT_EQUAL_UINT(24U, digiKeyBagCodeForSync("445-15749-1-ND", "MLZ2012M3R3HT000", 30U).length());
-  // Nothing is sent when the code would not fit at all.
   TEST_ASSERT_EQUAL_UINT(0U, digiKeyBagCodeForSync("445-15749-1-ND", "MLZ2012M3R3HT000", 10U).length());
-  // A part number without the DigiKey -ND ending, or with a character a bag does not print, is not a DigiKey bag.
+  // A DigiKey part number needs the -ND ending and no spaces.
   TEST_ASSERT_EQUAL_UINT(0U, digiKeyBagCodeForSync("445-15749-1", "MLZ2012M3R3HT000", kMaximumBagEventCodeBytes).length());
   TEST_ASSERT_EQUAL_UINT(0U, digiKeyBagCodeForSync("445 15749-1-ND", "", kMaximumBagEventCodeBytes).length());
   TEST_ASSERT_EQUAL_UINT(0U, digiKeyBagCodeForSync("", "MLZ2012M3R3HT000", kMaximumBagEventCodeBytes).length());
@@ -59,7 +58,7 @@ void test_bag_codes_for_sync() {
   const auto tmeCode = tmeBagCodeForSync(label, kMaximumBagEventCodeBytes);
   TEST_ASSERT_TRUE(tmeCode == "PN:0ZCM0010FF2G MPN:0ZCM0010FF2G");
 
-  // The product page is optional, as the desktop reads it. The symbol and the manufacturer part number are needed.
+  // The product page URL is optional; the symbol and manufacturer part number are required.
   TmeBagLabel rejected;
   TEST_ASSERT_TRUE(parseTmeBagLabel("QTY:5 PN:0ZCM0010FF2G MPN:0ZCM0010FF2G", rejected));
   TEST_ASSERT_TRUE(rejected.symbol == "0ZCM0010FF2G");
@@ -100,8 +99,7 @@ void test_datamatrix_decoding_fixtures() {
   TEST_ASSERT_EQUAL_STRING("TPS7A20 LDO", decoded.encodedPartName.c_str());
   TEST_ASSERT_EQUAL_INT(25, decoded.quantity);
 
-  // A Digi-Key bag prints its own part number in `P` ahead of the manufacturer
-  // part number in `1P`.
+  // Digi-Key bags put their part number in P, ahead of the manufacturer part number in 1P.
   const String distributorBag = String("]d2[)>") + static_cast<char>(0x1E) + "06" + static_cast<char>(0x1D) +
       "P296-1234-1-ND" + static_cast<char>(0x1D) + "1PSN74LVC1G14DBVR" + static_cast<char>(0x1D) +
       "30P296-1234-1-ND" + static_cast<char>(0x1D) + "1TLOT12345" + static_cast<char>(0x1D) + "4LMY" +
@@ -136,8 +134,7 @@ void test_datamatrix_decoding_fixtures() {
 }
 
 void test_digikey_bag_without_aim_prefix_is_a_vendor_bag() {
-  // The GM65 sends a DigiKey bag's Data Matrix with no AIM prefix. The frame ends at its RS EOT trailer, and the
-  // parser reads the DigiKey part number from P and the manufacturer part number from 1P.
+  // The GM65 sends this bag with no AIM prefix; the frame ends at its RS EOT trailer.
   const String bag = String("[)>") + static_cast<char>(0x1E) + "06" + static_cast<char>(0x1D) +
       "PIRLML6344TRPBFCT-ND" + static_cast<char>(0x1D) + "1PIRLML6344TRPBF" + static_cast<char>(0x1D) +
       "30PIRLML6344TRPBFCT-ND" + static_cast<char>(0x1D) + "K" + static_cast<char>(0x1D) + "1K92776734" +
@@ -421,10 +418,8 @@ void test_unknown_result_status_is_rejected() {
   TEST_ASSERT_FALSE(unknownPrint.valid);
 }
 
-// A parsed response holds about thirty String fields. The device runs each test on the 8 KiB
-// Arduino loop stack. A test that kept many responses as locals overflowed it, and the board
-// reset at that test. Validity checks therefore parse inside this helper, so only one response
-// is live in the test's own frame.
+// Parse inside this helper: a response holds about 30 Strings, and several on the 8 KiB
+// loop stack reset the board.
 static bool syncResponseIsValid(const String& body) {
   return parseSyncResponseJson(body).valid;
 }
@@ -483,9 +478,7 @@ void test_sync_response_json_is_strictly_parsed() {
 }
 
 void test_http_response_limits_are_bounded() {
-  // Keep this literal synchronized with the desktop protocol contract in
-  // include/InventatoryScanHttp.h. The device must accept every valid bounded
-  // desktop response before it begins parsing the authenticated body.
+  // Keep in sync with the desktop protocol contract in include/InventatoryScanHttp.h.
   TEST_ASSERT_EQUAL_UINT32(1024U, kMaxHttpHeaderBytes);
   TEST_ASSERT_EQUAL_UINT32(8192U, kMaxHttpBodyBytes);
   TEST_ASSERT_TRUE(httpHeaderWithinLimit(1024U));
@@ -504,16 +497,14 @@ void test_ui_header_prefers_full_title_over_pc_status() {
 
 void test_ui_clipping_and_queue_boundaries() {
   const auto monospaceWidth = [](std::size_t length) { return static_cast<int>(length * 5U); };
-  // Full fit: 5 chars = 25 px <= 25 px, so the whole string is kept.
+  // An exact fit keeps the whole string.
   TEST_ASSERT_EQUAL_UINT32(5, displayClippedPrefixLength(5, 25, 3, monospaceWidth));
-  // Full fit with room to spare: 3 chars = 15 px <= 100 px.
   TEST_ASSERT_EQUAL_UINT32(3, displayClippedPrefixLength(3, 100, 3, monospaceWidth));
-  // Clipped: 5 chars = 25 px > 24 px. 4 chars = 20 px, plus 3 px ellipsis = 23 px <= 24 px.
+  // 4 chars plus the 3 px ellipsis fit 24 px.
   TEST_ASSERT_EQUAL_UINT32(4, displayClippedPrefixLength(5, 24, 3, monospaceWidth));
-  // Clipped, ellipsis matters: 4 chars = 20 px fits 22 px on its own, but
-  // 20 + 3 px ellipsis = 23 px > 22 px, so only 3 chars (15 + 3 = 18 px) remain.
+  // The ellipsis must fit too: 4 chars + ellipsis is 23 px > 22 px.
   TEST_ASSERT_EQUAL_UINT32(3, displayClippedPrefixLength(5, 22, 3, monospaceWidth));
-  // Nothing fits: 2 px is smaller than even the 3 px ellipsis, so the result is 0.
+  // Not even the ellipsis fits.
   TEST_ASSERT_EQUAL_UINT32(0, displayClippedPrefixLength(5, 2, 3, monospaceWidth));
   TEST_ASSERT_FALSE(displayQueueDepth(0));
   TEST_ASSERT_TRUE(displayQueueDepth(1));
@@ -574,8 +565,7 @@ void test_scanner_fault_warning_policy() {
 }
 
 void test_error_code_catalogue_is_well_formed_and_unique() {
-  // Every code is three capital letters, a dash and two digits, and no two codes are the same.
-  // Inside each area the numbers run 01, 02, ... with no gap, in the order listed here.
+  // Codes are LLL-DD and unique, numbered 01, 02, ... with no gap per area.
   const char* const codes[] = {
       kScannerFaultCode,         kScanRejectedCode,         kQueueFullCode,           kScanNotSavedCode,
       kQueueUnreadableCode,      kRepairFailedCode,         kDiscardFailedCode,       kSyncBlockedCode,
@@ -609,7 +599,7 @@ void test_fault_rotation_takes_turns() {
   // One problem, or none, never moves.
   TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(0, 0, kFaultRotateMs));
   TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(10UL * kFaultRotateMs, 1, kFaultRotateMs));
-  // Several problems take turns, each for kFaultRotateMs, and then the first comes round again.
+  // Problems take turns for kFaultRotateMs each, then wrap.
   TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(0, 3, kFaultRotateMs));
   TEST_ASSERT_EQUAL_UINT(0U, faultRotationIndex(kFaultRotateMs - 1, 3, kFaultRotateMs));
   TEST_ASSERT_EQUAL_UINT(1U, faultRotationIndex(kFaultRotateMs, 3, kFaultRotateMs));
@@ -633,8 +623,7 @@ void test_soft_power_off_policy() {
   TEST_ASSERT_EQUAL_UINT32(1000UL, kPowerOffWarnMs);
   TEST_ASSERT_EQUAL_UINT32(4000UL, kPowerOffCommitMs);
   TEST_ASSERT_EQUAL_UINT32(3000UL, kPowerOffCommitMs - kPowerOffWarnMs);
-  // The bar drains across the countdown: full at the warning, empty at the commit. The inside of
-  // the bar is 74 px wide.
+  // The bar drains from full at the warning to empty at the commit; inside width 74 px.
   TEST_ASSERT_EQUAL_INT(74, powerOffBarFillPx(0, 74));
   TEST_ASSERT_EQUAL_INT(37, powerOffBarFillPx(1500, 74));
   TEST_ASSERT_EQUAL_INT(0, powerOffBarFillPx(3000, 74));
@@ -736,7 +725,7 @@ void test_energy_saving_policy() {
   TEST_ASSERT_FALSE(powerOffEnabled(PowerOffDelay::Never));
   TEST_ASSERT_TRUE(powerOffEnabled(PowerOffDelay::Min1));
 
-  // A countdown runs down from its span to zero, and the unsigned difference survives the millis() wrap.
+  // Countdowns run down to zero and survive the millis() wrap.
   TEST_ASSERT_EQUAL_UINT32(60000, energyRemainingMs(0, 0, 60000));
   TEST_ASSERT_EQUAL_UINT32(30000, energyRemainingMs(30000, 0, 60000));
   TEST_ASSERT_EQUAL_UINT32(0, energyRemainingMs(60000, 0, 60000));
@@ -797,7 +786,7 @@ void test_energy_saving_policy() {
   TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Asleep, energyCase(false, true, true, false, 0, 0)) ==
                    EnergyAction::None);
 
-  // The power-off warning powers off when its time is up, and is dropped if the update or the setting changes.
+  // The power-off warning powers off on time; it is dropped if the update or setting changes.
   TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::OffWarning, energyCase(true, true, true, false, 0, 5000)) ==
                    EnergyAction::None);
   TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::OffWarning, energyCase(true, true, true, false, 0, 0)) ==
@@ -807,8 +796,7 @@ void test_energy_saving_policy() {
   TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::OffWarning, energyCase(false, true, true, false, 0, 0)) ==
                    EnergyAction::CancelWarning);
 
-  // A full run from a key press at t = 0 with 1 min sleep and 1 min power off, nothing else happening.
-  // The warnings come 30 s before each step: sleep at 60 s, power off 60 s after sleeping.
+  // Full run from a key press at t = 0 with 1 min steps; each warning comes 30 s early.
   EnergyPhase phase = EnergyPhase::Awake;
   uint32_t warnSleepAt = 0;
   uint32_t sleptAt = 0;
@@ -878,7 +866,7 @@ void test_battery_tracker_guards_and_debounce() {
 
   tracker.update(4000, false, 1000);
   TEST_ASSERT_EQUAL_INT(78, tracker.percent());
-  // A dip is not a change of charge: a sag from the load never moves the percent (see test_battery_gauge.cpp).
+  // A voltage dip is not a change of charge (see test_battery_gauge.cpp).
   tracker.update(3600, false, 2000);
   TEST_ASSERT_EQUAL_INT(78, tracker.percent());
 
@@ -898,7 +886,7 @@ void test_battery_tracker_guards_and_debounce() {
   TEST_ASSERT_TRUE(docked.level() == BatteryLevel::Ok);
   TEST_ASSERT_TRUE(docked.charging());
 
-  // A bouncing dock contact: one reading of the other state does not change the state.
+  // A bouncing dock contact: a single differing reading does not change the state.
   BatteryTracker bounce;
   bounce.update(4000, false, 0);
   bounce.update(4000, true, 1000);
@@ -958,7 +946,7 @@ void test_battery_tracker_debounces_charged() {
   BatteryTracker tracker;
   tracker.update(4000, true, 0, 0, true);
   TEST_ASSERT_FALSE(tracker.chargeDone());
-  // The LED goes dark with the charger still plugged in. One reading is a flicker, not the end of charging.
+  // One dark reading is a flicker, not the end of charging.
   tracker.update(4150, false, 1000, 0, true);
   TEST_ASSERT_FALSE(tracker.chargeDone());
   tracker.update(4150, false, 2000, 0, true);
@@ -974,7 +962,7 @@ void test_battery_tracker_debounces_charged() {
 }
 
 void test_battery_tracker_charged_needs_plugged_in_and_full_voltage() {
-  // Plugged in with the LED dark, but the cell reads 3.9 V: the charger is not charging it, so it is not charged.
+  // Plugged in with the LED dark but 3.9 V is not charged.
   BatteryTracker low;
   low.update(3900, false, 0, 0, true);
   low.update(3900, false, 1000, 0, true);
@@ -1033,9 +1021,7 @@ void test_battery_estimate_text() {
   TEST_ASSERT_EQUAL_STRING("", text);
 }
 
-// Builds an ISO 15434 DataMatrix whose raw length is exactly totalBytes. The
-// fixed framing is 27 bytes: "[)>" RS "06" GS (7), "1PTPS7A2033PDBVR" (16),
-// GS (1), "N" (1) and RS EOT (2). Padding goes into the free-text N field.
+// ISO 15434 DataMatrix of exactly totalBytes. The fixed framing is 27 bytes; padding goes in N.
 static String makeSizedComponentDataMatrix(std::size_t totalBytes) {
   String payload = String("[)>") + static_cast<char>(0x1E) + "06" + static_cast<char>(0x1D) +
       "1PTPS7A2033PDBVR" + static_cast<char>(0x1D) + "N";
@@ -1047,7 +1033,7 @@ static String makeSizedComponentDataMatrix(std::size_t totalBytes) {
 
 void test_datamatrix_size_guard_is_exact_at_512_bytes() {
   DecodedComponentFields decoded;
-  // 512 bytes: 27 fixed + 485 padding. This is the largest accepted raw payload.
+  // 512 bytes: 27 fixed + 485 padding, the largest accepted payload.
   const String atLimit = makeSizedComponentDataMatrix(512U);
   TEST_ASSERT_EQUAL_UINT32(512U, atLimit.length());
   TEST_ASSERT_TRUE(decodeComponentDataMatrix(atLimit, decoded));
@@ -1055,7 +1041,7 @@ void test_datamatrix_size_guard_is_exact_at_512_bytes() {
   TEST_ASSERT_EQUAL_UINT32(485U, decoded.encodedPartName.length());
   TEST_ASSERT_EQUAL_INT(1, decoded.quantity);
 
-  // 513 bytes: identical framing with one more padding byte. Only the size guard differs.
+  // One more padding byte: only the size guard differs.
   const String overLimit = makeSizedComponentDataMatrix(513U);
   TEST_ASSERT_EQUAL_UINT32(513U, overLimit.length());
   TEST_ASSERT_FALSE(decodeComponentDataMatrix(overLimit, decoded));

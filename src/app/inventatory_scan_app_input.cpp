@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Inventatory Scan R1 application controller implementation.
-
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
@@ -44,8 +42,7 @@ bool hasIso15434Macro06Envelope(const String& value) {
     return true;
   }
 
-  // Some scanner profiles suppress RS/GS control characters. A component Macro
-  // 06 payload can then arrive as "[)>06P..." rather than "[)><RS>06<GS>P...".
+  // Some profiles strip RS/GS, so Macro 06 can arrive as "[)>06P..." without them.
   return value.length() >= 5U && value[3] == '0' && value[4] == '6';
 }
 
@@ -57,9 +54,9 @@ bool isQrScan(const String& value) {
   return hasAimPrefix(value, 'q');
 }
 
-// The short key presses. They wake a device asleep on its energy saving timer and dismiss a countdown
-// warning. Holds keep their own meaning: '*' still warns and powers off, D still toggles standby, and
-// '*' with D still starts an update.
+// Short presses wake a device asleep on its energy saving timer and dismiss a countdown warning.
+// Holds keep their meaning: '*' warns and powers off, D toggles standby,
+// '*' with D starts an update.
 bool isShortKeyPress(InventatoryKeyEventType type) {
   return type == InventatoryKeyEventType::Digit || type == InventatoryKeyEventType::Add ||
          type == InventatoryKeyEventType::Subtract || type == InventatoryKeyEventType::Cancel ||
@@ -78,9 +75,8 @@ void InventatoryScanApp::pollScanner() {
   }
   String code;
   if (scanner_.poll(code)) {
-    // Preserve one completed scan while an inventory result is pending. The
-    // scanner is still drained so UART bytes cannot overflow and corrupt later
-    // frames; a further scan cannot be kept and is reported, not silently lost.
+    // Keep one scan while a result is pending. The scanner is still drained so UART bytes cannot
+    // overflow. A further scan is reported, not silently lost.
     if (state_ == State::WaitingForResult) {
       if (deferredScan_.length() == 0) {
         deferredScan_ = code;
@@ -99,7 +95,7 @@ void InventatoryScanApp::handleScan(const String& code) {
     return;
   }
   noteUserActivity();
-  // A scan cancels a countdown warning, and is then handled as usual.
+  // A scan dismisses a countdown warning, then is handled as usual.
   dismissEnergyWarning();
   if (!scanMayInterruptUi(setupMode_, powerMode_ == PowerMode::Standby,
                           otaRequested_ || otaActive_,
@@ -108,12 +104,9 @@ void InventatoryScanApp::handleScan(const String& code) {
     Serial.println("Scan ignored while the current operation blocks scanning.");
     return;
   }
-  // Pending state is reset only once a scan is accepted below, so a rejected
-  // frame cannot leave the state machine out of step with the screen.
-  // Some GM65 profiles prepend an AIM symbology identifier (for example ]C1
-  // for Code 128, ]Q3 for QR, or ]d2 for Data Matrix). We use that marker to
-  // decode standards-based Data Matrix fields and route QR scans to the
-  // Inventatory machine-code path.
+  // Reset pending state only once a scan is accepted, so a rejected frame cannot desync the screen.
+  // Some GM65 profiles prepend an AIM identifier (]C1, ]Q3 QR, ]d2 Data Matrix). It selects
+  // the Data Matrix decoder and the QR path.
   const auto raw = trimCopy(code);
   const auto trimmed = trimCopy(stripAimSymbologyPrefix(raw));
   if (trimmed.length() == 0) {
@@ -129,8 +122,7 @@ void InventatoryScanApp::handleScan(const String& code) {
     const auto& lookupCode = decoded.manufacturerPartNumber;
     const auto& manufacturer = decoded.manufacturer;
     const auto& encodedPartName = decoded.encodedPartName;
-    // The desktop recognises a bag by its DigiKey part number, so a Data Matrix without one is refused rather than
-    // added as a part no supported vendor supplied.
+    // The desktop recognises bags by DigiKey part number, so refuse a Data Matrix without one.
     const auto bagCode = digiKeyBagCodeForSync(decoded.auxiliaryPartNumber, lookupCode, kMaximumBagEventCodeBytes);
     if (bagCode.length() == 0) {
       showScanRefusal("Not a supported vendor bag. Add the part by hand",
@@ -147,8 +139,7 @@ void InventatoryScanApp::handleScan(const String& code) {
     scannedPartName_ = encodedPartName;
     quantity_.setDefaultValue(defaultQuantity);
     pendingScanType_ = PendingScanType::ComponentDataMatrix;
-    // A DigiKey bag is looked up by its DigiKey part number, which the desktop matches; the manufacturer number is only
-    // shown. bagCode is non-empty here, so the DigiKey part number is valid.
+    // Look up by DigiKey part number (the desktop matches it); manufacturer number is display only.
     activeLookupCode_ = trimCopy(decoded.auxiliaryPartNumber);
     activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
     lookupMissCount_ = 0;
@@ -176,8 +167,8 @@ void InventatoryScanApp::handleScan(const String& code) {
     scannedEventCode_ = tmeCode;
     quantity_.setDefaultValue(tmeLabel.quantity);
     pendingScanType_ = PendingScanType::ComponentDataMatrix;
-    // The desktop matches a lookup against the item's SKU, which a TME label fills with its TME symbol. The manufacturer
-    // part number is not stored under any key the lookup searches, so it would never find the part.
+    // The desktop matches lookups on SKU, which a TME label fills with its TME symbol. The
+    // manufacturer part number is not searched, so it would never find the part.
     activeLookupCode_ = tmeLabel.symbol;
     activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
     lookupMissCount_ = 0;
@@ -215,8 +206,8 @@ void InventatoryScanApp::handleScan(const String& code) {
     return;
   }
 
-  // A code next to the one the operator scanned (on a TME label, for example) can be read after it. While
-  // that scan waits for its quantity, the extra frame is logged and does not replace the scan's screen.
+  // A nearby code (such as on a TME label) can be read after the scan. While the scan awaits its
+  // quantity, the extra frame is logged and does not replace its screen.
   if (state_ == State::AwaitQuantity && scannedCode_.length() > 0) {
     Serial.println("Ignored unrecognized frame while a scan is pending.");
     return;
@@ -246,18 +237,18 @@ void InventatoryScanApp::returnToReady() {
 
 void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
   noteUserActivity();
-  // While the low-battery warning is up only the power-off hold is honoured.
+  // Low-battery warning: only the power-off hold is honoured.
   if (lowBatteryWarning_ && event.type != InventatoryKeyEventType::PowerOff) return;
-  // A countdown warning is dismissed by a key press, and that press does nothing else. A D hold or a
-  // reset hold is used up the same way. '*' and the update gesture still act, and they dismiss it too.
+  // A key press dismisses a countdown warning. Short presses, D holds and # holds are used up;
+  // '*' and the update gesture still act.
   if (energyWarningShown()) {
     const bool used = isShortKeyPress(event.type) || event.type == InventatoryKeyEventType::PowerToggle ||
                       event.type == InventatoryKeyEventType::ProvisioningReset;
     dismissEnergyWarning();
     if (used) return;
   }
-  // A short press wakes a device that slept on its energy saving timer, and that press does nothing else.
-  // An update request runs inside standby, so its cancel and upload keep their own handling.
+  // A short press wakes a device asleep on its energy saving timer, and does nothing else.
+  // Update requests run in standby, so their cancel and upload keep their own handling.
   if (energyPhase_ == EnergyPhase::Asleep && powerMode_ == PowerMode::Standby && !otaRequested_ && !otaActive_ &&
       isShortKeyPress(event.type)) {
     Serial.println("Woke from energy saving sleep.");
@@ -273,9 +264,8 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       reprovisionFromHold_ = true;
       display_.showResetConfirm();
       return;
-    // The power-off hold is honoured during setup too (AGENTS.md section 9). Setup has no network
-    // work to pause, and deep sleep ends BLE pairing. One second of hold opens the countdown, a release
-    // or a D or # press cancels it, and the commit at four seconds powers off.
+    // The power-off hold also works in setup (AGENTS.md section 9): deep sleep ends BLE pairing.
+    // One second opens the countdown; release, D or # cancels it; four seconds powers off.
     case InventatoryKeyEventType::PowerOffWarning:
       if (state_ == State::Idle && !updating) startPowerOffWarning();
       return;
@@ -289,8 +279,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       break;
   }
   if (setupMode_) {
-    // A keypress on the device is the physical confirmation that re-opens
-    // BLE pairing after a lockout or an expired advertising window.
+    // A key press is the physical confirmation that re-opens BLE pairing after a lockout.
     if (provisioning_.locked() && event.type == InventatoryKeyEventType::Add) provisioning_.rearm();
     return;
   }
@@ -341,7 +330,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
         Serial.print("Quantity: ");
         Serial.println(quantity_.displayText().c_str());
       } else if ((state_ == State::Idle || state_ == State::Menu) && display_.hasProblem()) {
-        // A short # explains the problem on show, from the main screen or the menu, when there is one.
+        // Short #: explain the problem on show, from the main screen or the menu.
         faultDetailReturn_ = state_;
         state_ = State::FaultDetail;
         display_.showFaultDetail();
@@ -424,7 +413,7 @@ void InventatoryScanApp::handleDigit(char digit) {
       Serial.println(quantity_.displayText().c_str());
       return;
     default:
-      // Every other screen takes no digits, so they must not fall through into quantity entry.
+      // Other screens take no digits and must not fall into quantity entry.
       return;
   }
 }
@@ -445,7 +434,7 @@ void InventatoryScanApp::handleCancel() {
       openMenu();
       return;
     case State::FaultDetail:
-      // The fault details return to the screen they were opened from.
+      // Return to the screen the fault details were opened from.
       if (faultDetailReturn_ == State::Menu) {
         openMenu();
       } else {
@@ -600,8 +589,8 @@ void InventatoryScanApp::submitCurrent(char action) {
   waitForInventoryResult(eventId);
 }
 
-// Shows that a scan was refused. Nothing is queued and no part is added, and the scanner stays ready for the next scan.
-// The screen gives the short reason; the serial log gives the detail.
+// Nothing is queued or added, and the scanner stays ready. The screen shows the short reason;
+// the serial log shows the detail.
 void InventatoryScanApp::showScanRefusal(const char* screenMessage, const char* logMessage) {
   display_.showLocalFailure(localFailure("scan-refused", kScanRejectedCode, screenMessage));
   Serial.println(logMessage);

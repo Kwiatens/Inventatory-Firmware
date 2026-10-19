@@ -1,21 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Power off with the '*' key. Holding '*' alone for a second shows a three-second countdown; holding
-// on to its end sinks the mark behind the glass, and deep sleep stops the chip and the radios.
-// Releasing '*' before the end cancels. The same key wakes the chip, and the wake restarts the
-// firmware through setup().
-//
-// The battery is read here too: a low cell gets a warning and a shutdown, a critical one shuts
-// down at once, and a low cell at boot is refused.
-//
-// Energy saving sleeps the device after an idle time and turns it off after a further time asleep.
-// Each step is preceded by a countdown on screen, so the scanner never switches off without warning.
-//
-// Dock mode turns the device off shortly after the charger is plugged in. Off here means the standby: the
-// screen is dark and the scanner and network are paused, but the chip stays awake and polls the charger input,
-// so taking the charger off brings the device back at once. A deep sleep cannot do that with the current
-// divider, because the charger pins read about 2.2 V, which a digital wake reads as low.
+// Power off on '*' hold (countdown at 1 s, deep sleep at 4 s), energy saving, dock mode and
+// battery shutdowns. Only '*' wakes from deep sleep. Dock standby stays awake and polls the charger,
+// because the charger pins cannot wake a deep sleep with the current divider.
 
 #include "app/inventatory_scan_app.h"
 #include "InventatoryScanUiPolicy.h"
@@ -27,41 +15,36 @@ namespace inventatory_scan {
 
 namespace {
 
-// A '*' still held this long after the commit cancels power off instead of waiting indefinitely.
+// A '*' still held this long after the commit cancels power off.
 constexpr unsigned long kPowerOffReleaseTimeoutMs = 5000UL;
-// One battery reading per second, so the tracker's trip counters count seconds.
+// One reading per second, so the tracker's trip counters count seconds.
 constexpr unsigned long kBatterySampleIntervalMs = 1000UL;
-// The gauge state is written to NVS when the shown percent has moved this far, when a charge
-// completes, and at least this often on battery.
+// Gauge saved to NVS on this percent move, on charge completion, and this often on battery.
 constexpr int kBatterySaveStepPercent = 5;
 constexpr unsigned long kBatterySaveIntervalMs = 900000UL;
-// Time the low-battery warning gives the user to dock the scanner before it powers off.
+// Time to dock before a low-battery warning powers off.
 constexpr unsigned long kLowBatteryShutdownMs = 60000UL;
-// How long a boot refusal or a critical shutdown notice stays up before the chip sleeps.
+// How long a boot refusal or critical notice stays up before sleep.
 constexpr unsigned long kBatteryNoticeMs = 4000UL;
-// How long the card stays up after the dock is connected or removed.
+// How long the dock card stays up.
 constexpr unsigned long kBatteryCardMs = 2500UL;
-// With dock mode on, the device turns off this long after the charger starts charging it. The charging
-// card shows first.
+// Dock mode: standby this long after the charger is plugged in. The charge card shows first.
 constexpr unsigned long kDockPowerOffDelayMs = 5000UL;
-// How often the battery and charger input status line is written to the serial log.
+// Serial status-line interval.
 constexpr unsigned long kBatteryLogIntervalMs = 10000UL;
-// How often the charger LED and charger input are sampled. A removal is seen within this time, even in
-// dock mode's standby, where the battery is not read.
+// Charger sample interval. A removal is seen within this time, even in dock standby.
 constexpr unsigned long kChargerSampleIntervalMs = 100UL;
 
 }  // namespace
 
-// Power off into deep sleep. Only '*' wakes the device from it: the charger pins cannot wake a deep sleep with
-// the current divider.
+// Deep sleep. Only '*' wakes the device: the charger pins cannot wake it with the current divider.
 void InventatoryScanApp::enterPowerOff() {
   const bool fromStandby = powerMode_ == PowerMode::Standby;
   Serial.println("Power off requested.");
   powerOffWarning_ = false;
   display_.clearOverlay();
-  // Standby has already paused the network worker and suspended the scanner. A worker still in a
-  // blocking HTTP or mDNS call does not cancel power off: deep sleep stops it, and a queued event is
-  // already durable in NVS, so a sync cut short is the same as a power cut.
+  // A worker still in a blocking HTTP or mDNS call does not stop power off: deep sleep ends it, and
+  // queued events are already durable, so a cut-short sync is like a power cut.
   if (!fromStandby && !pauseNetworkForSetupTransition()) {
     Serial.println("Network worker is busy; powering off without waiting for it.");
   }
@@ -69,7 +52,7 @@ void InventatoryScanApp::enterPowerOff() {
   // The sink runs at once, even while '*' is still held: the chip sleeps only after the release.
   display_.playPowerOffSink();
 
-  // Puts the screen back as it was when the power-off was cancelled.
+  // Restores the screen after a cancelled power-off.
   const auto restoreScreen = [&]() {
     if (fromStandby) {
       display_.setStandby(true);
@@ -103,16 +86,15 @@ void InventatoryScanApp::enterPowerOff() {
   }
   display_.setStandby(true);
   backlight_.setLit(false);
-  // The chip's sleep does not cut the scanner's power, so the module is put to sleep first.
+  // Chip sleep does not cut scanner power, so the module sleeps first.
   scanner_.deepSleep();
   Serial.println("Powered off. Press * to wake.");
   saveBatteryState();
   esp_deep_sleep_start();
 }
 
-// The countdown starts once '*' has been held for a second. Like the low-battery warning, it takes
-// the panel out of standby, so the countdown is always visible while it runs. The display drains the
-// bar itself from here, one pixel at a time, until the commit or a release.
+// Starts after '*' is held for a second. Like the low-battery warning, it leaves standby
+// so the countdown stays visible.
 void InventatoryScanApp::startPowerOffWarning() {
   dismissEnergyWarning();
   if (powerMode_ == PowerMode::Standby) exitStandby();
@@ -122,7 +104,7 @@ void InventatoryScanApp::startPowerOffWarning() {
   display_.showPowerWarning();
 }
 
-// A cancel does nothing unless the countdown is on screen, so it never clears the low-battery overlay.
+// Does nothing unless the countdown is on screen, so it never clears the low-battery overlay.
 void InventatoryScanApp::cancelPowerOffWarning() {
   if (!powerOffWarning_) return;
   Serial.println("Power off cancelled: * released.");
@@ -142,14 +124,13 @@ String InventatoryScanApp::batteryEstimateText() const {
   return String(text);
 }
 
-// The card is for the Ready screen only: it must not cover a quantity being typed, a menu or a warning.
+// Ready screen only: the card must not cover a quantity, menu or warning.
 bool InventatoryScanApp::canShowBatteryCard() const {
   return !setupMode_ && powerMode_ == PowerMode::Normal && state_ == State::Idle && !otaRequested_ &&
          !otaActive_ && !lowBatteryWarning_ && !powerOffWarning_;
 }
 
-// The current the firmware draws now, in milliamps. A placeholder model of its states until the
-// bench measurements are in (battery plan, phase 0).
+// Estimated mA by firmware state. Placeholder until bench measurements (battery plan, phase 0).
 uint32_t InventatoryScanApp::batteryLoadMilliamps() const {
   if (powerMode_ == PowerMode::Standby) return kBatteryLoadStandbyMa;
   uint32_t milliamps = kBatteryLoadBaseMa + kBatteryLoadScannerMa;
@@ -158,8 +139,7 @@ uint32_t InventatoryScanApp::batteryLoadMilliamps() const {
   return milliamps;
 }
 
-// Writes the gauge state to NVS so the next boot resumes from it. Nothing is written before the
-// first reading.
+// Writes the gauge state to NVS for the next boot. Nothing is written before the first reading.
 void InventatoryScanApp::saveBatteryState() {
   if (!batteryTracker_.started()) return;
   batteryStore_.save(batteryTracker_.state());
@@ -167,8 +147,8 @@ void InventatoryScanApp::saveBatteryState() {
   lastBatterySaveAt_ = millis();
 }
 
-// Saves when the shown percent has moved, when a charge completes, and every kBatterySaveIntervalMs
-// on battery. Few writes keep the NVS partition healthy.
+// Saves on a percent move, on charge completion, and every kBatterySaveIntervalMs on battery.
+// Few writes keep NVS healthy.
 void InventatoryScanApp::saveBatteryStateIfDue(unsigned long now) {
   const int percent = batteryTracker_.percent();
   if (percent < 0) return;
@@ -195,7 +175,7 @@ void InventatoryScanApp::serviceBattery() {
   display_.setBatteryStatus(percent, docked, chargeDone, estimate);
   saveBatteryStateIfDue(now);
 
-  // The status line for the bench check: the cell voltage, the two charger midpoints and their states.
+  // Status line for bench checks: cell voltage and both charger midpoints.
   if (lastBatteryLogAt_ == 0 || now - lastBatteryLogAt_ >= kBatteryLogIntervalMs) {
     lastBatteryLogAt_ = now;
     Serial.printf("Battery %lu mV, charger input %lu mV (%s), LED %lu mV (%s).\r\n",
@@ -229,8 +209,8 @@ void InventatoryScanApp::serviceBattery() {
   }
 }
 
-// Samples the charger's two signals every kChargerSampleIntervalMs, with hysteresis, and acts on the plug-in
-// and removal edges. It runs in every loop, so a removal is seen within that interval even in dock standby.
+// Samples both charger signals every kChargerSampleIntervalMs, with hysteresis, and acts on
+// plug-in and removal edges.
 void InventatoryScanApp::serviceChargerInput(unsigned long now) {
   if (now - lastChargerSampleAt_ >= kChargerSampleIntervalMs) {
     lastChargerSampleAt_ = now;
@@ -240,13 +220,13 @@ void InventatoryScanApp::serviceChargerInput(unsigned long now) {
     if (!chargerPlugged_ && lastChargerPlugged_) onUnplugged();
     lastChargerPlugged_ = chargerPlugged_;
   }
-  // Dock standby ends when the device is woken some other way, for example by holding D.
+  // Dock standby ends if the device is woken another way, e.g. by holding D.
   if (dockStandby_ && powerMode_ != PowerMode::Standby) dockStandby_ = false;
   serviceDockPowerOff(now);
 }
 
-// The charger was plugged in. A device on energy saving standby wakes for it. With dock mode on, the device
-// goes to standby after kDockPowerOffDelayMs, so the charging card shows first.
+// Plug-in wakes a standby device. With dock mode on, standby follows after kDockPowerOffDelayMs,
+// so the card shows first.
 void InventatoryScanApp::onPlugged(unsigned long now) {
   Serial.println("Charger input plugged in.");
   if (powerMode_ == PowerMode::Standby) exitStandby();
@@ -256,8 +236,7 @@ void InventatoryScanApp::onPlugged(unsigned long now) {
   dockPowerOffAt_ = now + kDockPowerOffDelayMs;
 }
 
-// The charger was taken off. Dock standby ends at once, and the device comes back on. A standby that was
-// scheduled and not yet started is dropped.
+// Charger removed: dock standby ends at once. A scheduled but not yet started standby is dropped.
 void InventatoryScanApp::onUnplugged() {
   Serial.println("Charger input unplugged.");
   dockPowerOffPending_ = false;
@@ -266,8 +245,7 @@ void InventatoryScanApp::onUnplugged() {
   exitStandby();
 }
 
-// Dock mode's standby. It starts once the charge card has shown, and only if the device is idle and still on
-// the charger. Otherwise the device stays on.
+// Starts dock standby once the charge card has shown, if still idle and on the charger.
 void InventatoryScanApp::serviceDockPowerOff(unsigned long now) {
   if (!dockPowerOffPending_ || static_cast<long>(now - dockPowerOffAt_) < 0) return;
   dockPowerOffPending_ = false;
@@ -281,7 +259,7 @@ void InventatoryScanApp::serviceDockPowerOff(unsigned long now) {
 
 void InventatoryScanApp::startLowBatteryWarning() {
   Serial.printf("Battery low: dock the scanner, or it powers off in %lu s.\r\n", kLowBatteryShutdownMs / 1000UL);
-  // The low-battery overlay replaces any power-off countdown on screen, so that countdown ends here.
+  // The low-battery overlay replaces a power-off countdown, which ends here.
   powerOffWarning_ = false;
   dismissEnergyWarning();
   if (powerMode_ == PowerMode::Standby) exitStandby();
@@ -320,8 +298,7 @@ void InventatoryScanApp::powerOffForBattery() {
   enterPowerOff();
 }
 
-// Shows a message on its own screen for a moment, then powers off. Used when the
-// battery cannot run the device, so the user learns why it went dark.
+// Shows a notice for a moment, then powers off, so the user learns why the device went dark.
 void InventatoryScanApp::powerOffWithNotice(const String& title, const String& detail) {
   if (powerMode_ == PowerMode::Standby) exitStandby();
   noteUserActivity();
@@ -334,16 +311,14 @@ void InventatoryScanApp::powerOffWithNotice(const String& title, const String& d
   powerOffForBattery();
 }
 
-// Energy saving. Idle time on the Ready screen sleeps the device (standby): the screen goes dark, sync
-// pauses and the scanner switches off. Asleep for the set time, it turns off (deep sleep). A countdown
-// on screen comes before each step, and a key press or a scan cancels it. energyNextAction() decides
-// the step from the phase and the time left; this code carries the step out.
+// Energy saving: idle time on Ready sleeps the device (standby). After the set time asleep it
+// powers off (deep sleep). A countdown precedes each step; a key or scan cancels it.
 void InventatoryScanApp::serviceEnergySaving() {
   const unsigned long now = millis();
   EnergyInputs in;
   in.enabled = energySavingOn_;
   in.powerOffSet = powerOffEnabled(powerOffDelay_);
-  // On the charger the device stays awake, so energy saving never sleeps it. Dock mode turns it off instead.
+  // On the charger energy saving never sleeps the device; dock mode puts it in standby instead.
   in.idleReady = powerMode_ == PowerMode::Normal && state_ == State::Idle && !setupMode_ &&
                  !lowBatteryWarning_ && !powerOffWarning_ && !display_.errorVisible() && !chargerPlugged_;
   in.updating = otaRequested_ || otaActive_;
@@ -386,8 +361,7 @@ void InventatoryScanApp::enterEnergySleep() {
   sleepStartedAt_ = millis();
 }
 
-// The power-off countdown wakes the panel, scanner and network first, so the device is awake when it
-// turns off and the warning can be seen.
+// Wakes the panel, scanner and network first, so the warning can be seen before power off.
 void InventatoryScanApp::startEnergyOffWarning() {
   Serial.println("Energy saving: power off countdown started; a key keeps the device on.");
   exitStandby();
@@ -395,7 +369,7 @@ void InventatoryScanApp::startEnergyOffWarning() {
   energyShownSeconds_ = -1;
 }
 
-// The countdown is drawn in whole seconds. It is redrawn only when the count changes, not on every loop.
+// Redrawn only when the whole-second count changes.
 void InventatoryScanApp::updateEnergyWarning(unsigned long now) {
   const bool sleeping = energyPhase_ == EnergyPhase::SleepWarning;
   const uint32_t remainingMs =

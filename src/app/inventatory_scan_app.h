@@ -177,46 +177,44 @@ class InventatoryScanApp {
   BatteryStateStore batteryStore_;
   Backlight backlight_;
   BacklightMode backlightMode_ = BacklightMode::On;
-  // Energy saving: off by default. The delays apply only while it is on.
+  // Off by default. The delays apply only while on.
   bool energySavingOn_ = false;
-  // Dock mode: the device goes to standby shortly after the charger is plugged in, and taking the charger off
-  // brings it back. Its own switch, so it works with energy saving off too.
+  // Dock mode: standby shortly after the charger is plugged in, and back on when it is removed.
+  // It has its own switch, so it works without energy saving.
   bool dockMode_ = false;
-  // The standby that dock mode has scheduled, and when it is due.
+  // Dock-mode standby that is scheduled, and when it is due.
   bool dockPowerOffPending_ = false;
   unsigned long dockPowerOffAt_ = 0;
   SleepDelay sleepDelay_ = SleepDelay::Min5;
   PowerOffDelay powerOffDelay_ = PowerOffDelay::Min30;
   EnergyPhase energyPhase_ = EnergyPhase::Awake;
-  // When the device went to sleep. The power-off countdown runs from here.
+  // Sleep start; the power-off countdown runs from here.
   unsigned long sleepStartedAt_ = 0;
-  // Whole seconds last shown on a warning, so the screen is redrawn only when the count changes.
+  // Seconds last shown on a warning; redraw only when the count changes.
   int energyShownSeconds_ = -1;
   bool batterySampled_ = false;
   unsigned long lastBatterySampleAt_ = 0;
-  // When the gauge state was last written to NVS, and the percent it held then.
+  // Last NVS save of the gauge state, and the percent saved.
   unsigned long lastBatterySaveAt_ = 0;
   int batterySavedPercent_ = -1;
-  // On the charger (charging or charged) at the last battery sample. It shows the dock card on a change.
+  // On the charger at the last sample; a change shows the dock card.
   bool lastCharging_ = false;
-  // Charged at the last battery sample.
   bool lastChargeDone_ = false;
-  // The charger's LED signal is lit (charging), with hysteresis, from hardware::kChargingLedPin.
+  // Charger LED signal (charging), with hysteresis.
   bool chargerLedLit_ = false;
-  // The charger input is plugged in, with hysteresis, from hardware::kConnectorSensePin. Read every
-  // kChargerSampleIntervalMs, so a removal is seen within that time.
+  // Charger plugged in, with hysteresis. Sampled every kChargerSampleIntervalMs.
   bool chargerPlugged_ = false;
   bool lastChargerPlugged_ = false;
   unsigned long lastChargerSampleAt_ = 0;
-  // Dock mode's standby: the device is off because it is on the charger. Taking the charger off ends it.
+  // Standby from dock mode. Removing the charger ends it.
   bool dockStandby_ = false;
-  // When the battery and charger status line was last written to the serial log.
+  // Last serial log line of battery and charger status.
   unsigned long lastBatteryLogAt_ = 0;
-  // Latched when the low-battery warning appears; it clears only when the dock connects.
+  // Latched; clears only when the dock connects.
   bool lowBatteryWarning_ = false;
   unsigned long lowBatteryWarningAt_ = 0;
   int lowBatteryShownSeconds_ = -1;
-  // The soft power-off countdown, from the '*' warning until the commit or a release.
+  // Soft power-off countdown, from the '*' warning to commit or release.
   bool powerOffWarning_ = false;
   // Any key or scan keeps the backlight lit in the Auto modes.
   unsigned long lastUserActivityAt_ = 0;
@@ -224,7 +222,7 @@ class InventatoryScanApp {
   InventatoryClientConfig clientConfig_;
   QuantityComposer quantity_;
   String scannedCode_;
-  // The main code of a vendor bag, sent as the event code. Empty when the scan is not a vendor bag.
+  // Vendor bag main code, sent as the event code. Empty when not a vendor bag.
   String scannedEventCode_;
   String scannedManufacturer_;
   String scannedManufacturerPartNumber_;
@@ -237,19 +235,18 @@ class InventatoryScanApp {
   std::atomic<PowerMode> powerMode_{PowerMode::Normal};
   std::atomic_bool wifiStarted_{false};
   std::atomic_bool wifiConnectedReported_{false};
-  // True when the re-pair confirmation was opened by holding # (C returns to Ready).
+  // Re-pair confirmation opened by holding #; C returns to Ready.
   bool reprovisionFromHold_ = false;
   bool otaRequested_ = false;
   bool otaActive_ = false;
-  // Set by the ArduinoOTA error callback. The listener is stopped from serviceOta(), never from
-  // inside the callback, so an update that failed does not leave the listener bound.
+  // Set by the ArduinoOTA error callback. serviceOta() stops the listener, never the callback,
+  // so a failed update does not leave it bound.
   bool otaEndPending_ = false;
-  // OTA must not wait forever: giving up (timeout or C) restores normal operation
-  // until an uploader actually starts sending.
+  // The OTA wait ends on timeout or C, and normal operation resumes until an uploader starts.
   unsigned long otaRequestedAt_ = 0;
   bool otaUploadStarted_ = false;
-  // Last percentage shown on the update screen; ArduinoOTA reports progress
-  // per received chunk, far more often than the percentage changes.
+  // Last percent drawn. ArduinoOTA reports progress per chunk, far more often than
+  // the percent changes.
   int otaDisplayedPercent_ = -1;
   std::atomic_bool pcOnline_{false};
   bool syncInFlight_ = false;
@@ -265,7 +262,7 @@ class InventatoryScanApp {
   std::atomic_bool networkPowerOffRequested_{false};
   std::atomic<TaskHandle_t> networkTask_{nullptr};
   std::atomic_bool networkTaskStartReleased_{false};
-  // Read by Core 1 at any time, so it is atomic. Once created it is never freed while the app runs.
+  // Read by Core 1 at any time, so atomic. Never freed while the app runs.
   std::atomic<SemaphoreHandle_t> networkMutex_{nullptr};
   bool syncJobPending_ = false;
   String syncJobRequestId_;
@@ -285,12 +282,10 @@ class InventatoryScanApp {
   std::atomic_ulong lastReconnectAttempt_{0};
   // Written by Core 0 (reconnect) and Core 1 (sync and result handling).
   std::atomic_ulong lastSyncAttempt_{0};
-  // Random per boot so request ids that embed a restarting sequence number
-  // (quick-label prints) cannot repeat across reboots.
+  // Random per boot, so request ids that embed a sequence (quick-label prints) do not repeat.
   uint32_t bootNonce_ = 0;
-  // When the current quick-label print request was first issued; transient
-  // failures retry the same request id (the desktop answers repeats from its
-  // cache) until this window passes.
+  // When the current quick-label print was first issued. Transient failures retry the same request
+  // id, which the desktop answers from its cache, until this window passes.
   unsigned long pendingQuickLabelPrintStartedAt_ = 0;
   uint32_t syncSequence_ = 1;
   uint32_t lookupSequence_ = 1;

@@ -22,7 +22,7 @@ constexpr std::size_t kQuickLabelPresetTextLimit = 24;
 
 struct QuickLabelPrintRequest {
   String requestId;
-  uint8_t presetIndex = 0;  // One-based index in the ordered PC preset list.
+  uint8_t presetIndex = 0;  // One-based index into the PC's preset list.
   uint32_t revision = 0;
 };
 
@@ -338,8 +338,7 @@ class SyncJsonParser {
     while (position < input_.length()) {
       const std::size_t keyStart = position;
       if (!parseString(position, nullptr)) return false;
-      // A repeated name is refused whether or not its value is read, so a document is
-      // never accepted or refused depending on which fields the parser happens to look at.
+      // Repeated names are refused even when unread, so the result never depends on fields read.
       if (keyRepeatsEarlierMember(objectStart, keyStart, position)) return false;
       skipWhitespace(position);
       if (position >= input_.length() || input_[position++] != ':') return false;
@@ -359,8 +358,8 @@ class SyncJsonParser {
     return false;
   }
 
-  // Returns the position just past a value that has already been validated. It only
-  // tracks strings and brackets, so checking names stays linear in the body size.
+  // Position past an already validated value. Tracks only strings and brackets, so name
+  // checks stay linear.
   std::size_t skipValidatedValue(std::size_t position) const {
     unsigned nesting = 0;
     bool inString = false;
@@ -392,10 +391,7 @@ class SyncJsonParser {
     return position;
   }
 
-  // True when an earlier member of the same object has the same name, compared after escapes are
-  // decoded, so "resultId" repeats "resultId". Earlier members are already validated.
-  // True when an earlier member of the same object has the same name. Plain names are compared as they
-  // are written, which is the same as comparing them decoded. A name with an escape is decoded, so
+  // True when an earlier member has the same name after escape decoding, so
   // "\u0072esultId" repeats "resultId". Earlier members are already validated.
   bool keyRepeatsEarlierMember(std::size_t objectStart, std::size_t keyStart, std::size_t keyEnd) const {
     const bool keyEscaped = hasEscape(keyStart, keyEnd);
@@ -430,7 +426,7 @@ class SyncJsonParser {
     return false;
   }
 
-  // True when the raw bytes between keyStart and keyEnd contain a backslash, that is, an escape.
+  // True when the raw key bytes contain a backslash escape.
   bool hasEscape(std::size_t start, std::size_t end) const {
     for (std::size_t index = start; index < end; ++index) {
       if (input_[index] == '\\') return true;
@@ -503,9 +499,7 @@ class SyncJsonParser {
           } else if (codePoint >= 0xDC00U && codePoint <= 0xDFFFU) {
             return false;
           }
-          // A NUL escape is rejected whether or not the value is read, so the same
-          // document is never accepted by one path and refused by another. The desktop
-          // parser rejects it too.
+          // NUL escapes are refused even when unread, matching the desktop parser.
           if (codePoint == 0) return false;
           if (decoded != nullptr && !appendCodePoint(*decoded, codePoint)) return false;
           break;
@@ -689,8 +683,7 @@ inline bool parseSyncResult(const SyncJsonParser& parser, const JsonValueView& o
          isInventoryResultStatus(result.status);
 }
 
-// An optional member serialised as JSON null is treated exactly as absent. Any other
-// present kind is still passed to the caller's kind check and rejected there.
+// A null optional member counts as absent. Other kinds still reach the caller's kind check.
 inline bool isPresentOptionalMember(const JsonValueView& member, bool found) {
   return found && member.kind != JsonValueKind::Null;
 }

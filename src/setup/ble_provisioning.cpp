@@ -23,23 +23,21 @@ namespace {
 constexpr char kServiceUuid[] = "d4d4f5b0-4c21-4a7e-a1a1-4b0db2d00001";
 constexpr char kStatusUuid[] = "d4d4f5b0-4c21-4a7e-a1a1-4b0db2d00002";
 constexpr char kRequestUuid[] = "d4d4f5b0-4c21-4a7e-a1a1-4b0db2d00003";
-// A failed passkey attempt can leak information about a reused passkey, so the
-// passkey changes after every attempt and repeated failures lock pairing until
-// someone presses a key on the device.
+// The passkey changes after every attempt, since a reused passkey can leak information.
+// Repeated failures lock pairing until a device keypress.
 constexpr uint8_t kMaxFailedPairingAttempts = 3;
 constexpr unsigned long kAdvertisingWindowMs = 5UL * 60UL * 1000UL;
 
 class ServerCallbacks final : public BLEServerCallbacks {
  public:
   explicit ServerCallbacks(BleProvisioning& owner) : owner_(owner) {}
-  // Connection events carry no secrets; logging them shows where a pairing attempt ends.
+  // Logs carry no secrets; they show where a pairing attempt ends.
   void onConnect(BLEServer*, esp_ble_gatts_cb_param_t*) override { Serial.println("BLE: client connected"); }
   void onDisconnect(BLEServer*, esp_ble_gatts_cb_param_t* param) override {
     Serial.printf("BLE: client disconnected, reason 0x%02x\r\n", static_cast<unsigned>(param->disconnect.reason));
   }
   void onDisconnect(BLEServer*) override {
-    // Only records the event. service() restarts advertising from Core 1, so the BLE callback never
-    // touches the server.
+    // Only records the event; service() restarts advertising from Core 1.
     owner_.onClientDisconnected();
   }
  private:
@@ -79,8 +77,7 @@ class RequestCallbacks final : public BLECharacteristicCallbacks {
 
 bool BleProvisioning::begin(const String& deviceId) {
   if (active_) return true;
-  // A second start in the same boot would run on a released stack and add the setup UUID to the
-  // advertisement a second time. The caller reports the failure and the device restarts instead.
+  // A second start in one boot would run on a released stack and duplicate the advertised UUID.
   if (startedOnce_) return false;
   startedOnce_ = true;
   if (requestMutex_ == nullptr) requestMutex_ = xSemaphoreCreateMutex();
@@ -93,8 +90,7 @@ bool BleProvisioning::begin(const String& deviceId) {
   const auto suffix = deviceId.length() > 4 ? deviceId.substring(deviceId.length() - 4) : deviceId;
   const String advertisedName = String("Inventatory Setup ") + suffix;
   BLEDevice::init(advertisedName.c_str());
-  // Forget peers bonded in earlier setup sessions; a bond would let them
-  // reconnect without the passkey shown on this screen.
+  // Drop earlier bonds: a bonded peer could reconnect without the passkey on screen.
   {
     int bondCount = esp_ble_get_bond_device_num();
     if (bondCount > 0) {
@@ -107,14 +103,11 @@ bool BleProvisioning::begin(const String& deviceId) {
       }
     }
   }
-  // The provisioning payload contains the SSID, password, and a 32-byte token
-  // (sent as 64 hex characters). Negotiate enough ATT payload space to keep it
-  // a single write and avoid ambiguous prepared-write completion on desktop BLE
-  // stacks.
+  // Raise the MTU so the request (SSID, password, token) fits one write, avoiding ambiguous
+  // prepared-write completion on desktop BLE stacks.
   BLEDevice::setMTU(247);
   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
-  // The stack keeps these pointers, so they live as long as the firmware. A new set per setup
-  // session would only leak.
+  // The stack keeps these pointers, so they are static; a new set per session would only leak.
   static SecurityCallbacks securityCallbacks(*this);
   static ServerCallbacks serverCallbacks(*this);
   static RequestCallbacks requestCallbacks(*this);
@@ -141,11 +134,8 @@ bool BleProvisioning::begin(const String& deviceId) {
   request_->setCallbacks(&requestCallbacks);
   service->start();
   server_->getAdvertising()->addServiceUUID(kServiceUuid);
-  // The advertisement carries flags and the setup service UUID (21 of 31 bytes).
-  // The library's default scan response repeats that UUID next to the name and
-  // TX power, which overflows the 31-byte limit and makes Bluedroid write only
-  // part of it ("Partial data write into ADV"). The scan response therefore
-  // carries only the name.
+  // The advertisement holds flags and the service UUID (21 of 31 bytes). The default scan response
+  // would repeat the UUID and overflow 31 bytes, so the scan response carries only the name.
   BLEAdvertisementData scanResponse;
   scanResponse.setName(advertisedName.c_str());
   server_->getAdvertising()->setScanResponseData(scanResponse);
@@ -161,7 +151,7 @@ void BleProvisioning::end() {
   if (!active_) return;
   active_ = false;
   BLEDevice::stopAdvertising();
-  // deinit(true) releases the Bluetooth memory. begin() never runs again in this boot (see startedOnce_).
+  // deinit(true) frees Bluetooth memory; begin() does not run again this boot (see startedOnce_).
   BLEDevice::deinit(true);
   server_ = nullptr;
   security_ = nullptr;
@@ -180,9 +170,8 @@ void BleProvisioning::end() {
 void BleProvisioning::rotatePasskey() {
   if (security_ == nullptr) return;
   pairingCode_ = 100000UL + (esp_random() % 900000UL);
-  // Update only the passkey. BLESecurity::setStaticPIN() would also reset the IO
-  // capability, key size and authentication mode (to SC without MITM), so every
-  // attempt after the first would pair with weaker settings than begin() set up.
+  // Update only the passkey: BLESecurity::setStaticPIN() would also reset the IO capability,
+  // key size and authentication mode (to SC without MITM).
   uint32_t passkey = pairingCode_.load();
   esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(passkey));
   passkeyChanged_ = true;
@@ -202,14 +191,13 @@ void BleProvisioning::service() {
   const bool disconnected = clientDisconnected_.exchange(false);
   if (locked_) return;
   if (failed || disconnected) rotatePasskey();
-  // Keep first-use setup discoverable after a failed or cancelled attempt.
+  // Keep setup discoverable after a failed or cancelled attempt.
   if (disconnected && server_ != nullptr) server_->startAdvertising();
   if (failed && ++failedAttempts_ >= kMaxFailedPairingAttempts) {
     lockOut();
     return;
   }
-  // The window only closes while nobody is connected, so a pairing in progress
-  // is never cut off.
+  // The window closes only with no client connected, so a pairing in progress is never cut off.
   if (server_ != nullptr && server_->getConnectedCount() > 0) {
     advertisingStartedAt_ = millis();
   } else if (millis() - advertisingStartedAt_ > kAdvertisingWindowMs) {
@@ -245,9 +233,7 @@ void BleProvisioning::setResult(bool success, const String& publicMessage) {
 }
 
 void BleProvisioning::handleEncryptedWrite(const std::string& value) {
-  // This runs in the BLE stack's callback context, so it only records the outcome. The
-  // status characteristic is updated from Core 1 by service(), which is the only
-  // place the stack is touched after begin().
+  // BLE callback context: only records the outcome; service() updates the status on Core 1.
   ProvisionedSettings parsed;
   if (!parseRequest(value, parsed)) {
     queueStatus("INVALID REQUEST");
@@ -264,8 +250,7 @@ void BleProvisioning::handleEncryptedWrite(const std::string& value) {
 }
 
 bool BleProvisioning::parseRequest(const std::string& value, ProvisionedSettings& settings) const {
-  // Format: version, SSID length, password length, token length, then the exact bytes.
-  // The parser is in InventatoryScanBleRequest.h, where the host suite tests it.
+  // Version, then SSID, password and token lengths, then the bytes (InventatoryScanBleRequest.h).
   return parseProvisioningRequest(reinterpret_cast<const uint8_t*>(value.data()), value.size(), settings);
 }
 

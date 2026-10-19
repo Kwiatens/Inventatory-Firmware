@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Inventatory Scan R1 firmware outbox helpers.
-
 #pragma once
 
 #include <cstddef>
@@ -10,9 +8,8 @@
 
 namespace inventatory_scan {
 
-// The persistent outbox header stores these values as one state transition.
-// Callers can prepare a successor on a copy and publish it only after the
-// corresponding NVS write succeeds.
+// Stored as one state transition: prepare the successor on a copy, and publish it only
+// after the NVS write succeeds.
 struct OutboxQueueState {
   std::size_t head = 0;
   std::size_t count = 0;
@@ -30,20 +27,14 @@ inline OutboxQueueState makeOutboxQueueState(std::size_t head, std::size_t count
   return state;
 }
 
-// A stored header is trusted only when every field is inside the layout the
-// firmware writes. Out-of-range values are corruption, so they are reported and
-// never clamped into a different queue.
+// Out-of-range header values mean corruption: report them, never clamp.
 inline bool outboxHeaderFieldsValid(std::size_t head, std::size_t count, uint32_t nextSequence,
                                     std::size_t capacity) {
   return capacity > 0 && head < capacity && count <= capacity && nextSequence != 0;
 }
 
-// A new outbox starts its event sequence at a random point, not at 1. Event
-// ids are "<device>-<sequence>", and the desktop deduplicates on that id. If the
-// queue is erased (for example by a full flash erase), a restart at 1 would reuse
-// ids the desktop already stored and silently drop the new scans. The result is
-// odd, so it is never zero, and stays below 2^31 so the sequence cannot wrap in
-// practice.
+// Random odd start below 2^31, not 1: the desktop dedups on event ids, so a restart
+// after an erase would reuse stored ids and drop new scans.
 inline uint32_t freshOutboxSequenceStart(uint32_t entropy) {
   return (entropy & 0x7FFFFFFFU) | 1U;
 }

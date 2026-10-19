@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host entry point. It runs two Unity sessions and exits non-zero if either
-// failed, so CI can gate on the result:
-//   1. setup(): the shared suite in ../test, the same file the device runs.
-//   2. runHostSuite(): host-only tests that need the NVS fault injection.
+// Host entry point: runs the shared device suite (setup()) and the host-only NVS fault
+// tests (runHostSuite()). Exits non-zero if either fails.
 #include <unity.h>
 
 #include "Preferences.h"
@@ -12,8 +10,7 @@
 void setup();
 void runHostSuite();
 
-// Unity's RUN_TEST calls these around every test. Each test starts from an
-// empty NVS, as a freshly flashed board would, so no test depends on another.
+// Each test starts from empty NVS, as on a freshly flashed board.
 extern "C" void setUp(void) { host_nvs::reset(); }
 extern "C" void tearDown(void) {}
 

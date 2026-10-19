@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// The BLE provisioning write (protocol version 1) is untrusted input from a nearby
-// central, so every malformed layout must be refused as a whole, and nothing may be
-// stored from a request that fails any check. Runs on the board and on the host.
+// The BLE write is untrusted input: refuse any malformed layout whole and store nothing.
 #include <unity.h>
 
 #include <cstring>
@@ -93,11 +91,11 @@ void test_ble_request_accepts_an_open_network_and_the_length_limits() {
 void test_ble_request_rejects_bad_lengths_and_versions() {
   ProvisionedSettings settings;
   TEST_ASSERT_FALSE(parse(makeRequest("", "pw", kToken), settings));
-  TEST_ASSERT_FALSE(parse(makeRequest(repeated('s', 33).data, "pw", kToken), settings));  // 33
+  TEST_ASSERT_FALSE(parse(makeRequest(repeated('s', 33).data, "pw", kToken), settings));
   TEST_ASSERT_FALSE(parse(makeRequest("Net", repeated('p', 64).data, kToken),
-                          settings));  // password 64
+                          settings));
   TEST_ASSERT_FALSE(parse(makeRequest("Net", "pw", "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e"),
-                          settings));  // token 63
+                          settings));
 
   Request wrongVersion = makeRequest("Net", "pw", kToken);
   wrongVersion.bytes[0] = 2;

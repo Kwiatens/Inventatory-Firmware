@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host tests for the provisioning record and the transport replay counter
-// (AGENTS.md invariant 3, transport v1 section 8). The counter is what lets the
-// desktop refuse a replayed request, so these tests check the properties that
-// matter across reboots and power loss: counters only go up, a reset may skip
-// values but never reuse one, and a missing or half-written record never looks
-// complete.
+// Host tests for the provisioning record and replay counter. Across reboots and power loss,
+// counters only go up, a reset may skip values but never reuse one, and a missing or
+// half-written record never looks complete.
 #include <unity.h>
 
 #include <cstdint>
@@ -83,8 +80,7 @@ void test_host_setup_counter_skips_but_never_reuses_after_reboot() {
   uint64_t last = 0;
   for (int index = 0; index < 100; ++index) last = reserveOne(before);
 
-  // After a reboot, the next block starts from the persisted ceiling (128), so the
-  // counters 101 to 128 are skipped. They were never sent, so skipping is safe.
+  // After reboot, counters resume past the persisted ceiling (128). Skipped values were never sent.
   host_nvs::reboot();
   SetupStateStore after;
   TEST_ASSERT_TRUE(after.begin());
@@ -98,8 +94,7 @@ void test_host_setup_counter_power_cut_hands_out_nothing() {
   SetupStateStore store;
   TEST_ASSERT_TRUE(store.begin());
 
-  // The first reservation writes a block ceiling. A power cut on that write must not
-  // hand out a counter, because the desktop could then see a value that was never recorded.
+  // A power cut on the ceiling write must not hand out a counter: it would never be recorded.
   host_nvs::faults().writesBeforePowerCut = 0;
   uint64_t counter = 999;
   TEST_ASSERT_FALSE(store.reserveTransportCounter(counter));
@@ -178,9 +173,8 @@ void test_host_setup_rejects_bad_token_and_oversized_fields() {
 }
 
 void test_host_setup_power_cut_during_save_never_looks_complete() {
-  // A save makes nine writes (eight staged, then the commit). A cut before each of
-  // them, and after the last, must leave a device that either loads the full record
-  // or stays in setup.
+  // A save makes nine writes (eight staged, then the commit). Any power cut must leave the
+  // device loading the full record or still in setup.
   for (long long cutAfter = 0; cutAfter <= 10; ++cutAfter) {
     host_nvs::reset();
     host_nvs::faults().writesBeforePowerCut = cutAfter;

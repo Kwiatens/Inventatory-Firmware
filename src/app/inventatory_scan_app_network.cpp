@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Inventatory Scan R1 application controller implementation.
-
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
@@ -62,8 +60,7 @@ void InventatoryScanApp::sendDebugMessage(const String& message, const String& l
 
 bool InventatoryScanApp::startNetworkWorker() {
   if (networkTask_.load() != nullptr) return true;
-  // The mutex is created once and kept for the life of the app. Core 1 may read the
-  // handle at any time, so the worker never frees it, not even when its own start-up fails.
+  // Core 1 may read the handle at any time, so it is kept once a worker exists.
   if (networkMutex_.load() == nullptr) {
     networkMutex_ = xSemaphoreCreateMutex();
     if (networkMutex_.load() == nullptr) {
@@ -84,7 +81,7 @@ bool InventatoryScanApp::startNetworkWorker() {
     return false;
   }
 
-  // The worker waits on this flag so an early init failure cannot race handle publication.
+  // The worker waits on this flag so an early failure cannot race handle publication.
   networkTask_ = createdTask;
   networkTaskStartReleased_ = true;
   return true;
@@ -210,7 +207,7 @@ void InventatoryScanApp::reconnectWiFiWorker() {
     if (!wifiConnectedReported_) {
       wifiConnectedReported_ = true;
       lastSyncAttempt_ = 0;
-      // Do not disclose provisioning metadata through the serial console.
+      // Keep provisioning details off the serial console.
       Serial.println("Local Wi-Fi connected");
     }
     return;
@@ -301,14 +298,11 @@ void InventatoryScanApp::processNetworkResult() {
     pcOnline_ = false;
     Serial.print("POST /api/v1/device/sync failed, status ");
     Serial.println(status);
-    // An authenticated 5xx means the desktop callback may already have
-    // performed an idempotent print operation but could not fit its response
-    // in the shared body budget. Keep the request for the next sync so the
-    // cached desktop result can be delivered without printing twice.
+    // An authenticated 5xx may mean the desktop already printed but could not fit its response in
+    // the body budget. Keep the request so the cached result is delivered without printing twice.
     const bool retryableServerFailure = sent && status >= 500 && status <= 599;
-    // A lost or late reply does not prove the desktop did not print. Repeating
-    // the same request id is safe (the desktop caches the result), so give up
-    // only after the retry window, not on the first failed exchange.
+    // A lost reply does not prove the desktop did not print. Repeating the same request id is safe
+    // (the desktop caches the result), so give up only after the retry window.
     const bool withinPrintRetryWindow =
         millis() - pendingQuickLabelPrintStartedAt_ < kQuickLabelPrintRetryWindowMs;
     if (pendingQuickLabelPrintId_.length() > 0 && !retryableServerFailure && !withinPrintRetryWindow) {
@@ -317,9 +311,8 @@ void InventatoryScanApp::processNetworkResult() {
       state_ = State::Idle;
       display_.showQuickLabelPrintResult(false, "PC OR PRINTER OFFLINE", kPrintNoReplyCode);
     }
-    // An authenticated 4xx or 5xx refuses the head event. Both count toward "Sync
-    // blocked", so a server that keeps failing on the same event is visible to the
-    // operator instead of retrying silently forever.
+    // An authenticated 4xx or 5xx refuses the head event. Both count toward "Sync blocked", so a
+    // server that keeps failing is visible to the operator, not retried silently forever.
     if (sent && status >= 400 && status <= 599) {
       DeviceEventRecord front;
       if (!outbox_.empty() && outbox_.peek(0, front) && front.eventId == lastSyncHeadEventId_) {
@@ -358,7 +351,7 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
                                quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
     }
   } else if (state_ == State::QuickLabels) {
-    // A protocol-v1 response without the optional quick-label extension means the paired desktop app is older.
+    // No quick-label extension in the response: the paired desktop is older.
     quickLabelSnapshotReceived_ = true;
     pcSupportsQuickLabels_ = false;
     display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
@@ -388,8 +381,7 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
     if (!accepted) break;
     headAccepted = true;
     if (!outbox_.pop()) {
-      // Keep the event queued when its acknowledgement could not be made
-      // durable; the next sync attempt can retry it without data loss.
+      // Keep the event queued if its acknowledgement is not durable; the next sync retries it.
       Serial.println("Outbox acknowledgement was not persisted; retaining event.");
       break;
     }
@@ -434,11 +426,9 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
   if (response.hasResult) {
     const bool relevant =
         awaitingResultEventId_.length() == 0 || response.result.eventId == awaitingResultEventId_;
-    // A result that could not be shown (a screen needing dismissal is up) is
-    // not acknowledged, so the desktop delivers it again after the dismissal.
-    // Results for other events are acknowledged and dropped as before.
-    // A menu or confirmation owns the screen: leave the result unacknowledged so
-    // the desktop delivers it again once the operator is back at the ready screen.
+    // A result that cannot be shown yet is not acknowledged, so the desktop sends it again.
+    // A menu or confirmation owns the screen until the operator is back at Ready.
+    // Other results are acknowledged.
     const bool screenBusy =
         state_ != State::Idle && state_ != State::AwaitQuantity && state_ != State::WaitingForResult;
     const bool shown = relevant ? (!screenBusy && display_.showResult(response.result)) : true;
@@ -447,8 +437,7 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
       lastSyncAttempt_ = 0;
       if (relevant) {
         awaitingResultEventId_.clear();
-        // Only the wait for this result ends here; an unrelated result must
-        // not abort a scan or menu the operator is in the middle of.
+        // Only this result's wait ends. An unrelated result must not abort a scan or menu.
         if (state_ == State::WaitingForResult) state_ = State::Idle;
       }
     }

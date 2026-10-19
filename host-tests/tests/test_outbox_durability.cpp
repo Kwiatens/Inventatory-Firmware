@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Durability tests for the offline outbox (AGENTS.md section 7). They run the
-// real OutboxStore against the NVS stand-in and inject write failures and power
-// loss at each write the store makes, then "reboot" by building a new store
-// over the same storage. A scan must never be reported as queued unless it
-// survives that reboot, and a queued event must never disappear or be
-// delivered twice because of a failed write.
+// Outbox durability tests (AGENTS.md section 7): real OutboxStore on the NVS stand-in, with
+// write failures and power cuts at each write. A scan is never reported queued unless it
+// survives a reboot, and a queued event is never lost or delivered twice.
 #include <unity.h>
 
 #include <cstddef>
@@ -111,8 +108,8 @@ void test_host_outbox_survives_reboot_in_order() {
 }
 
 void test_host_outbox_low_sequence_of_empty_queue_moves_past_stored_ids() {
-  // Firmware before the random start numbered events from 1, and the desktop keeps the event ids it has stored. An
-  // empty queue that carries such a low number moves to the fresh start, so its next event is not a stored id.
+  // Older firmware numbered events from 1 and the desktop keeps those ids. An empty queue with
+  // such a low number moves up to the given start, so new events never reuse a stored id.
   OutboxStore before;
   TEST_ASSERT_TRUE(bootOutbox(before));
   expectEnqueue(OutboxStore::EnqueueResult::Queued, adjust(before, "A1", 2));
@@ -127,7 +124,7 @@ void test_host_outbox_low_sequence_of_empty_queue_moves_past_stored_ids() {
   TEST_ASSERT_EQUAL_UINT32(0, after.size());
   TEST_ASSERT_EQUAL_UINT32(900000123U, after.nextSequence());
 
-  // The raised number is stored, so a later boot keeps it and the next event takes it.
+  // The raised number is persisted and survives a later boot.
   host_nvs::reboot();
   OutboxStore later;
   TEST_ASSERT_TRUE(later.begin(kNamespace, kDevice, 5U) && later.load());
@@ -138,7 +135,7 @@ void test_host_outbox_low_sequence_of_empty_queue_moves_past_stored_ids() {
 }
 
 void test_host_outbox_queued_scans_keep_their_sequence_at_boot() {
-  // The number is raised only when the queue is empty, so the ids of queued scans never change.
+  // Raised only when the queue is empty, so queued scans keep their ids.
   OutboxStore before;
   TEST_ASSERT_TRUE(bootOutbox(before));
   expectEnqueue(OutboxStore::EnqueueResult::Queued, adjust(before, "A1", 2));
@@ -170,7 +167,7 @@ void test_host_outbox_persists_every_event_field() {
   TEST_ASSERT_EQUAL_STRING("Texas Instruments", event.manufacturer.c_str());
   TEST_ASSERT_EQUAL_STRING("MPN123", event.manufacturerPartNumber.c_str());
   TEST_ASSERT_EQUAL_STRING("Name 1", event.encodedPartName.c_str());
-  // The event id is what the desktop uses to deduplicate, so it must not change across a reboot.
+  // The desktop deduplicates on event id, so it must survive reboot unchanged.
   TEST_ASSERT_EQUAL_STRING(created.eventId.c_str(), event.eventId.c_str());
 }
 
@@ -191,7 +188,7 @@ void test_host_outbox_truncates_fields_to_their_storage_limits() {
 void test_host_outbox_rejects_invalid_scans_before_any_write() {
   OutboxStore outbox;
   TEST_ASSERT_TRUE(bootOutbox(outbox));
-  // Every write fails, so a result other than Rejected would mean the store touched NVS first.
+  // With every write failing, any result but Rejected means NVS was touched first.
   host_nvs::faults().failWrites = true;
   expectEnqueue(OutboxStore::EnqueueResult::Rejected, adjust(outbox, "", 1));
   expectEnqueue(OutboxStore::EnqueueResult::Rejected, adjust(outbox, "   ", 1));
@@ -249,9 +246,8 @@ void test_host_outbox_header_write_failure_keeps_new_event_out() {
   TEST_ASSERT_TRUE(bootOutbox(outbox));
   expectEnqueue(OutboxStore::EnqueueResult::Queued, adjust(outbox, "A", 1));
 
-  // The slot write for "B" succeeds and the header write after it does not: the
-  // power is cut between the two. The header is the commit point, so "B" must
-  // not appear in the queue after the reboot.
+  // The slot write for B lands but the header write is cut. The header is the commit point,
+  // so B must not appear after reboot.
   host_nvs::faults().writesBeforePowerCut = 1;
   expectEnqueue(OutboxStore::EnqueueResult::StorageFailed, adjust(outbox, "B", 1));
   TEST_ASSERT_EQUAL_UINT32(1, outbox.size());
@@ -434,7 +430,7 @@ void test_host_outbox_unrecognised_legacy_blob_is_never_destroyed() {
   OutboxStore outbox;
   TEST_ASSERT_FALSE(bootOutbox(outbox));
   expectEnqueue(OutboxStore::EnqueueResult::StorageFailed, adjust(outbox, "A", 1));
-  // The blob may hold the only copy of a queue, so it is kept and no new queue is written over it.
+  // The blob may be the only copy of a queue: keep it and write no new queue over it.
   TEST_ASSERT_TRUE(storedKey("state"));
   TEST_ASSERT_FALSE(storedKey("hdr"));
 }
@@ -453,8 +449,8 @@ void test_host_outbox_truncated_header_is_never_overwritten() {
   TEST_ASSERT_EQUAL_UINT32(sizeof(damaged), prefs.getBytesLength("hdr"));
 }
 
-// Queues A, B and C, then removes the record of B while the header still counts it. Returns with the
-// device rebooted, so the queue is unreadable and no fault is armed.
+// Queues A, B, C, then removes B's record while the header still counts it. Leaves the device
+// rebooted with the queue unreadable.
 void buildDamagedQueue() {
   OutboxStore outbox;
   TEST_ASSERT_TRUE(bootOutbox(outbox));
@@ -471,8 +467,8 @@ void test_host_outbox_power_cut_during_repair_does_not_duplicate_events() {
   buildDamagedQueue();
   OutboxStore damaged;
   TEST_ASSERT_FALSE(bootOutbox(damaged));
-  // Two salvage writes succeed, then the power is cut before the header commit. The old header still
-  // points at the old slots, which repair() did not touch, so the queue is unreadable, not wrong.
+  // Power is cut before the header commit. The old header still points at untouched slots,
+  // so the queue is unreadable, not wrong.
   host_nvs::faults().writesBeforePowerCut = 2;
   std::size_t salvaged = 0;
   std::size_t dropped = 0;
@@ -494,9 +490,8 @@ void test_host_outbox_power_cut_during_repair_does_not_duplicate_events() {
 }
 
 void test_host_outbox_repair_survives_a_power_cut_at_every_write() {
-  // Cuts the power after each write that repair() makes, from the first to past the last. After the
-  // reboot the queue either still needs repair, or it holds A and C exactly once. Never a lost or a
-  // repeated event.
+  // Cuts power at each write repair() makes. After reboot the queue either needs repair or
+  // holds A and C exactly once.
   const char* const once[] = {"A", "C"};
   for (long long cutAfter = 0; cutAfter <= 40; ++cutAfter) {
     host_nvs::reset();

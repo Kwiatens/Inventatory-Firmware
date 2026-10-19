@@ -15,11 +15,9 @@ static InventatoryScanApp app;
 static bool appReady = false;
 
 #ifdef CONFIG_APP_ROLLBACK_ENABLE
-// By default the Arduino core marks a freshly updated image valid before
-// setup() runs, which defeats rollback. Overriding this weak hook keeps a new
-// OTA image in the pending-verify state until it has proven itself: a crash or
-// reset before confirmFirmwareWhenHealthy() makes the bootloader return to the
-// previous image. USB-flashed images are never pending, so they are unaffected.
+// The Arduino core marks a new image valid before setup(), defeating rollback. Overriding this
+// weak hook keeps an OTA image pending until confirmFirmwareWhenHealthy() runs; a crash before
+// then rolls back to the previous image.
 extern "C" bool verifyRollbackLater() { return true; }
 
 static constexpr unsigned long kHealthyUptimeMs = 30000UL;
@@ -44,7 +42,7 @@ void setup() {
     delay(10);
   }
 #else
-  delay(1000); // Wait for Serial to initialize
+  delay(1000);
 #endif
   Serial.printf("Reset reason: %d\r\n", static_cast<int>(esp_reset_reason()));
   appReady = app.begin();

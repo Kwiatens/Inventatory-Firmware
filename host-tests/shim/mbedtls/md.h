@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host stand-in for the mbedtls message-digest HMAC calls used by the transport
-// security code. It is backed by OpenSSL's EVP_MAC API, a reference
-// implementation that the RFC 4231 vectors in the test suite check against.
+// Host mbedtls HMAC stand-in, backed by OpenSSL EVP_MAC (checked against RFC 4231 vectors).
 #pragma once
 
 #include <openssl/core_names.h>
@@ -23,7 +21,7 @@ inline const mbedtls_md_info_t* mbedtls_md_info_from_type(int type) {
   return type == MBEDTLS_MD_SHA256 ? &sha256 : nullptr;
 }
 
-// Writes the 32-byte HMAC-SHA-256 of input under key. Returns 0 on success, as mbedtls does.
+// Writes HMAC-SHA-256 of input under key. Returns 0 on success, as mbedtls does.
 inline int mbedtls_md_hmac(const mbedtls_md_info_t* info, const unsigned char* key, std::size_t keyLength,
                            const unsigned char* input, std::size_t inputLength, unsigned char* output) {
   if (info == nullptr || info->type != MBEDTLS_MD_SHA256 || key == nullptr || output == nullptr) return -1;
