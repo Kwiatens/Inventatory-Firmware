@@ -8,6 +8,7 @@
 #endif
 
 #include "app/inventatory_scan_app.h"
+#include "log/device_log.h"
 
 using namespace inventatory_scan;
 
@@ -27,7 +28,7 @@ static void confirmFirmwareWhenHealthy() {
   if (done || millis() < kHealthyUptimeMs) return;
   done = true;
   if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
-    Serial.println("Firmware confirmed after a healthy start.");
+    deviceLog.println("Firmware confirmed after a healthy start.");
   }
 }
 #else
@@ -44,7 +45,7 @@ void setup() {
 #else
   delay(1000);
 #endif
-  Serial.printf("Reset reason: %d\r\n", static_cast<int>(esp_reset_reason()));
+  deviceLog.printf("Reset reason: %d\r\n", static_cast<int>(esp_reset_reason()));
   appReady = app.begin();
 }
 

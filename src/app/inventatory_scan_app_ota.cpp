@@ -8,6 +8,7 @@
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/version.h"
+#include "log/device_log.h"
 
 #include <ArduinoOTA.h>
 #include <WiFi.h>
@@ -21,11 +22,11 @@ constexpr unsigned long kOtaWaitTimeoutMs = 120000UL;
 
 void InventatoryScanApp::requestOtaUpdate() {
   if (otaRequested_) {
-    Serial.println("OTA update already requested.");
+    deviceLog.println("OTA update already requested.");
     return;
   }
   if (setupMode_ || provisionedSettings_.wifiSsid.length() == 0) {
-    Serial.println("OTA update ignored because setup is incomplete.");
+    deviceLog.println("OTA update ignored because setup is incomplete.");
     return;
   }
 
@@ -40,9 +41,9 @@ void InventatoryScanApp::requestOtaUpdate() {
   networkPaused_ = true;
   scanner_.flushInput();
   if (powerMode_ == PowerMode::Standby) {
-    Serial.println("Waking standby path for OTA update.");
+    deviceLog.println("Waking standby path for OTA update.");
   }
-  Serial.println("OTA update requested. Normal scanning is paused until the update finishes.");
+  deviceLog.println("OTA update requested. Normal scanning is paused until the update finishes.");
   display_.showOta("CONNECTING", 0);
   sendDebugMessage("ota requested", "warn");
 }
@@ -57,7 +58,7 @@ bool InventatoryScanApp::serviceOta() {
   }
 
   if (provisionedSettings_.wifiSsid.length() == 0) {
-    Serial.println("OTA request ignored because setup is incomplete.");
+    deviceLog.println("OTA request ignored because setup is incomplete.");
     recoverFromOtaFailure();
     return false;
   }
@@ -75,7 +76,7 @@ bool InventatoryScanApp::serviceOta() {
 
   if (!otaActive_) {
     if (!startOtaService()) {
-      Serial.println("OTA service failed to start; resuming normal operation.");
+      deviceLog.println("OTA service failed to start; resuming normal operation.");
       recoverFromOtaFailure();
       return false;
     }
@@ -91,7 +92,7 @@ bool InventatoryScanApp::ensureWiFiForOta() {
   }
 
   if (provisionedSettings_.wifiSsid.length() == 0) {
-    Serial.println("OTA request ignored because setup is incomplete.");
+    deviceLog.println("OTA request ignored because setup is incomplete.");
     otaRequested_ = false;
     otaActive_ = false;
     return false;
@@ -107,7 +108,7 @@ bool InventatoryScanApp::ensureWiFiForOta() {
   }
   lastReconnectAttempt_ = millis();
 
-  Serial.println("Connecting for OTA to saved local Wi-Fi.");
+  deviceLog.println("Connecting for OTA to saved local Wi-Fi.");
   WiFi.begin(provisionedSettings_.wifiSsid.c_str(), provisionedSettings_.wifiPassword.c_str());
   return false;
 }
@@ -119,14 +120,14 @@ bool InventatoryScanApp::startOtaService() {
   ArduinoOTA.onStart([this]() {
     otaActive_ = true;
     otaUploadStarted_ = true;
-    Serial.println("OTA start: flashing new firmware.");
+    deviceLog.println("OTA start: flashing new firmware.");
     otaDisplayedPercent_ = 0;
     display_.showOta("UPDATING", 0);
     display_.tick();
   });
   ArduinoOTA.onEnd([this]() {
-    Serial.println();
-    Serial.println("OTA complete; restarting device.");
+    deviceLog.println();
+    deviceLog.println("OTA complete; restarting device.");
     otaRequested_ = false;
     otaActive_ = false;
     display_.showOta("RESTARTING", 100);
@@ -139,7 +140,7 @@ bool InventatoryScanApp::startOtaService() {
       return;
     }
     const unsigned int percent = (progress * 100U) / total;
-    Serial.printf("OTA progress: %u%%\r", percent);
+    deviceLog.printf("OTA progress: %u%%\r", percent);
     // The upload runs inside ArduinoOTA.handle(), so loop() cannot tick the display.
     // Draw from here; tick() redraws only when the percent changed.
     if (static_cast<int>(percent) != otaDisplayedPercent_) {
@@ -149,25 +150,25 @@ bool InventatoryScanApp::startOtaService() {
     display_.tick();
   });
   ArduinoOTA.onError([this](ota_error_t error) {
-    Serial.print("OTA error: ");
+    deviceLog.print("OTA error: ");
     switch (error) {
       case OTA_AUTH_ERROR:
-        Serial.println("authentication failed");
+        deviceLog.println("authentication failed");
         break;
       case OTA_BEGIN_ERROR:
-        Serial.println("begin failed");
+        deviceLog.println("begin failed");
         break;
       case OTA_CONNECT_ERROR:
-        Serial.println("connection failed");
+        deviceLog.println("connection failed");
         break;
       case OTA_RECEIVE_ERROR:
-        Serial.println("receive failed");
+        deviceLog.println("receive failed");
         break;
       case OTA_END_ERROR:
-        Serial.println("end failed");
+        deviceLog.println("end failed");
         break;
       default:
-        Serial.println("unknown");
+        deviceLog.println("unknown");
         break;
     }
     recoverFromOtaFailure();
@@ -177,16 +178,16 @@ bool InventatoryScanApp::startOtaService() {
 
   ArduinoOTA.begin();
   otaActive_ = true;
-  Serial.print("OTA update ready for ");
-  Serial.print(clientConfig_.deviceId.c_str());
-  Serial.print(" at ");
-  Serial.println(WiFi.localIP());
+  deviceLog.print("OTA update ready for ");
+  deviceLog.print(clientConfig_.deviceId.c_str());
+  deviceLog.print(" at ");
+  deviceLog.println(WiFi.localIP());
   sendDebugMessage(String("ota ready at ") + WiFi.localIP().toString(), "warn");
   return true;
 }
 
 void InventatoryScanApp::abandonOtaWait(const char* reason, bool showFailure) {
-  Serial.println(reason);
+  deviceLog.println(reason);
   // No upload was received, so the service can be stopped here, unlike inside a callback.
   if (otaActive_) ArduinoOTA.end();
   recoverFromOtaFailure();

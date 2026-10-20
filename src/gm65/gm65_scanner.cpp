@@ -6,6 +6,7 @@
 #include "gm65/gm65_scanner.h"
 
 #include "config/config.h"
+#include "log/device_log.h"
 
 #include <cstddef>
 
@@ -141,13 +142,13 @@ void Gm65Scanner::deepSleep() {
   }
   uint8_t zone = 0;
   if (!readZoneBit(kGm65LampZone, zone)) {
-    Serial.println("GM65 lamp read not acknowledged");
+    deviceLog.println("GM65 lamp read not acknowledged");
   } else if (!writeZoneBit(kGm65LampZone, gm65SleepZoneValue(zone))) {
-    Serial.println("GM65 lamps off not acknowledged");
+    deviceLog.println("GM65 lamps off not acknowledged");
   }
   logZones("before deep sleep");
   if (!writeZoneByte(0x08, kGm65FunctionZone, kGm65DeepSleep, kZoneWriteAckTimeoutMs)) {
-    Serial.println("GM65 deep sleep not acknowledged");
+    deviceLog.println("GM65 deep sleep not acknowledged");
   }
   end();
 }
@@ -232,16 +233,16 @@ size_t Gm65Scanner::readReply(uint8_t* reply, size_t length, unsigned long timeo
 // Diagnostic: zone values as the module reports them; a missing reply shows as "none". Configuration,
 // not scan data, so safe to log.
 void Gm65Scanner::logZones(const char* label) {
-  Serial.printf("GM65 zones %s:", label);
+  deviceLog.printf("GM65 zones %s:", label);
   for (const uint16_t zone : kLoggedZones) {
     uint8_t value = 0;
     if (readZoneBit(zone, value)) {
-      Serial.printf(" %04X=%02X", static_cast<unsigned>(zone), static_cast<unsigned>(value));
+      deviceLog.printf(" %04X=%02X", static_cast<unsigned>(zone), static_cast<unsigned>(value));
     } else {
-      Serial.printf(" %04X=none", static_cast<unsigned>(zone));
+      deviceLog.printf(" %04X=none", static_cast<unsigned>(zone));
     }
   }
-  Serial.println();
+  deviceLog.println();
 }
 
 // The module restarts on a wake byte and does not answer while asleep; a lamp read probes it.
@@ -263,7 +264,7 @@ bool Gm65Scanner::wakeModule() {
     }
     uint8_t lamps = 0;
     if (readZoneBit(kGm65LampZone, lamps)) {
-      Serial.printf("GM65 awake %lu ms after %d wake command(s)\r\n", millis() - startedAt, wakes);
+      deviceLog.printf("GM65 awake %lu ms after %d wake command(s)\r\n", millis() - startedAt, wakes);
       return true;
     }
     if (millis() - startedAt > kModuleWakeWindowMs) {
@@ -271,7 +272,7 @@ bool Gm65Scanner::wakeModule() {
     }
     sendWake = millis() - wakeSentAt >= kModuleWakeResendMs;
   }
-  Serial.println("GM65 did not wake");
+  deviceLog.println("GM65 did not wake");
   return false;
 }
 
@@ -289,7 +290,7 @@ bool Gm65Scanner::applyBootProfile() {
       delay(50);
       return true;
     }
-    Serial.println("GM65 profile not acknowledged");
+    deviceLog.println("GM65 profile not acknowledged");
     delay(50);
   }
   return false;
@@ -311,12 +312,12 @@ bool Gm65Scanner::poll(String& code) {
     const auto event = frames_.feed(static_cast<uint8_t>(raw), now);
     if (event == Gm65FrameAssembler::Event::Dropped) {
       // Log only that a frame was discarded; its contents are never logged.
-      Serial.println("GM65 frame discarded: partial, corrupt or oversized");
+      deviceLog.println("GM65 frame discarded: partial, corrupt or oversized");
     }
     if (event == Gm65FrameAssembler::Event::Frame) {
       // Log only the length and terminator; contents are never logged.
       const char* terminator = raw == '\r' ? "CR" : raw == '\n' ? "LF" : "EOT";
-      Serial.printf("GM65 frame: %u bytes, ends with %s\r\n", static_cast<unsigned>(frames_.frameLength()), terminator);
+      deviceLog.printf("GM65 frame: %u bytes, ends with %s\r\n", static_cast<unsigned>(frames_.frameLength()), terminator);
       code.reserve(frames_.frameLength());
       for (std::size_t index = 0; index < frames_.frameLength(); ++index) code += frames_.frame()[index];
       return true;
@@ -324,7 +325,7 @@ bool Gm65Scanner::poll(String& code) {
   }
   // A stalled partial frame is dropped even when no further bytes arrive.
   if (frames_.expire(millis()) == Gm65FrameAssembler::Event::Dropped) {
-    Serial.println("GM65 frame discarded: partial, corrupt or oversized");
+    deviceLog.println("GM65 frame discarded: partial, corrupt or oversized");
   }
   return false;
 }
