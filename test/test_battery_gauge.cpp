@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 // Battery gauge: the percent follows the load, not the charger's raised voltage.
-// Expected values assume the 1300 mAh cell in kBatteryNominalCapacityUah.
+// Expected values assume the default 1300 mAh cell, kBatteryReferenceCapacityUah.
 
 #include <unity.h>
 
@@ -19,7 +19,7 @@ constexpr uint32_t kMvAt40 = 3770;
 constexpr uint32_t kMvAt50 = 3830;
 constexpr uint32_t kMvAt95 = 4150;
 
-uint32_t chargeAt(uint32_t percent) { return kBatteryNominalCapacityUah * percent / 100U; }
+uint32_t chargeAt(uint32_t percent) { return kBatteryReferenceCapacityUah * percent / 100U; }
 
 }  // namespace
 
@@ -262,7 +262,7 @@ void test_tracker_voltage_floor_is_critical_whatever_the_estimate() {
 void test_gauge_stored_full_charge_is_checked_at_boot() {
   // The stored 100% is replaced by the boot voltage (21%): charge lost while off is not counted.
   BatteryGaugeState stored;
-  stored.remainingUah = kBatteryNominalCapacityUah;
+  stored.remainingUah = kBatteryReferenceCapacityUah;
   BatteryTracker tracker;
   tracker.restore(stored);
   tracker.update(3650, false, 0, 65);
@@ -278,7 +278,7 @@ void test_gauge_stored_full_charge_is_checked_at_boot() {
 void test_gauge_stored_full_charge_is_not_held_off_the_charger() {
   // The charged hold needs the charger: off it, 4.15 V reads 95%, not the stored 100%.
   BatteryGaugeState stored;
-  stored.remainingUah = kBatteryNominalCapacityUah;
+  stored.remainingUah = kBatteryReferenceCapacityUah;
   BatteryTracker tracker;
   tracker.restore(stored);
   tracker.update(kMvAt95, false, 0, 65);
@@ -289,7 +289,7 @@ void test_gauge_stored_full_charge_is_not_held_off_the_charger() {
 void test_gauge_stored_full_charge_is_held_on_the_charger_at_boot() {
   // Booted on the charger with the cell full and the LED dark: charged, at 100%, as after a charge.
   BatteryGaugeState stored;
-  stored.remainingUah = kBatteryNominalCapacityUah;
+  stored.remainingUah = kBatteryReferenceCapacityUah;
   BatteryTracker tracker;
   tracker.restore(stored);
   tracker.update(kMvAt95, false, 0, 65, true);
@@ -362,7 +362,97 @@ void test_tracker_state_resumes_the_same_estimate() {
   TEST_ASSERT_FALSE(resumed.estimateApproximate());
 }
 
+void test_gauge_capacity_change_keeps_the_percent() {
+  // Changing the cell rescales the charge, so the same percent is shown on a bigger cell.
+  BatteryTracker tracker;
+  tracker.update(kMvAt50, false, 0, 65);
+  TEST_ASSERT_EQUAL_INT(50, tracker.percent());
+  tracker.setCapacity(2000000UL);
+  TEST_ASSERT_EQUAL_INT(50, tracker.estimatePercent());
+  TEST_ASSERT_EQUAL_INT(50, tracker.percent());
+}
+
+void test_gauge_stored_charge_is_a_share_of_the_capacity() {
+  // A stored 50% of the reference cell is 50% of a 2000 mAh cell, which lasts 923 minutes at 65 mA, not 600.
+  BatteryGaugeState stored;
+  stored.remainingUah = kBatteryReferenceCapacityUah / 2;
+  stored.averageLoadCentiMa = 6500;
+  BatteryTracker tracker;
+  tracker.setCapacity(2000000UL);
+  tracker.restore(stored);
+  tracker.update(kMvAt50, false, 0, 65);
+  TEST_ASSERT_EQUAL_INT(50, tracker.percent());
+  TEST_ASSERT_EQUAL_INT(923, tracker.minutesRemaining());
+}
+
+void test_gauge_stored_rate_is_kept_on_the_default_scale() {
+  // A rate learned on the reference cell is stored unchanged, whatever capacity it is read with.
+  BatteryGaugeState stored;
+  stored.remainingUah = kBatteryReferenceCapacityUah / 2;
+  stored.chargeMsPerPercent = kBatteryPriorChargeMsPerPercent;
+  stored.averageLoadCentiMa = 6500;
+  BatteryTracker tracker;
+  tracker.setCapacity(2000000UL);
+  tracker.restore(stored);
+  tracker.update(kMvAt50, false, 0, 65);
+  const BatteryGaugeState saved = tracker.state();
+  TEST_ASSERT_EQUAL_UINT32(stored.remainingUah, saved.remainingUah);
+  TEST_ASSERT_EQUAL_UINT32(stored.chargeMsPerPercent, saved.chargeMsPerPercent);
+}
+
+void test_gauge_capacity_change_survives_a_reboot_at_the_same_percent() {
+  // Booted with the new capacity from a state saved on the old one, and from one saved after the change.
+  BatteryTracker before;
+  before.update(kMvAt50, false, 0, 65);
+  const BatteryGaugeState oldState = before.state();
+  before.setCapacity(3000000UL);
+  BatteryTracker fromOld;
+  fromOld.setCapacity(3000000UL);
+  fromOld.restore(oldState);
+  fromOld.update(kMvAt50, false, 0, 65);
+  TEST_ASSERT_EQUAL_INT(50, fromOld.percent());
+  BatteryTracker fromNew;
+  fromNew.setCapacity(3000000UL);
+  fromNew.restore(before.state());
+  fromNew.update(kMvAt50, false, 0, 65);
+  TEST_ASSERT_EQUAL_INT(50, fromNew.percent());
+}
+
+void test_gauge_rate_learned_on_a_bigger_cell_is_kept_on_the_default_scale() {
+  // A 2000 mAh cell takes about 1.54 times as long per point at the same charger current: 40% to full is about
+  // 5538 s. Stored on the reference cell's scale, the rate reads as the same 60 s per point.
+  BatteryTracker tracker;
+  tracker.setCapacity(2000000UL);
+  tracker.update(kMvAt40, false, 0);
+  uint32_t nowMs = 0;
+  for (uint32_t second = 1; second <= 5538; ++second) {
+    nowMs = second * 1000UL;
+    tracker.update(kMvAt40, true, nowMs);
+  }
+  tracker.update(kMvAt95, false, nowMs + 1000UL, 0, true);
+  tracker.update(kMvAt95, false, nowMs + 2000UL, 0, true);
+  tracker.update(kMvAt95, false, nowMs + 3000UL, 0, true);
+  const uint32_t learned = tracker.state().chargeMsPerPercent;
+  TEST_ASSERT_TRUE(learned >= 58000U && learned <= 62000U);
+  TEST_ASSERT_EQUAL_INT(100, tracker.percent());
+}
+
+void test_battery_capacity_is_typed_within_100_to_9999_mah() {
+  TEST_ASSERT_FALSE(batteryCapacityAccepted(99));
+  TEST_ASSERT_TRUE(batteryCapacityAccepted(100));
+  TEST_ASSERT_TRUE(batteryCapacityAccepted(9999));
+  TEST_ASSERT_EQUAL_UINT16(kBatteryDefaultCapacityMah, batteryCapacityFromStored(0));
+  TEST_ASSERT_EQUAL_UINT16(2500, batteryCapacityFromStored(2500));
+  TEST_ASSERT_EQUAL_UINT32(2500000UL, batteryCapacityUah(2500));
+}
+
 void registerBatteryGaugeTests() {
+  RUN_TEST(test_gauge_rate_learned_on_a_bigger_cell_is_kept_on_the_default_scale);
+  RUN_TEST(test_battery_capacity_is_typed_within_100_to_9999_mah);
+  RUN_TEST(test_gauge_capacity_change_keeps_the_percent);
+  RUN_TEST(test_gauge_stored_charge_is_a_share_of_the_capacity);
+  RUN_TEST(test_gauge_stored_rate_is_kept_on_the_default_scale);
+  RUN_TEST(test_gauge_capacity_change_survives_a_reboot_at_the_same_percent);
   RUN_TEST(test_gauge_charger_voltage_does_not_move_the_percent);
   RUN_TEST(test_gauge_load_takes_the_charge_out_at_its_rate);
   RUN_TEST(test_gauge_voltage_sag_under_load_does_not_move_the_percent);

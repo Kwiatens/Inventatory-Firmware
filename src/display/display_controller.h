@@ -46,7 +46,9 @@ class DisplayController {
   void showQuickSettings();
   void showDisplaySettings(uint8_t contrast, const String& backlightLabel);
   void showBacklight(const String& label, const String& detail, std::size_t index, std::size_t count);
-  void showEnergySaving(bool enabled, const String& sleepLabel, const String& powerOffLabel, bool dockMode);
+  void showEnergySaving(bool enabled, const String& sleepLabel, const String& powerOffLabel, bool dockMode,
+                        std::size_t page, const String& batteryLabel);
+  void showBatteryCapacityEntry(const String& value, const String& detail);
   void showSleepAfter(const String& label, const String& detail, std::size_t index, std::size_t count);
   void showPowerOffAfter(const String& label, const String& detail, std::size_t index, std::size_t count);
   void showContrast(uint8_t contrast);

@@ -33,6 +33,7 @@ enum class DisplayUiMode {
   EnergySaving,
   SleepAfter,
   PowerOffAfter,
+  BatteryCapacity,
   BatteryCard,
   CountdownWarning,
   PowerWarning,
