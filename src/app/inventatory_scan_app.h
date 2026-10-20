@@ -49,6 +49,7 @@ class InventatoryScanApp {
     EnergySaving,
     AdjustSleepAfter,
     AdjustPowerOff,
+    AwaitBatteryCapacity,
     ConfirmReprovision,
     ConfirmDiscard,
     ConfirmRepair,
@@ -156,6 +157,13 @@ class InventatoryScanApp {
   void openPowerOffSettings();
   void stepPowerOffDelay(int step);
   void persistPowerOffDelay();
+  void cycleEnergyPage();
+  void openBatteryCapacityEntry();
+  void refreshBatteryCapacityEntry(bool rejected);
+  void appendBatteryCapacityDigit(char digit);
+  void deleteBatteryCapacityDigit();
+  void confirmBatteryCapacity();
+  void persistBatteryCapacity();
   void requestQuickLabelPrint(uint8_t presetIndex);
   void refreshQuickLabels();
   void persistContrast();
@@ -187,6 +195,10 @@ class InventatoryScanApp {
   unsigned long dockPowerOffAt_ = 0;
   SleepDelay sleepDelay_ = SleepDelay::Min5;
   PowerOffDelay powerOffDelay_ = PowerOffDelay::Min30;
+  // Energy list page (0 or 1), the battery capacity the estimate counts in (mAh), and the capacity being typed.
+  uint8_t energyPage_ = 0;
+  uint16_t batteryCapacity_ = kBatteryDefaultCapacityMah;
+  uint16_t batteryEntryMah_ = 0;
   EnergyPhase energyPhase_ = EnergyPhase::Awake;
   // Sleep start; the power-off countdown runs from here.
   unsigned long sleepStartedAt_ = 0;

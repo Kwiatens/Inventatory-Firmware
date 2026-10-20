@@ -319,6 +319,8 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
         quickLabelPage_ = static_cast<uint8_t>((quickLabelPage_ + 1U) % pages);
         display_.showQuickLabels(quickLabelPresets_, quickLabelPresetCount_, quickLabelPage_,
                                  quickLabelSnapshotReceived_, pcSupportsQuickLabels_);
+      } else if (state_ == State::EnergySaving) {
+        cycleEnergyPage();
       } else if (state_ == State::AwaitQuantity) {
         quantity_.cycleCursor();
         display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
@@ -330,6 +332,8 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
         display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
         deviceLog.print("Quantity: ");
         deviceLog.println(quantity_.displayText().c_str());
+      } else if (state_ == State::AwaitBatteryCapacity) {
+        deleteBatteryCapacityDigit();
       } else if ((state_ == State::Idle || state_ == State::Menu) && display_.hasProblem()) {
         // Short #: explain the problem on show, from the main screen or the menu.
         faultDetailReturn_ = state_;
@@ -375,6 +379,7 @@ void InventatoryScanApp::handleDigit(char digit) {
       if (digit == '1') {
         openDisplaySettings();
       } else if (digit == '2') {
+        energyPage_ = 0;
         openEnergySaving();
       } else if (digit == '3') {
         state_ = State::ConfirmReprovision;
@@ -394,15 +399,23 @@ void InventatoryScanApp::handleDigit(char digit) {
       }
       return;
     case State::EnergySaving:
-      if (digit == '1') {
-        toggleEnergySaving();
-      } else if (digit == '2') {
-        openSleepAfterSettings();
-      } else if (digit == '3') {
-        openPowerOffSettings();
-      } else if (digit == '4') {
-        toggleDockMode();
+      // Page 1/2 holds the switch, the delays and dock mode; page 2/2 holds the battery capacity.
+      if (energyPage_ == 0) {
+        if (digit == '1') {
+          toggleEnergySaving();
+        } else if (digit == '2') {
+          openSleepAfterSettings();
+        } else if (digit == '3') {
+          openPowerOffSettings();
+        } else if (digit == '4') {
+          toggleDockMode();
+        }
+      } else if (digit == '1') {
+        openBatteryCapacityEntry();
       }
+      return;
+    case State::AwaitBatteryCapacity:
+      appendBatteryCapacityDigit(digit);
       return;
     case State::Idle:
       deviceLog.println("Digit ignored, scan a code first.");
@@ -460,6 +473,7 @@ void InventatoryScanApp::handleCancel() {
       return;
     case State::AdjustSleepAfter:
     case State::AdjustPowerOff:
+    case State::AwaitBatteryCapacity:
       openEnergySaving();
       return;
     case State::EnergySaving:
@@ -496,6 +510,9 @@ void InventatoryScanApp::handleAddSubtract(bool add) {
     case State::AdjustBacklight: stepBacklightMode(add ? -1 : 1); return;
     case State::AdjustSleepAfter: stepSleepDelay(add ? -1 : 1); return;
     case State::AdjustPowerOff: stepPowerOffDelay(add ? -1 : 1); return;
+    case State::AwaitBatteryCapacity:
+      if (add) confirmBatteryCapacity();
+      return;
     case State::ConfirmReprovision:
       if (add) confirmReprovision();
       return;
