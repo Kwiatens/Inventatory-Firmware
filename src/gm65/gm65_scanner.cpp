@@ -84,6 +84,7 @@ bool Gm65Scanner::start() {
   if (!wakeModule()) {
     return false;
   }
+  moduleAsleep_ = false;
   active_ = applyBootProfile();
   profileApplied_ = active_;
   if (active_) {
@@ -115,13 +116,14 @@ bool Gm65Scanner::suspend() {
   return true;
 }
 
-// A wake from standby only reopens the port: the module keeps its powered profile. Resending the
-// profile would darken the screen for seconds; a never-applied profile is still sent in full.
+// A wake from standby only reopens the port when the module stayed powered with its profile. Resending the
+// profile would darken the screen for seconds. A module that a standby put to deep sleep is woken and given the
+// profile again. A never-applied profile is still sent in full.
 bool Gm65Scanner::resume() {
   if (active_) {
     return true;
   }
-  if (!profileApplied_) {
+  if (!profileApplied_ || moduleAsleep_) {
     return start();
   }
   openPort();
@@ -132,9 +134,14 @@ bool Gm65Scanner::resume() {
 }
 
 // Lamps off and manual read mode, then deep sleep: continuous reading would keep the lamp on.
-// The module wakes only on a UART byte, which the next boot sends (see wakeModule).
+// The module wakes only on a UART byte, which the next boot or a wake from a standby sends (see wakeModule).
 // Missing replies are logged; the power-off goes on regardless.
 void Gm65Scanner::deepSleep() {
+  // Already asleep from a standby: nothing is sent, and waking it again would only delay the power-off.
+  if (moduleAsleep_) {
+    end();
+    return;
+  }
   if (!active_) {
     // After standby or a boot refusal the module may be asleep; wake and probe it first.
     openPort();
@@ -150,6 +157,7 @@ void Gm65Scanner::deepSleep() {
   if (!writeZoneByte(0x08, kGm65FunctionZone, kGm65DeepSleep, kZoneWriteAckTimeoutMs)) {
     deviceLog.println("GM65 deep sleep not acknowledged");
   }
+  moduleAsleep_ = true;
   end();
 }
 

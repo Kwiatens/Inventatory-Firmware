@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 // Power off on '*' hold (countdown at 1 s, deep sleep at 4 s), energy saving, dock mode and
-// battery shutdowns. Only '*' wakes from deep sleep. Dock standby stays awake and polls the charger,
-// because the charger pins cannot wake a deep sleep with the current divider.
+// battery shutdowns. Only '*' wakes from deep sleep. Dock standby keeps the chip awake and polls the charger,
+// because the charger pins cannot wake a deep sleep with the current divider. The scanner's module sleeps in it.
 
 #include "app/inventatory_scan_app.h"
 #include "InventatoryScanUiPolicy.h"
@@ -255,6 +255,8 @@ void InventatoryScanApp::serviceDockPowerOff(unsigned long now) {
     return;
   }
   dockStandby_ = true;
+  // The scanner goes to deep sleep with its lamps off, as a power-off does. Standby alone only closes its port.
+  scanner_.deepSleep();
   enterStandby();
 }
 
@@ -357,6 +359,8 @@ void InventatoryScanApp::startEnergySleepWarning() {
 void InventatoryScanApp::enterEnergySleep() {
   deviceLog.println("Energy saving: idle for the set time, entering standby.");
   dismissEnergyWarning();
+  // The scanner goes to deep sleep with its lamps off, as a power-off does. Standby alone only closes its port.
+  scanner_.deepSleep();
   enterStandby();
   energyPhase_ = EnergyPhase::Asleep;
   sleepStartedAt_ = millis();
