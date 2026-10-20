@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- A low cell is refused at boot on the battery percent the device shows, and on the voltage only at the 3.30 V floor. A load sags the cell's voltage, so a sagged reading at boot no longer refuses a cell the gauge holds above 10%. The serial log writes a `Boot battery:` line with the estimate, the refusal percent and the charger LED state.
 - The `›i` logo has no dot on any screen. The update screen shows its status in words and the progress bar, and a boot error shows only its text.
 - The battery percentage no longer follows the cell voltage. The device counts the charge out by the load it draws, and corrects that count from the voltage only after a long rest. While charging it counts the charge in, rises steadily, never falls, and reads 100% once the cell is full with the charger's LED dark. A radio burst, a scan or the charger's raised voltage no longer moves it.
 - The charger is read through its red LED only; the green LED pad is no longer read. With the LED dark and the cell at 4.10 V or more, the cell is charged: the top bar reads "Charged" at 100%, with the bolt, and it holds there while the voltage stays at 4.00 V or more. Below that the estimate restarts from the voltage.
@@ -22,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screen layout numbers that were written inline in the renderer are now named in `display_style.h`, and centred lines share one helper.
 
 ### Added
+- The serial log is also sent over the air. Each line is broadcast as a UDP datagram on port 5140 to the local network, so `python3 tools/device_log_listener.py` on a PC on the same Wi-Fi shows it while the device runs. The newest 48 lines are kept while Wi-Fi is down.
 - Dock mode, row 4 of the Energy saving screen, off by default and independent of the energy saving switch. With it on, the device goes to standby about 5 s after the charger is plugged in: the screen is dark and the scanner and network are paused. Taking the charger off brings it back at once. With dock mode off, a device on the charger stays on.
 - A DigiKey bag's Data Matrix sends its DigiKey part number and manufacturer part number, and a TME bag's QR label sends its TME part number and manufacturer part number, so the desktop records which vendor supplied the part. A DigiKey bag is looked up by its DigiKey part number, so a part already in inventory is found. A TME label needs no product page. Any other Data Matrix is refused with a message, and the part is added by hand. A TME bag's QR code was refused before.
 - Holding `*` on an idle screen shows a countdown bar after one second, then powers the device off into deep sleep at four seconds. The `›i` sinks behind the glass. Releasing `*` before then cancels. Pressing `*` wakes it and the firmware restarts.

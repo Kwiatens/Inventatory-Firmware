@@ -123,7 +123,8 @@ agents must distinguish between immutable invariants and mutable implementation 
 ### Mandatory invariants (Must never be broken)
 1. **Zero sensitive logging**: Passwords, Wi-Fi credentials, pairing tokens,
    HMAC keys, raw GM65 UART receive buffers, and decoded barcode payloads must
-   never be output to Serial or network debug messages. Enforced by CI greps.
+   never be output to Serial or network debug messages. Enforced by CI greps. The device log is also sent
+   over the air (`deviceLog`), so every line the firmware writes must pass this rule.
 2. **Mutual authentication & directional keys**: Every `POST /api/v1/device/sync`
    request must be signed with HMAC-SHA-256 using the derived `client-to-server`
    key. Every response must verify the MAC using the derived `server-to-client`
@@ -196,6 +197,7 @@ agents must distinguish between immutable invariants and mutable implementation 
 │   │   └── display_style.h     # UI typography, icons, and layout geometry
 │   ├── gm65/                   # GM65 1D/2D imaging scanner UART driver
 │   │   └── gm65_scanner.h/.cpp # UART serial polling, configuration, hardware trigger
+│   ├── log/                    # Device log: serial mirror and the over-the-air UDP broadcast
 │   ├── keypad/                 # Keypad matrix driver
 │   │   └── keypad.h/.cpp       # 4x4 matrix scanning, debouncing, key event dispatch
 │   ├── net/                    # HTTP client and transport
@@ -422,10 +424,14 @@ preserved:
   code. Low and critical thresholds need `kBatteryTripSamples`
   consecutive one-second samples. The low warning latches and powers off after 60 s unless the dock connects.
   A low cell that is not docked is refused at boot with a notice, then the chip sleeps again. The
-  refusal uses the lower of the estimate and the voltage. The percent comes from `BatteryGauge`, not
+  refusal uses the estimate, and the voltage only at or below `kBatteryFloorMv`: a load sags the reading, so a
+  sagged reading at boot does not refuse a cell the gauge holds above the low threshold. The percent comes from `BatteryGauge`, not
   from the voltage: a load or a radio burst does not move it, and the charger's raised voltage never
   does. The first reading after a boot is the exception: it checks a stored charge against the voltage
   (`kBatteryRestoreTolerancePercent`). Undocked, a cell at or below `kBatteryFloorMv` is critical whatever the percent says.
+- **Device log over the air**: each line of the serial log is also broadcast as one UDP datagram on
+  `kLogUdpPort` (5140) to the local network, as `<milliseconds> <text>`. `tools/device_log_listener.py` shows it on a
+  PC on the same Wi-Fi. While Wi-Fi is down the newest lines are kept (`kLogLineSlots`). `kLogOverAirEnabled` turns it off.
 - **Backlight**: `Off`, `On`, or an Auto idle timeout (1, 3, 5, 10 min), set under Device
   settings / Display. The warnings and pairing keep the backlight on whatever the setting says.
 - **Energy saving**: a switch under Device settings / Energy saving, off by default. When on, the device

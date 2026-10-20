@@ -9,6 +9,7 @@
 #include "config/config.h"
 #include "config/version.h"
 #include "setup/setup_state_store.h"
+#include "log/device_log.h"
 
 #include <ESPmDNS.h>
 #include <WiFi.h>
@@ -107,7 +108,7 @@ bool InventatoryClient::resolveEndpoint(bool force) {
   if (!mdnsStarted_) {
     mdnsStarted_ = MDNS.begin(config_.deviceId.c_str());
     if (!mdnsStarted_) {
-      Serial.println("Inventatory endpoint: failed to start mDNS client");
+      deviceLog.println("Inventatory endpoint: failed to start mDNS client");
     }
   }
 
@@ -118,10 +119,10 @@ bool InventatoryClient::resolveEndpoint(bool force) {
     endpointName_ = MDNS.hostname(0);
     endpointValid_ = endpointPort_ != 0U;
     if (endpointValid_) {
-      Serial.print("Inventatory endpoint: discovered ");
-      Serial.print(endpointIp_);
-      Serial.print(':');
-      Serial.println(endpointPort_);
+      deviceLog.print("Inventatory endpoint: discovered ");
+      deviceLog.print(endpointIp_);
+      deviceLog.print(':');
+      deviceLog.println(endpointPort_);
     }
     return endpointValid_;
   }
@@ -133,22 +134,22 @@ bool InventatoryClient::resolveEndpoint(bool force) {
       endpointPort_ = config_.fallbackPort;
       endpointName_ = config_.fallbackHost.c_str();
       endpointValid_ = true;
-      Serial.print("Inventatory endpoint: fallback ");
-      Serial.print(endpointIp_);
-      Serial.print(':');
-      Serial.println(endpointPort_);
+      deviceLog.print("Inventatory endpoint: fallback ");
+      deviceLog.print(endpointIp_);
+      deviceLog.print(':');
+      deviceLog.println(endpointPort_);
       return true;
     }
-    Serial.print("Inventatory endpoint: could not resolve fallback host ");
-    Serial.println(config_.fallbackHost.c_str());
+    deviceLog.print("Inventatory endpoint: could not resolve fallback host ");
+    deviceLog.println(config_.fallbackHost.c_str());
   }
 
   endpointValid_ = false;
-  Serial.print("Inventatory endpoint: no _");
-  Serial.print(MDNS_SERVICE);
-  Serial.print("._");
-  Serial.print(MDNS_PROTOCOL);
-  Serial.println(" service found");
+  deviceLog.print("Inventatory endpoint: no _");
+  deviceLog.print(MDNS_SERVICE);
+  deviceLog.print("._");
+  deviceLog.print(MDNS_PROTOCOL);
+  deviceLog.println(" service found");
   return false;
 }
 
@@ -162,10 +163,10 @@ bool InventatoryClient::connectToResolved() {
     client_.setNoDelay(true);
     return true;
   }
-  Serial.print("Inventatory endpoint: TCP connection failed to ");
-  Serial.print(endpointIp_);
-  Serial.print(':');
-  Serial.println(endpointPort_);
+  deviceLog.print("Inventatory endpoint: TCP connection failed to ");
+  deviceLog.print(endpointIp_);
+  deviceLog.print(':');
+  deviceLog.println(endpointPort_);
   endpointValid_ = false;
   return false;
 }
@@ -181,7 +182,7 @@ bool InventatoryClient::sendJson(const char* path, const String& body, int& http
   uint64_t counter = 0;
   if (!config_.transportCounterStore->reserveTransportCounter(counter)) {
     client_.stop();
-    Serial.println("Inventatory endpoint: could not reserve a transport counter");
+    deviceLog.println("Inventatory endpoint: could not reserve a transport counter");
     return false;
   }
   const auto mac = deviceRequestMac(config_.token, "POST", path, config_.deviceId, counter, body);
