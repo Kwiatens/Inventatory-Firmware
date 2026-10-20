@@ -7,6 +7,7 @@
 
 #include "InventatoryScanBleRequest.h"
 #include "InventatoryScanSecurity.h"
+#include "log/device_log.h"
 
 #include <BLE2902.h>
 #include <BLEDevice.h>
@@ -32,9 +33,9 @@ class ServerCallbacks final : public BLEServerCallbacks {
  public:
   explicit ServerCallbacks(BleProvisioning& owner) : owner_(owner) {}
   // Logs carry no secrets; they show where a pairing attempt ends.
-  void onConnect(BLEServer*, esp_ble_gatts_cb_param_t*) override { Serial.println("BLE: client connected"); }
+  void onConnect(BLEServer*, esp_ble_gatts_cb_param_t*) override { deviceLog.println("BLE: client connected"); }
   void onDisconnect(BLEServer*, esp_ble_gatts_cb_param_t* param) override {
-    Serial.printf("BLE: client disconnected, reason 0x%02x\r\n", static_cast<unsigned>(param->disconnect.reason));
+    deviceLog.printf("BLE: client disconnected, reason 0x%02x\r\n", static_cast<unsigned>(param->disconnect.reason));
   }
   void onDisconnect(BLEServer*) override {
     // Only records the event; service() restarts advertising from Core 1.
@@ -53,9 +54,9 @@ class SecurityCallbacks final : public BLESecurityCallbacks {
   bool onConfirmPIN(uint32_t pin) override { return pin == owner_.pairingCode(); }
   void onAuthenticationComplete(esp_ble_auth_cmpl_t result) override {
     if (result.success) {
-      Serial.println("BLE: pairing succeeded");
+      deviceLog.println("BLE: pairing succeeded");
     } else {
-      Serial.printf("BLE: pairing failed, reason 0x%02x\r\n", static_cast<unsigned>(result.fail_reason));
+      deviceLog.printf("BLE: pairing failed, reason 0x%02x\r\n", static_cast<unsigned>(result.fail_reason));
     }
     owner_.onAuthenticationResult(result.success);
   }

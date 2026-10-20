@@ -436,11 +436,12 @@ class BatteryTracker {
   int percent() const { return valid_ ? gauge_.shownPercent() : -1; }
   // Estimate used by the warnings; -1 with no reading.
   int estimatePercent() const { return valid_ ? gauge_.estimatePercent() : -1; }
-  // Boot refusal percent: the lower of estimate and voltage, so a drifted estimate
-  // cannot pass a flat cell. -1 with no reading.
+  // The percent the boot check refuses a cell at. The gauge decides, because it is the percent the device shows.
+  // The voltage counts only at the floor, since a load sags it. -1 while no reading has been taken.
   int refusePercent() const {
     if (!valid_) return -1;
-    return std::min(gauge_.estimatePercent(), static_cast<int>(batteryPercentFromMillivolts(lastMillivolts_)));
+    if (lastMillivolts_ <= kBatteryFloorMv) return 0;
+    return gauge_.estimatePercent();
   }
   // -1 while there is no reading.
   int32_t minutesRemaining() const { return valid_ ? gauge_.minutesRemaining() : -1; }

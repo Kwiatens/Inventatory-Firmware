@@ -8,6 +8,7 @@
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/version.h"
+#include "log/device_log.h"
 
 #include <cctype>
 
@@ -81,7 +82,7 @@ void InventatoryScanApp::pollScanner() {
       if (deferredScan_.length() == 0) {
         deferredScan_ = code;
       } else {
-        Serial.println("Scan ignored: a previous scan is already waiting for the result.");
+        deviceLog.println("Scan ignored: a previous scan is already waiting for the result.");
       }
       return;
     }
@@ -91,7 +92,7 @@ void InventatoryScanApp::pollScanner() {
 
 void InventatoryScanApp::handleScan(const String& code) {
   if (lowBatteryWarning_) {
-    Serial.println("Scan ignored while the battery warning is shown.");
+    deviceLog.println("Scan ignored while the battery warning is shown.");
     return;
   }
   noteUserActivity();
@@ -101,7 +102,7 @@ void InventatoryScanApp::handleScan(const String& code) {
                           otaRequested_ || otaActive_,
                           state_ == State::ConfirmReprovision || state_ == State::ConfirmDiscard || state_ == State::ConfirmRepair,
                           state_ == State::PrintingLabel)) {
-    Serial.println("Scan ignored while the current operation blocks scanning.");
+    deviceLog.println("Scan ignored while the current operation blocks scanning.");
     return;
   }
   // Reset pending state only once a scan is accepted, so a rejected frame cannot desync the screen.
@@ -116,7 +117,7 @@ void InventatoryScanApp::handleScan(const String& code) {
   if (isDataMatrixScan(raw)) {
     DecodedComponentFields decoded;
     if (!decodeComponentDataMatrix(raw, decoded)) {
-      Serial.println("Rejected non-standard Data Matrix scan.");
+      deviceLog.println("Rejected non-standard Data Matrix scan.");
       return;
     }
     const auto& lookupCode = decoded.manufacturerPartNumber;
@@ -148,9 +149,9 @@ void InventatoryScanApp::handleScan(const String& code) {
                           quantity_.displayText(), quantity_.cursor(), true,
                           QuantityLookupState::Pending);
     lastSyncAttempt_ = 0;
-    Serial.print("Decoded default quantity: ");
-    Serial.println(quantity_.displayText().c_str());
-    Serial.println("Enter quantity, then press A to add. C cancels.");
+    deviceLog.print("Decoded default quantity: ");
+    deviceLog.println(quantity_.displayText().c_str());
+    deviceLog.println("Enter quantity, then press A to add. C cancels.");
     sendDebugMessage("data matrix scan pending", "scan");
     return;
   }
@@ -177,16 +178,16 @@ void InventatoryScanApp::handleScan(const String& code) {
                           quantity_.displayText(), quantity_.cursor(), true,
                           QuantityLookupState::Pending);
     lastSyncAttempt_ = 0;
-    Serial.print("Decoded default quantity: ");
-    Serial.println(quantity_.displayText().c_str());
-    Serial.println("Enter quantity, then press A to add. C cancels.");
+    deviceLog.print("Decoded default quantity: ");
+    deviceLog.println(quantity_.displayText().c_str());
+    deviceLog.println("Enter quantity, then press A to add. C cancels.");
     sendDebugMessage("tme label scan pending", "scan");
     return;
   }
 
   if (isQrScan(raw) || isQuantityCode(trimmed)) {
     if (!isStandardMachineCode(trimmed)) {
-      Serial.println("Rejected non-standard inventory ID scan.");
+      deviceLog.println("Rejected non-standard inventory ID scan.");
       return;
     }
     resetPending();
@@ -201,7 +202,7 @@ void InventatoryScanApp::handleScan(const String& code) {
                           quantity_.displayText(), quantity_.cursor(), false,
                           QuantityLookupState::Pending);
     lastSyncAttempt_ = 0;
-    Serial.println("Enter quantity, then press A to add or B to subtract. C cancels.");
+    deviceLog.println("Enter quantity, then press A to add or B to subtract. C cancels.");
     sendDebugMessage("inventory scan pending", "scan");
     return;
   }
@@ -209,7 +210,7 @@ void InventatoryScanApp::handleScan(const String& code) {
   // A nearby code (such as on a TME label) can be read after the scan. While the scan awaits its
   // quantity, the extra frame is logged and does not replace its screen.
   if (state_ == State::AwaitQuantity && scannedCode_.length() > 0) {
-    Serial.println("Ignored unrecognized frame while a scan is pending.");
+    deviceLog.println("Ignored unrecognized frame while a scan is pending.");
     return;
   }
   showScanRefusal("Scan not recognised. Add the part by hand", "Rejected unrecognized scanner data.");
@@ -251,7 +252,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
   // Update requests run in standby, so their cancel and upload keep their own handling.
   if (energyPhase_ == EnergyPhase::Asleep && powerMode_ == PowerMode::Standby && !otaRequested_ && !otaActive_ &&
       isShortKeyPress(event.type)) {
-    Serial.println("Woke from energy saving sleep.");
+    deviceLog.println("Woke from energy saving sleep.");
     exitStandby();
     return;
   }
@@ -302,7 +303,7 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
   }
   if (state_ == State::WaitingForResult) {
     if (event.type == InventatoryKeyEventType::Cancel) {
-      Serial.println("Waiting for Inventatory to confirm the submitted change.");
+      deviceLog.println("Waiting for Inventatory to confirm the submitted change.");
     }
     return;
   }
@@ -327,8 +328,8 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       if (state_ == State::AwaitQuantity) {
         quantity_.deleteDigit();
         display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
-        Serial.print("Quantity: ");
-        Serial.println(quantity_.displayText().c_str());
+        deviceLog.print("Quantity: ");
+        deviceLog.println(quantity_.displayText().c_str());
       } else if ((state_ == State::Idle || state_ == State::Menu) && display_.hasProblem()) {
         // Short #: explain the problem on show, from the main screen or the menu.
         faultDetailReturn_ = state_;
@@ -404,13 +405,13 @@ void InventatoryScanApp::handleDigit(char digit) {
       }
       return;
     case State::Idle:
-      Serial.println("Digit ignored, scan a code first.");
+      deviceLog.println("Digit ignored, scan a code first.");
       return;
     case State::AwaitQuantity:
       quantity_.appendDigit(digit);
       display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
-      Serial.print("Quantity: ");
-      Serial.println(quantity_.displayText().c_str());
+      deviceLog.print("Quantity: ");
+      deviceLog.println(quantity_.displayText().c_str());
       return;
     default:
       // Other screens take no digits and must not fall into quantity entry.
@@ -425,7 +426,7 @@ void InventatoryScanApp::handleCancel() {
       if (display_.errorVisible()) {
         display_.dismissError();
       } else {
-        Serial.println("Opening device menu.");
+        deviceLog.println("Opening device menu.");
         openMenu();
       }
       return;
@@ -476,7 +477,7 @@ void InventatoryScanApp::handleCancel() {
     default:
       resetPending();
       display_.finishInteraction();
-      Serial.println("Cancelled pending scan.");
+      deviceLog.println("Cancelled pending scan.");
       return;
   }
 }
@@ -507,15 +508,15 @@ void InventatoryScanApp::handleAddSubtract(bool add) {
     case State::AwaitQuantity:
       break;
     default:
-      Serial.println("No scanned code to submit.");
+      deviceLog.println("No scanned code to submit.");
       return;
   }
   if (scannedCode_.length() == 0) {
-    Serial.println("No scanned code to submit.");
+    deviceLog.println("No scanned code to submit.");
     return;
   }
   if (pendingScanType_ == PendingScanType::ComponentDataMatrix && !add) {
-    Serial.println("Component scans use A to confirm the quantity.");
+    deviceLog.println("Component scans use A to confirm the quantity.");
     return;
   }
   submitCurrent(add ? 'A' : 'B');
@@ -524,7 +525,7 @@ void InventatoryScanApp::handleAddSubtract(bool add) {
 void InventatoryScanApp::confirmReprovision() {
   const bool paused = pauseNetworkForSetupTransition();
   if (paused && setupStore_.clear()) {
-    Serial.println("Re-pair requested from quick settings; restarting BLE setup.");
+    deviceLog.println("Re-pair requested from quick settings; restarting BLE setup.");
     ESP.restart();
   }
   if (paused) resumeNetworkAfterSetupTransition();
@@ -537,7 +538,7 @@ void InventatoryScanApp::confirmRepair() {
   std::size_t dropped = 0;
   const auto result = outbox_.repair(salvaged, dropped);
   if (result == OutboxStore::RepairResult::Repaired) {
-    Serial.println("Scan queue repaired.");
+    deviceLog.println("Scan queue repaired.");
     display_.setQueueUnreadable(false);
     returnToReady();
   } else if (result == OutboxStore::RepairResult::StorageFailed) {
@@ -552,7 +553,7 @@ void InventatoryScanApp::confirmDiscard() {
   if (outbox_.pop()) {
     outboxBlockedHead_.recordProgress();
     display_.setSyncBlocked(false);
-    Serial.println("Discarded the oldest queued scan at the operator request.");
+    deviceLog.println("Discarded the oldest queued scan at the operator request.");
     returnToReady();
   } else {
     display_.showLocalFailure(localFailure("local-queue", kDiscardFailedCode, "Could not discard scan"));
@@ -563,7 +564,7 @@ void InventatoryScanApp::confirmDiscard() {
 void InventatoryScanApp::submitCurrent(char action) {
   if (pendingScanType_ == PendingScanType::ComponentDataMatrix) {
     if (action != 'A') {
-      Serial.println("Component scans require A to confirm.");
+      deviceLog.println("Component scans require A to confirm.");
       return;
     }
 
@@ -575,8 +576,8 @@ void InventatoryScanApp::submitCurrent(char action) {
                                    scannedPartName_);
     resetPending();
     if (!queued) return;  // The failure screen is already showing.
-    Serial.print("Queued decoded-component quantity ");
-    Serial.println(String(quantity).c_str());
+    deviceLog.print("Queued decoded-component quantity ");
+    deviceLog.println(String(quantity).c_str());
     waitForInventoryResult(eventId);
     return;
   }
@@ -593,7 +594,7 @@ void InventatoryScanApp::submitCurrent(char action) {
 // the serial log shows the detail.
 void InventatoryScanApp::showScanRefusal(const char* screenMessage, const char* logMessage) {
   display_.showLocalFailure(localFailure("scan-refused", kScanRejectedCode, screenMessage));
-  Serial.println(logMessage);
+  deviceLog.println(logMessage);
 }
 
 bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, int value, String* eventId,
@@ -610,11 +611,11 @@ bool InventatoryScanApp::queueEvent(DeviceEventKind kind, const String& code, in
                                      : storage ? "Scan storage write failed"
                                                : "Scan data cannot be saved");
     display_.showLocalFailure(result);
-    Serial.println(result.message.c_str());
+    deviceLog.println(result.message.c_str());
     return false;
   }
   if (eventId != nullptr) *eventId = event.eventId;
-  Serial.println("Queued protocol v1 inventory event.");
+  deviceLog.println("Queued protocol v1 inventory event.");
   lastSyncAttempt_ = 0;
   return true;
 }

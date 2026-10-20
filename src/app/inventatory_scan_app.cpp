@@ -9,6 +9,7 @@
 #include "config/config.h"
 #include "config/hardware.h"
 #include "config/version.h"
+#include "log/device_log.h"
 
 #include <WiFi.h>
 
@@ -72,7 +73,7 @@ bool waitFor(Done done) {
 }  // namespace
 
 bool InventatoryScanApp::begin() {
-  Serial.println("Inventatory Scan R1 booting");
+  deviceLog.println("Inventatory Scan R1 booting");
   display_.begin();
   // Lit for the splash; the configured mode takes over in loop().
   backlight_.begin();
@@ -85,7 +86,7 @@ bool InventatoryScanApp::begin() {
   BatteryGaugeState storedBattery;
   if (batteryStore_.begin() && batteryStore_.load(storedBattery)) batteryTracker_.restore(storedBattery);
   const uint32_t bootMillivolts = battery_.readMillivolts();
-  Serial.printf("Battery %lu mV\r\n", static_cast<unsigned long>(bootMillivolts));
+  deviceLog.printf("Battery %lu mV\r\n", static_cast<unsigned long>(bootMillivolts));
   // Charger signals are sampled once here. A level at boot is not an edge, so nothing starts.
   chargerLedLit_ = signalHighNext(false, battery_.chargingLedMillivolts());
   chargerPlugged_ = signalHighNext(false, battery_.connectorMillivolts());
@@ -97,15 +98,17 @@ bool InventatoryScanApp::begin() {
   lastCharging_ = batteryTracker_.docked();
   lastChargeDone_ = batteryTracker_.chargeDone();
   display_.setBatteryStatus(batteryTracker_.percent(), lastCharging_, lastChargeDone_, batteryEstimateText());
-  // A low cell that is not charging is refused: show why, then sleep again. Judged by the lower of
-  // the estimate and the voltage; a plugged-in charger that is not lit does not count as charging.
+  // A low cell that is not charging is refused: show why, then sleep again. The gauge decides, and the voltage
+  // counts only at the floor. A charger that is plugged in but not charging does not count as charging.
   const int bootPercent = batteryTracker_.refusePercent();
+  deviceLog.printf("Boot battery: estimate %d%%, refusal at %d%%, charger LED %s.\r\n", batteryTracker_.estimatePercent(),
+                   bootPercent, chargerLedLit_ ? "lit" : "dark");
   if (bootPercent >= 0 && bootPercent <= kBatteryLowPercent && !chargerLedLit_) {
     powerOffWithNotice(bootPercent <= kBatteryCriticalPercent ? String("Battery empty") : String("Battery low"),
                        String("Charge to power on"));
   }
   if (!scanner_.begin(9600)) {
-    Serial.println("Scanner initialization failed; verify the GM65 connection and profile.");
+    deviceLog.println("Scanner initialization failed; verify the GM65 connection and profile.");
     display_.showBoot("Scanner error", kScannerFaultCode);
     display_.tick();
     delay(2000);
@@ -127,16 +130,16 @@ bool InventatoryScanApp::begin() {
 
   // A new or erased outbox starts at a random sequence point, so event ids cannot repeat.
   if (!outbox_.begin(kOutboxNamespace, DEVICE_ID, freshOutboxSequenceStart(esp_random()))) {
-    Serial.println("Outbox storage unavailable; scans cannot be queued until NVS recovers.");
+    deviceLog.println("Outbox storage unavailable; scans cannot be queued until NVS recovers.");
   } else {
     if (!outbox_.load()) {
-      Serial.println("Outbox storage was reset; queued events could not be restored.");
+      deviceLog.println("Outbox storage was reset; queued events could not be restored.");
     }
-    Serial.printf("Outbox ready: %u queued, %u free NVS entries.\r\n", static_cast<unsigned>(outbox_.size()),
+    deviceLog.printf("Outbox ready: %u queued, %u free NVS entries.\r\n", static_cast<unsigned>(outbox_.size()),
                   static_cast<unsigned>(outbox_.freeStorageEntries()));
   }
   if (!deviceSettings_.begin()) {
-    Serial.println("Device settings storage unavailable; using default contrast.");
+    deviceLog.println("Device settings storage unavailable; using default contrast.");
   } else {
     lcdContrast_ = deviceSettings_.contrast();
     display_.setContrast(lcdContrast_);
@@ -149,7 +152,7 @@ bool InventatoryScanApp::begin() {
   if (!setupStore_.begin() || !setupStore_.load(provisionedSettings_)) {
     setupMode_ = true;
     if (!provisioning_.begin(clientConfig_.deviceId)) {
-      Serial.println("BLE provisioning could not start");
+      deviceLog.println("BLE provisioning could not start");
       display_.showBoot("Bluetooth error", kBluetoothStartFailedCode);
       display_.tick();
       return false;
@@ -159,11 +162,12 @@ bool InventatoryScanApp::begin() {
     return true;
   }
   if (beginNormalRuntime(provisionedSettings_)) return true;
-  Serial.println("Normal runtime initialization failed; returning to BLE setup");
+  deviceLog.println("Normal runtime initialization failed; returning to BLE setup");
   return enterSetupAfterRuntimeFailure();
 }
 
 void InventatoryScanApp::loop() {
+  deviceLog.serviceOverAir(millis());
   serviceChargerInput(millis());
   serviceBattery();
   serviceEnergySaving();
@@ -271,7 +275,7 @@ bool InventatoryScanApp::enterSetupAfterRuntimeFailure() {
 
   setupRestartPending_ = false;
   if (!provisioning_.begin(clientConfig_.deviceId)) {
-    Serial.println("BLE provisioning could not restart after runtime failure");
+    deviceLog.println("BLE provisioning could not restart after runtime failure");
     display_.showBoot("Bluetooth error", kBluetoothStartFailedCode);
     display_.tick();
     return false;
@@ -313,7 +317,7 @@ void InventatoryScanApp::serviceProvisioning() {
       WiFi.disconnect(false);
       return;
     }
-    Serial.println("Provisioning: credentials staged");
+    deviceLog.println("Provisioning: credentials staged");
     provisioning_.setResult(true, "WIFI OK");
     // Let the desktop client receive the terminal notification before BLE is torn down.
     delay(300);
@@ -323,13 +327,13 @@ void InventatoryScanApp::serviceProvisioning() {
     if (!beginNormalRuntime(provisionedSettings_) || !setupStore_.commit()) {
       // Bluetooth was released and cannot restart this boot. The setup record is still incomplete,
       // so the restart opens pairing again.
-      Serial.println("Provisioning: normal runtime did not become ready; restarting into BLE setup");
+      deviceLog.println("Provisioning: normal runtime did not become ready; restarting into BLE setup");
       display_.showBoot("Network error", kNetworkStartFailedCode);
       display_.tick();
       delay(2000);
       ESP.restart();
     } else {
-      Serial.println("Provisioning: normal runtime ready");
+      deviceLog.println("Provisioning: normal runtime ready");
     }
     return;
   }

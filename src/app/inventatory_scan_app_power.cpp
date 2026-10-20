@@ -8,6 +8,7 @@
 #include "app/inventatory_scan_app.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/hardware.h"
+#include "log/device_log.h"
 
 #include <esp_sleep.h>
 
@@ -40,13 +41,13 @@ constexpr unsigned long kChargerSampleIntervalMs = 100UL;
 // Deep sleep. Only '*' wakes the device: the charger pins cannot wake it with the current divider.
 void InventatoryScanApp::enterPowerOff() {
   const bool fromStandby = powerMode_ == PowerMode::Standby;
-  Serial.println("Power off requested.");
+  deviceLog.println("Power off requested.");
   powerOffWarning_ = false;
   display_.clearOverlay();
   // A worker still in a blocking HTTP or mDNS call does not stop power off: deep sleep ends it, and
   // queued events are already durable, so a cut-short sync is like a power cut.
   if (!fromStandby && !pauseNetworkForSetupTransition()) {
-    Serial.println("Network worker is busy; powering off without waiting for it.");
+    deviceLog.println("Network worker is busy; powering off without waiting for it.");
   }
 
   // The sink runs at once, even while '*' is still held: the chip sleeps only after the release.
@@ -70,7 +71,7 @@ void InventatoryScanApp::enterPowerOff() {
   const unsigned long deadline = millis() + kPowerOffReleaseTimeoutMs;
   while (keypadPowerKeyDown()) {
     if (static_cast<long>(deadline - millis()) <= 0) {
-      Serial.println("Power off cancelled: release * first.");
+      deviceLog.println("Power off cancelled: release * first.");
       restoreScreen();
       return;
     }
@@ -80,7 +81,7 @@ void InventatoryScanApp::enterPowerOff() {
   }
   // Checked only now, so a press during the sink cancels instead of waking the chip at once.
   if (!keypadArmPowerKeyWake()) {
-    Serial.println("Power off cancelled: * is still pressed.");
+    deviceLog.println("Power off cancelled: * is still pressed.");
     restoreScreen();
     return;
   }
@@ -88,7 +89,7 @@ void InventatoryScanApp::enterPowerOff() {
   backlight_.setLit(false);
   // Chip sleep does not cut scanner power, so the module sleeps first.
   scanner_.deepSleep();
-  Serial.println("Powered off. Press * to wake.");
+  deviceLog.println("Powered off. Press * to wake.");
   saveBatteryState();
   esp_deep_sleep_start();
 }
@@ -98,7 +99,7 @@ void InventatoryScanApp::enterPowerOff() {
 void InventatoryScanApp::startPowerOffWarning() {
   dismissEnergyWarning();
   if (powerMode_ == PowerMode::Standby) exitStandby();
-  Serial.println("Power off warning: release * to stay on.");
+  deviceLog.println("Power off warning: release * to stay on.");
   powerOffWarning_ = true;
   noteUserActivity();
   display_.showPowerWarning();
@@ -107,7 +108,7 @@ void InventatoryScanApp::startPowerOffWarning() {
 // Does nothing unless the countdown is on screen, so it never clears the low-battery overlay.
 void InventatoryScanApp::cancelPowerOffWarning() {
   if (!powerOffWarning_) return;
-  Serial.println("Power off cancelled: * released.");
+  deviceLog.println("Power off cancelled: * released.");
   powerOffWarning_ = false;
   display_.clearOverlay();
 }
@@ -178,7 +179,7 @@ void InventatoryScanApp::serviceBattery() {
   // Status line for bench checks: cell voltage and both charger midpoints.
   if (lastBatteryLogAt_ == 0 || now - lastBatteryLogAt_ >= kBatteryLogIntervalMs) {
     lastBatteryLogAt_ = now;
-    Serial.printf("Battery %lu mV, charger input %lu mV (%s), LED %lu mV (%s).\r\n",
+    deviceLog.printf("Battery %lu mV, charger input %lu mV (%s), LED %lu mV (%s).\r\n",
                   static_cast<unsigned long>(batteryMv), static_cast<unsigned long>(battery_.connectorMillivolts()),
                   chargerPlugged_ ? "plugged" : "unplugged", static_cast<unsigned long>(battery_.chargingLedMillivolts()),
                   chargerLedLit_ ? "lit" : "dark");
@@ -228,17 +229,17 @@ void InventatoryScanApp::serviceChargerInput(unsigned long now) {
 // Plug-in wakes a standby device. With dock mode on, standby follows after kDockPowerOffDelayMs,
 // so the card shows first.
 void InventatoryScanApp::onPlugged(unsigned long now) {
-  Serial.println("Charger input plugged in.");
+  deviceLog.println("Charger input plugged in.");
   if (powerMode_ == PowerMode::Standby) exitStandby();
   if (!dockMode_) return;
-  Serial.println("Dock mode: standby shortly while on the charger.");
+  deviceLog.println("Dock mode: standby shortly while on the charger.");
   dockPowerOffPending_ = true;
   dockPowerOffAt_ = now + kDockPowerOffDelayMs;
 }
 
 // Charger removed: dock standby ends at once. A scheduled but not yet started standby is dropped.
 void InventatoryScanApp::onUnplugged() {
-  Serial.println("Charger input unplugged.");
+  deviceLog.println("Charger input unplugged.");
   dockPowerOffPending_ = false;
   if (!dockStandby_) return;
   dockStandby_ = false;
@@ -250,7 +251,7 @@ void InventatoryScanApp::serviceDockPowerOff(unsigned long now) {
   if (!dockPowerOffPending_ || static_cast<long>(now - dockPowerOffAt_) < 0) return;
   dockPowerOffPending_ = false;
   if (!dockMode_ || !chargerPlugged_ || !canShowBatteryCard()) {
-    Serial.println("Dock mode: standby skipped, the device is in use or no longer on the charger.");
+    deviceLog.println("Dock mode: standby skipped, the device is in use or no longer on the charger.");
     return;
   }
   dockStandby_ = true;
@@ -258,7 +259,7 @@ void InventatoryScanApp::serviceDockPowerOff(unsigned long now) {
 }
 
 void InventatoryScanApp::startLowBatteryWarning() {
-  Serial.printf("Battery low: dock the scanner, or it powers off in %lu s.\r\n", kLowBatteryShutdownMs / 1000UL);
+  deviceLog.printf("Battery low: dock the scanner, or it powers off in %lu s.\r\n", kLowBatteryShutdownMs / 1000UL);
   // The low-battery overlay replaces a power-off countdown, which ends here.
   powerOffWarning_ = false;
   dismissEnergyWarning();
@@ -286,7 +287,7 @@ void InventatoryScanApp::updateLowBatteryWarning(unsigned long now) {
 }
 
 void InventatoryScanApp::cancelLowBatteryWarning() {
-  Serial.println("Dock connected: low-battery warning cleared.");
+  deviceLog.println("Dock connected: low-battery warning cleared.");
   lowBatteryWarning_ = false;
   lowBatteryShownSeconds_ = -1;
   display_.clearOverlay();
@@ -348,13 +349,13 @@ void InventatoryScanApp::serviceEnergySaving() {
 }
 
 void InventatoryScanApp::startEnergySleepWarning() {
-  Serial.println("Energy saving: sleep countdown started; a key or scan keeps the device on.");
+  deviceLog.println("Energy saving: sleep countdown started; a key or scan keeps the device on.");
   energyPhase_ = EnergyPhase::SleepWarning;
   energyShownSeconds_ = -1;
 }
 
 void InventatoryScanApp::enterEnergySleep() {
-  Serial.println("Energy saving: idle for the set time, entering standby.");
+  deviceLog.println("Energy saving: idle for the set time, entering standby.");
   dismissEnergyWarning();
   enterStandby();
   energyPhase_ = EnergyPhase::Asleep;
@@ -363,7 +364,7 @@ void InventatoryScanApp::enterEnergySleep() {
 
 // Wakes the panel, scanner and network first, so the warning can be seen before power off.
 void InventatoryScanApp::startEnergyOffWarning() {
-  Serial.println("Energy saving: power off countdown started; a key keeps the device on.");
+  deviceLog.println("Energy saving: power off countdown started; a key keeps the device on.");
   exitStandby();
   energyPhase_ = EnergyPhase::OffWarning;
   energyShownSeconds_ = -1;
@@ -391,7 +392,7 @@ void InventatoryScanApp::dismissEnergyWarning() {
 }
 
 void InventatoryScanApp::powerOffForEnergySaving() {
-  Serial.println("Energy saving: powering off.");
+  deviceLog.println("Energy saving: powering off.");
   dismissEnergyWarning();
   enterPowerOff();
 }
