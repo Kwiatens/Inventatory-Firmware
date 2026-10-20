@@ -5,17 +5,10 @@
 
 namespace inventatory_scan {
 
-// The codes the LCD shows for a problem. The public reference explains each one at
-// kwiatens.github.io/Inventatory-Site/docs/scanner/error-codes/.
-//
-// Format: three letters for the area, a dash, two digits.
-//
-// Inside each area the numbers run 01, 02, ... with no gap, in this order. Only a code the
-// device can show is listed. To remove one, delete it, renumber the rest of its area, and update
-// the public reference, AGENTS.md and CHANGELOG.md. The host test fails on a gap.
-// tools/check_error_codes.py also fails on a code that no firmware file uses, on a code missing
-// from the host test list, and on a public reference that differs. No device in the field shows
-// these codes yet, so renumbering is safe until the first hardware release. After that, ask first.
+// LCD error codes; public reference at kwiatens.github.io/Inventatory-Site/docs/scanner/error-codes/.
+// Format AAA-NN, numbered 01, 02, ... with no gap per area. To remove a code, renumber its area
+// and update the public reference, AGENTS.md and CHANGELOG.md. Renumbering is safe only before
+// the first hardware release.
 
 // Scanner.
 constexpr char kScannerFaultCode[] = "SCN-01";
@@ -50,8 +43,7 @@ constexpr char kPrintNoReplyCode[] = "PRT-01";
 constexpr char kPrintPcOfflineCode[] = "PRT-02";
 constexpr char kPresetsNotLoadedCode[] = "PRT-03";
 
-// Battery. A low or empty battery is a warning, not a fault, so it has no code. Only a reading
-// that cannot be trusted does.
+// Battery. Low or empty is a warning with no code; only an untrustworthy reading has one.
 constexpr char kBatteryUnreadableCode[] = "PWR-01";
 
 }  // namespace inventatory_scan

@@ -26,7 +26,7 @@ bool DeviceSettingsStore::begin() {
   return true;
 }
 
-// Writes value under key unless NVS is already known to hold it, so a repeated save wears no flash.
+// Writes value under key unless NVS is known to hold it, so repeated saves wear no flash.
 bool DeviceSettingsStore::saveCached(const char* key, uint8_t value, int16_t& last) {
   if (last >= 0 && value == last) return true;
   if (prefs_.putUChar(key, value) != 1) return false;

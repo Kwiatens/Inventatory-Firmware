@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Migration tests for the offline outbox. A device that was flashed with an older
-// queue layout must keep its queued scans when it boots this firmware. The
-// fixtures below are fixed byte layouts, mirrored from the blobs older firmware
-// wrote, so the tests check the real upgrade path rather than what the current
-// code happens to produce. A power cut is injected at every write the migration
-// makes, and each cut must leave exactly the original queue after the next boot.
+// Outbox migration tests. A device flashed with an older queue layout must keep its queued
+// scans on this firmware. Fixtures are fixed byte layouts copied from older blobs, so the
+// tests check the real upgrade path. A power cut at each migration write must leave the
+// original queue intact.
 #include <unity.h>
 
 #include <cstdint>
@@ -35,7 +33,7 @@ constexpr char kLegacyKey[] = "state";
 constexpr uint32_t kMagic = 0x48534f51UL;
 constexpr std::size_t kCapacity = 16;
 
-// Layout of the version 4 blob: the whole queue in one 4112-byte value.
+// Version 4 blob: the whole queue in one 4112-byte value.
 struct V4Record {
   uint32_t sequence;
   int32_t value;
@@ -57,7 +55,7 @@ struct V4State {
 };
 static_assert(sizeof(V4State) == 4112, "version 4 blob must be 4112 bytes");
 
-// Layout of the version 2 blob: a 1680-byte value with one delta per record.
+// Version 2 blob: 1680 bytes, one delta per record.
 struct V2Record {
   uint32_t sequence;
   char code[96];
@@ -138,7 +136,7 @@ void test_host_outbox_version4_queue_migrates_in_order_across_the_wrap() {
   TEST_ASSERT_EQUAL_STRING("Acme", second.manufacturer.c_str());
   TEST_ASSERT_EQUAL_STRING("MPN-B2", second.manufacturerPartNumber.c_str());
   TEST_ASSERT_EQUAL_STRING("Bracket", second.encodedPartName.c_str());
-  // Event ids are what the desktop deduplicates on, so the migrated ids must match the originals.
+  // Migrated ids must match the originals: the desktop deduplicates on them.
   TEST_ASSERT_EQUAL_STRING("R1-TEST-38", second.eventId.c_str());
   TEST_ASSERT_EQUAL_UINT32(40, outbox.nextSequence());
 
@@ -199,8 +197,7 @@ void test_host_outbox_failed_migration_write_keeps_the_legacy_blob() {
 }
 
 void test_host_outbox_power_cut_at_every_migration_write_keeps_the_queue() {
-  // The migration writes three records, the header and removes the blob: five
-  // writes. A cut is injected before each one, and after the last.
+  // Five writes: three records, header, blob removal. Cut before each and after the last.
   const char* const codes[] = {"A1", "B2", "C3"};
   for (long long cutAfter = 0; cutAfter <= 6; ++cutAfter) {
     host_nvs::reset();
@@ -244,8 +241,7 @@ void test_host_outbox_version4_blob_with_wrong_magic_is_refused_and_kept() {
 }
 
 void test_host_outbox_version4_sized_blob_of_another_version_is_refused_and_kept() {
-  // The right size and magic, but a version this firmware does not migrate. Only the
-  // version 4 layout is migrated, so this must not be read as one.
+  // Right size and magic, but a version this firmware does not migrate.
   V4State blob = makeV4Wrapped(40);
   blob.version = 5;
   storeLegacy(&blob, sizeof(blob));

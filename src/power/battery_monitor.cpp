@@ -21,10 +21,10 @@ static_assert(hardware::kConnectorSensePin >= 1 && hardware::kConnectorSensePin 
 }  // namespace
 
 void BatteryMonitor::begin() {
-  // 12 dB attenuation covers the divider output for a LiPo (about 2.1 V at 4.2 V with equal resistors).
+  // 12 dB attenuation covers the divider output of a LiPo (about 2.1 V at 4.2 V).
   analogSetPinAttenuation(BATTERY_ADC_PIN, ADC_11db);
-  // Both charger signals are read through the ADC: their midpoints are about 2.2 V when high, which a
-  // digital input reads as low. They have no pull resistors, because a pull-down pulled the LED signal to 0 V.
+  // Charger signals go through the ADC: a digital input reads their ~2.2 V high level as low.
+  // No pull resistors: a pull-down pulled the LED signal to 0 V.
   analogSetPinAttenuation(hardware::kConnectorSensePin, ADC_11db);
   analogSetPinAttenuation(hardware::kChargingLedPin, ADC_11db);
 }
@@ -35,7 +35,7 @@ uint32_t BatteryMonitor::readMillivolts() const {
     pinSum += analogReadMilliVolts(BATTERY_ADC_PIN);
   }
   const uint64_t pinMillivolts = pinSum / kSamples;
-  // The pin sees battery * bottom / (top + bottom). The gain corrects the error measured on this board.
+  // The pin sees battery * bottom / (top + bottom). The scale corrects this board's measured error.
   const uint64_t cellMillivolts =
       pinMillivolts * (BATTERY_DIVIDER_TOP_OHMS + BATTERY_DIVIDER_BOTTOM_OHMS) / BATTERY_DIVIDER_BOTTOM_OHMS;
   return static_cast<uint32_t>(cellMillivolts * hardware::kBatteryReadingScalePpm / 1000000ULL);

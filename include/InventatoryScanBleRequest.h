@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Parser for the BLE provisioning write (protocol version 1). Pure logic, so it is
-// tested on the host with no BLE stack. Input is untrusted: every length is checked
-// before any byte is read, and each field is copied by length, never through a
-// C-string read.
+// Parser for the BLE provisioning write (protocol v1). Input is untrusted: lengths are checked
+// before any byte is read, and fields are copied by length, never as C strings.
 #pragma once
 
 #include "InventatoryScanSecurity.h"
@@ -20,9 +18,8 @@ constexpr uint8_t kProvisioningProtocolVersion = 1;
 constexpr std::size_t kProvisioningMaxSsidBytes = 32;
 constexpr std::size_t kProvisioningMaxPasswordBytes = 63;
 
-// Layout: version, SSID length, password length, token length, then the exact bytes
-// of the SSID, password and token. Nothing else may follow. A NUL byte in any field is
-// refused, because the values are later passed to C APIs that stop at NUL.
+// Layout: version, three lengths, then SSID, password and token bytes; nothing may follow.
+// NUL bytes are refused: the values reach C APIs that stop at NUL.
 inline bool parseProvisioningRequest(const uint8_t* data, std::size_t size, ProvisionedSettings& settings) {
   if (data == nullptr || size < 4U || data[0] != kProvisioningProtocolVersion) return false;
   const std::size_t ssidLength = data[1];

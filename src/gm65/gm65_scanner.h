@@ -16,16 +16,15 @@ class Gm65Scanner {
   void end();
   bool suspend();
   bool resume();
-  // Turns the lamps off and puts the module into deep sleep. Call it just before the chip sleeps.
+  // Lamps off and module in deep sleep. Call just before the chip sleeps.
   void deepSleep();
   bool poll(String& code);
   void flushInput();
   bool active() const;
 
  private:
-  // Opens the UART, wakes the module, applies the boot profile and starts accepting frames after a settle time.
-  // The wake is needed because the chip's power-off may have left the module in deep sleep. Returns false when
-  // the module does not wake, or the profile is not acknowledged.
+  // Opens the UART, wakes the module (it may be in deep sleep after a chip power-off), and applies
+  // the boot profile. False if it does not wake or the profile is not acknowledged.
   bool start();
   void openPort();
   // Returns false when the module does not answer after the wake.
@@ -42,7 +41,7 @@ class Gm65Scanner {
   Gm65FrameAssembler frames_;
   uint32_t baudRate_ = 9600;
   bool active_ = false;
-  // True once the boot profile was acknowledged and saved. The module keeps it while it is powered.
+  // Boot profile acknowledged and saved; the module keeps it while powered.
   bool profileApplied_ = false;
   unsigned long acceptAfterMs_ = 0;
 };

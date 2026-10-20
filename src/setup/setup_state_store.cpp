@@ -11,7 +11,6 @@ namespace inventatory_scan {
 
 namespace {
 
-// ESP32 NVS namespaces are limited to 15 characters plus the terminator.
 constexpr char kSetupNamespace[] = "inv_setup";
 static_assert(sizeof(kSetupNamespace) <= 16, "NVS namespace exceeds ESP32's 15-character limit");
 
@@ -41,11 +40,10 @@ bool SetupStateStore::savePending(const ProvisionedSettings& settings) {
   }
 
   counterBlockValid_ = false;
-  // Mark incomplete first.  A power loss can therefore only return the R1 to
-  // setup mode; it can never make a partial credential set look valid.
+  // Mark incomplete first: a power loss can only return to setup mode,
+  // never make a partial set look valid.
   if (!prefs_.putBool("complete", false)) return false;
-  // Arduino ESP32 Preferences returns strlen(value) for putString(), which
-  // correctly permits an intentionally empty password for an open network.
+  // putString() returns strlen(value), so an empty password (open network) is accepted.
   if (prefs_.putString("ssid", settings.wifiSsid) != settings.wifiSsid.length() ||
       prefs_.putString("password", settings.wifiPassword) != settings.wifiPassword.length() ||
       prefs_.putString("token", settings.deviceToken) != settings.deviceToken.length() ||
@@ -70,12 +68,11 @@ bool SetupStateStore::save(const ProvisionedSettings& settings) {
 
 bool SetupStateStore::reserveTransportCounter(uint64_t& counter) {
   if (!complete()) return false;
-  // A missing counter on a complete record must fail closed.  Defaulting to 0
-  // would restart counters at 1 and reuse values the desktop has already seen.
+  // A missing counter on a complete record fails closed; defaulting to 0 would reuse
+  // counters the desktop has seen.
   if (!prefs_.isKey("request_counter")) return false;
   if (!counterBlockValid_ || counterNext_ >= counterCeiling_) {
-    // The persisted value is the ceiling of the previous block, so every
-    // counter at or below it may already have been transmitted.
+    // The persisted value is the previous block's ceiling; counters at or below it may be sent already.
     const std::uint64_t base = counterBlockValid_ ? counterCeiling_ : prefs_.getULong64("request_counter", 0);
     if (base > UINT64_MAX - kCounterBlock) return false;
     const std::uint64_t ceiling = base + kCounterBlock;
