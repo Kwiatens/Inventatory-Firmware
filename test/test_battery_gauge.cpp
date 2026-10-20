@@ -318,20 +318,33 @@ void test_gauge_stored_charge_is_checked_while_charging() {
   TEST_ASSERT_EQUAL_INT(21, tracker.estimatePercent());
 }
 
-void test_tracker_refuses_a_low_cell_by_the_lower_reading() {
-  // A drifted estimate must not let a flat cell start: the lower of the two readings decides.
+void test_tracker_boot_refusal_follows_the_gauge_not_a_sagged_voltage() {
+  // A cell the gauge holds at 25% reads 10% under load at boot. The gap is within the boot tolerance, so the
+  // stored charge stays, and the sag does not refuse the boot.
   BatteryGaugeState stored;
-  stored.remainingUah = chargeAt(60);
-  BatteryTracker drifted;
-  drifted.restore(stored);
-  drifted.update(3500, false, 0);  // 6% by the voltage, 60% by the estimate
-  TEST_ASSERT_EQUAL_INT(6, drifted.refusePercent());
+  stored.remainingUah = chargeAt(25);
+  BatteryTracker sagged;
+  sagged.restore(stored);
+  sagged.update(3550, false, 0);
+  TEST_ASSERT_EQUAL_INT(25, sagged.estimatePercent());
+  TEST_ASSERT_EQUAL_INT(25, sagged.refusePercent());
+}
 
-  stored.remainingUah = chargeAt(20);
-  BatteryTracker flat;
-  flat.restore(stored);
-  flat.update(3900, false, 0);  // 62% by the voltage, 20% by the estimate
-  TEST_ASSERT_EQUAL_INT(20, flat.refusePercent());
+void test_tracker_boot_refusal_at_the_voltage_floor() {
+  // At the floor the cell is empty, whatever the estimate says.
+  BatteryGaugeState stored;
+  stored.remainingUah = chargeAt(15);
+  BatteryTracker atFloor;
+  atFloor.restore(stored);
+  atFloor.update(kBatteryFloorMv, false, 0);
+  TEST_ASSERT_EQUAL_INT(0, atFloor.refusePercent());
+}
+
+void test_tracker_boot_refusal_of_a_fresh_low_cell() {
+  // A first boot takes the voltage as the charge, so a cell at 3.42 V is low and is refused.
+  BatteryTracker fresh;
+  fresh.update(3420, false, 0);
+  TEST_ASSERT_TRUE(fresh.refusePercent() <= kBatteryLowPercent);
 }
 
 void test_tracker_state_resumes_the_same_estimate() {
@@ -371,6 +384,8 @@ void registerBatteryGaugeTests() {
   RUN_TEST(test_gauge_stored_full_charge_is_held_on_the_charger_at_boot);
   RUN_TEST(test_gauge_stored_charge_within_tolerance_is_kept_at_boot);
   RUN_TEST(test_gauge_stored_charge_is_checked_while_charging);
-  RUN_TEST(test_tracker_refuses_a_low_cell_by_the_lower_reading);
+  RUN_TEST(test_tracker_boot_refusal_follows_the_gauge_not_a_sagged_voltage);
+  RUN_TEST(test_tracker_boot_refusal_at_the_voltage_floor);
+  RUN_TEST(test_tracker_boot_refusal_of_a_fresh_low_cell);
   RUN_TEST(test_tracker_state_resumes_the_same_estimate);
 }
