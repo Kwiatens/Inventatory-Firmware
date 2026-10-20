@@ -3,12 +3,9 @@
 
 #pragma once
 
-// Battery state for the single LiPo cell: the voltage to percent curve, the voltage guards and a
-// gauge that estimates the charge left. The gauge takes the charge out by the load the firmware
-// draws, and corrects the estimate from the cell voltage at rest, where that voltage follows the
-// open-circuit voltage, and at boot, where a stored estimate can be stale. A charge is timed rather
-// than read from the voltage, so the charger's raised voltage never moves the percent. No Arduino
-// calls, so the host tests run the same code the device runs.
+// Single LiPo cell battery state: voltage-to-percent curve, voltage guards and charge gauge.
+// Charge is timed from load and corrected at rest and boot, never from the charger-raised voltage.
+// No Arduino calls, so host tests run the same code.
 
 #include <algorithm>
 #include <cstddef>
@@ -19,9 +16,7 @@
 
 namespace inventatory_scan {
 
-// Cell voltage (millivolts) to charge (percent) for one LiPo cell under light
-// load. The curve is approximate and should be calibrated on the device with a
-// full discharge test.
+// Cell millivolts to percent under light load. Approximate: calibrate with a discharge test.
 struct BatteryCurvePoint {
   uint16_t millivolts;
   uint8_t percent;
@@ -32,7 +27,7 @@ constexpr BatteryCurvePoint kBatteryCurve[] = {
     {3700, 28},  {3600, 14}, {3500, 6},  {3400, 2},  {3300, 0},
 };
 
-// Single-return, recursive form: the ESP32 toolchain compiles constexpr under C++11 rules.
+// Recursive single-return form: the ESP32 toolchain uses C++11 constexpr rules.
 constexpr std::size_t kBatteryCurveCount = sizeof(kBatteryCurve) / sizeof(kBatteryCurve[0]);
 constexpr bool batteryCurveStepFalls(std::size_t index) {
   return index + 1U >= kBatteryCurveCount
@@ -43,35 +38,28 @@ constexpr bool batteryCurveStepFalls(std::size_t index) {
 }
 static_assert(batteryCurveStepFalls(0), "battery curve must fall in both voltage and percent");
 
-// A reading outside this range is an unconnected or unreadable divider, or a wrong
-// reading, not a cell. Such readings never warn or power off, so a board without the
-// divider still boots. A LiPo cell tops out at 4.2 V (4.35 V for high-voltage cells).
+// Outside this range is a bad divider reading, not a cell: it never warns or powers off,
+// so a board without the divider still boots. Cells top out at 4.2 V (4.35 V high-voltage).
 constexpr uint32_t kBatteryMinimumValidMv = 2500;
 constexpr uint32_t kBatteryMaximumValidMv = 4500;
 constexpr uint8_t kBatteryLowPercent = 10;
 constexpr uint8_t kBatteryCriticalPercent = 3;
-// Undocked, a cell at or below this voltage is empty, whatever the gauge says. It is the 0%
-// point of kBatteryCurve.
+// Undocked, at or below this voltage the cell is empty whatever the gauge says (the 0% point).
 constexpr uint32_t kBatteryFloorMv = 3300;
-// Consecutive one-second samples below a threshold before it counts. Radio
-// bursts sag the cell for a moment; one low reading must not switch the device off.
+// Consecutive one-second samples below a threshold before it counts: radio bursts sag the cell.
 constexpr uint8_t kBatteryTripSamples = 4;
-// The charger line must read the new state this many samples in a row before the state
-// changes. A dock contact that bounces must not restart the charge or re-show the card.
+// Samples a new charger state must hold before it counts: a bouncing dock must not restart charge.
 constexpr uint8_t kBatteryChargerDebounceSamples = 2;
-// Charged: the charger is plugged in, its LED is dark, and the cell reads at least kBatteryChargedMv. The
-// voltage only guards against a low cell on a charger that is not charging it. Leaving the state needs the
-// lower kBatteryChargedReleaseMv, so a reading near the edge does not flicker.
+// Charged needs the charger plugged in, LED dark and the cell at or above kBatteryChargedMv.
+// Leaving needs the lower release value, so a reading at the edge does not flicker.
 constexpr uint32_t kBatteryChargedMv = 4000;
 constexpr uint32_t kBatteryChargedReleaseMv = 3900;
 // Observed time on battery needed before the time left is shown without a "~".
 constexpr uint32_t kBatteryEstimateMinSpanMs = 300000UL;
 constexpr int32_t kBatteryEstimateMaxMinutes = 9999;
 
-// Gauge calibration. These are placeholders until the bench measurements of the battery plan are
-// in: the capacity of the cell, the current the firmware draws in each state, the rest time and
-// the charge rate. Replace them on the device.
-// The cell is a 3.7 V nominal LiPo of 1300 mAh. Its usable capacity still needs a discharge test.
+// Gauge calibration: placeholders until bench measurements replace them.
+// 3.7 V nominal, 1300 mAh; usable capacity still needs a discharge test.
 constexpr uint32_t kBatteryNominalCapacityUah = 1300000UL;
 // Average current in milliamps for each state. Together they are about 80 mA with everything on.
 constexpr uint32_t kBatteryLoadStandbyMa = 3;
@@ -87,21 +75,16 @@ constexpr uint32_t kBatteryMaxStepMs = 5000UL;
 constexpr uint32_t kBatteryRestLoadMa = 5;
 // Continuous rest before the voltage is read as open-circuit.
 constexpr uint32_t kBatteryRestDwellMs = 3600000UL;
-// The open-circuit reading corrects the gauge only between these percents. The ends are anchored
-// by the empty and full events instead.
+// Rest correction applies only between these percents; empty and full events anchor the ends.
 constexpr uint8_t kBatteryRestTrustMinPercent = 10;
 constexpr uint8_t kBatteryRestTrustMaxPercent = 90;
-// A correction starts when the reading differs by this much, and moves the gauge one point per
-// kBatteryRestStepMs.
+// Correction starts at this difference and moves the gauge one point per kBatteryRestStepMs.
 constexpr uint8_t kBatteryRestTolerancePercent = 2;
 constexpr uint32_t kBatteryRestStepMs = 60000UL;
-// At boot a stored charge more than this many points above the cell's voltage is replaced by the voltage's
-// charge. The gauge cannot count the charge a cell loses while the device is off, so a stored estimate can
-// stay high for hours. A smaller gap is left to the rest correction, which tolerates a sag under load and the
-// ADC's error.
+// At boot, a stored charge this many points above the voltage's charge is replaced: the gauge
+// cannot count charge lost while off. Smaller gaps go to the rest correction (load sag, ADC error).
 constexpr uint8_t kBatteryRestoreTolerancePercent = 20;
-// Charging is timed until a full charge has been measured on this cell. This is a guess to replace.
-// The prior assumes the 1300 mAh cell charged at 500 mA: 2.6 h, or 93.6 s per point.
+// Prior charge rate, a guess until measured: 1300 mAh at 500 mA is 2.6 h, 93.6 s per point.
 constexpr uint32_t kBatteryPriorChargeMsPerPercent = 93600UL;
 // A learned rate outside these bounds is not trusted.
 constexpr uint32_t kBatteryChargeMsPerPercentMin = 20000UL;
@@ -135,10 +118,8 @@ enum class BatteryLevel : uint8_t {
   Critical,
 };
 
-// The two charger signals, the LED and the charger input, are read on the ADC through 1 MOhm / 1 MOhm
-// midpoints: about 2200 mV when high and about 0 mV when low. A signal counts as high above
-// kSignalHighAboveMv and as low below kSignalLowBelowMv. Between the two the last state holds, so a reading
-// on the edge does not flicker.
+// Charger signals read through 1 MOhm / 1 MOhm midpoints: about 2200 mV high, 0 mV low.
+// Between the thresholds the last state holds, so an edge reading does not flicker.
 constexpr uint32_t kSignalHighAboveMv = 1600;
 constexpr uint32_t kSignalLowBelowMv = 800;
 
@@ -146,21 +127,19 @@ inline bool signalHighNext(bool high, uint32_t midpointMv) {
   return high ? midpointMv >= kSignalLowBelowMv : midpointMv > kSignalHighAboveMv;
 }
 
-// What the gauge keeps across a power-off. A charge rate of zero means no full charge has been
-// timed yet, so the prior rate applies.
+// Kept across power-off. A zero charge rate means none timed yet: the prior applies.
 struct BatteryGaugeState {
   uint32_t remainingUah = 0;
   uint32_t chargeMsPerPercent = 0;
   uint32_t averageLoadCentiMa = 0;
 };
 
-// Estimates the charge left in the cell. Every second it takes out the charge the load used, or
-// puts in the charge of a timed charge. At rest the open-circuit voltage corrects the estimate
-// slowly. The estimate drives the warnings and the time left. The shown percent follows the
-// estimate at most one point per kBatteryDisplayStepMs, and while charging it never falls.
+// Charge estimate: each second removes the load's charge or adds a timed charge. At rest the
+// open-circuit voltage corrects it slowly. The shown percent moves at most one point per
+// kBatteryDisplayStepMs and never falls while charging.
 class BatteryGauge {
  public:
-  // Resumes from a stored state. The first update then checks the stored charge against the voltage.
+  // Resumes from a stored state; the first update checks the stored charge against the voltage.
   void restore(const BatteryGaugeState& state) {
     restored_ = true;
     remainingUah_ = std::min<uint64_t>(state.remainingUah, kBatteryNominalCapacityUah);
@@ -171,9 +150,7 @@ class BatteryGauge {
     if (averageCentiMa_ != 0) observedMs_ = kBatteryEstimateMinSpanMs;
   }
 
-  // One valid reading, once a second. charging and full are already debounced: full means the cell is
-  // charged and the charger is no longer charging it. loadMilliamps is the current the firmware draws
-  // now, 0 when unknown.
+  // One valid reading per second. charging and full are debounced; loadMilliamps 0 means unknown.
   void update(uint32_t millivolts, bool charging, bool full, uint32_t loadMilliamps, uint32_t nowMs) {
     const uint32_t stepMs = started_ ? std::min(nowMs - lastMs_, kBatteryMaxStepMs) : 0U;
     lastMs_ = nowMs;
@@ -190,12 +167,12 @@ class BatteryGauge {
       restStepMs_ = 0;
     } else {
       if (done) {
-        // Charged: the estimate holds at 100 until the voltage falls and the load takes charge out again.
+        // Charged: hold at 100 until the voltage falls and load removes charge.
         remainingUah_ = kBatteryNominalCapacityUah;
         dischargeRemainder_ = 0;
         if (chargeTiming_) learnCharge();
       } else {
-        // Off the charger after a charged hold: the hold counted no load, so the estimate restarts from the voltage.
+        // Off the charger after a charged hold: no load was counted, so restart from the voltage.
         if (chargedBefore_) remainingUah_ = chargeFromMillivolts(millivolts);
         removeCharge(stepMs, loadMilliamps);
       }
@@ -215,13 +192,11 @@ class BatteryGauge {
   }
   int shownPercent() const { return shownPercent_; }
   bool started() const { return started_; }
-  // True while the minutes rest on the prior charge rate, or on less than kBatteryEstimateMinSpanMs
-  // of observed load.
+  // True while minutes use the prior rate or under kBatteryEstimateMinSpanMs of observed load.
   bool estimateApproximate() const {
     return wasCharging_ ? !chargeLearned_ : observedMs_ < kBatteryEstimateMinSpanMs;
   }
-  // The minutes to empty on battery, or to full while charging. -1 while there is nothing to base
-  // them on.
+  // Minutes to empty (or to full while charging); -1 with nothing to base them on.
   int32_t minutesRemaining() const {
     if (!started_) return -1;
     uint64_t minutes = 0;
@@ -244,13 +219,12 @@ class BatteryGauge {
   }
 
  private:
-  // The charge that the open-circuit percent at this voltage stands for.
+  // Charge (uAh) that this voltage's open-circuit percent stands for.
   uint64_t chargeFromMillivolts(uint32_t millivolts) const {
     return static_cast<uint64_t>(kBatteryNominalCapacityUah) * batteryPercentFromMillivolts(millivolts) / 100U;
   }
 
-  // The first reading takes the cell voltage as the charge, unless a stored state was restored. A restored
-  // charge is checked against the voltage first.
+  // The first reading takes the voltage as charge; a restored charge is checked against it.
   void start(uint32_t millivolts, uint32_t loadMilliamps, bool charging) {
     started_ = true;
     if (restored_) {
@@ -262,9 +236,9 @@ class BatteryGauge {
     shownPercent_ = estimatePercent();
   }
 
-  // A stored charge more than kBatteryRestoreTolerancePercent above the voltage's charge is replaced. The
-  // charger only raises the voltage, so a low voltage counts while charging too. A stored full charge is the
-  // charged hold, which counts no load and needs the charger, so it is replaced unless the LED is lit.
+  // Replace a stored charge more than kBatteryRestoreTolerancePercent above the voltage's.
+  // The charger only raises voltage, so a low voltage counts while charging too.
+  // A stored full charge is replaced unless the LED is lit.
   void checkRestored(uint32_t millivolts, bool charging) {
     const int stored = estimatePercent();
     const int fromVoltage = batteryPercentFromMillivolts(millivolts);
@@ -279,8 +253,7 @@ class BatteryGauge {
     chargeStartPercent_ = estimatePercent();
   }
 
-  // A full scale of 100 points takes 100 x chargeMsPerPercent_ milliseconds. The remainder is kept,
-  // so short steps add up.
+  // 100 points take 100 x chargeMsPerPercent_ ms; the remainder carries over so short steps add up.
   void addCharge(uint32_t stepMs) {
     const uint64_t cap = static_cast<uint64_t>(kBatteryNominalCapacityUah) * kBatteryChargeCapPercent / 100U;
     if (remainingUah_ >= cap) return;
@@ -291,13 +264,12 @@ class BatteryGauge {
     remainingUah_ = std::min(cap, remainingUah_ + added);
   }
 
-  // Called at the done event. The rate is the average time per point since the charge began.
+  // Called at done: the rate is the average time per point since the charge began.
   void learnCharge() {
     chargeTiming_ = false;
     const int points = 100 - chargeStartPercent_;
     if (points < kBatteryChargeLearnMinPoints) return;
-    // A charge faster than the fastest allowed rate is not a real one, such as a boot that
-    // finds the charger already done.
+    // Faster than the fastest allowed rate is not a real charge (e.g. boot with charger done).
     if (chargeElapsedMs_ < static_cast<uint64_t>(kBatteryChargeMsPerPercentMin) * points) return;
     const uint64_t sample = chargeElapsedMs_ / static_cast<uint64_t>(points);
     const uint64_t value = chargeLearned_ ? (static_cast<uint64_t>(chargeMsPerPercent_) * 3U + sample) / 4U : sample;
@@ -306,7 +278,7 @@ class BatteryGauge {
     chargeLearned_ = true;
   }
 
-  // Takes out the charge the load used. mA x ms / 3600 is microamp-hours, and the remainder is kept.
+  // Takes out the load's charge: mA x ms / 3600 is microamp-hours; the remainder is kept.
   void removeCharge(uint32_t stepMs, uint32_t loadMilliamps) {
     dischargeRemainder_ += static_cast<uint64_t>(loadMilliamps) * stepMs;
     const uint64_t used = dischargeRemainder_ / 3600U;
@@ -330,8 +302,8 @@ class BatteryGauge {
     }
   }
 
-  // After the rest dwell, the open-circuit voltage corrects the estimate, one point per
-  // kBatteryRestStepMs, while it differs by the tolerance. At or below the floor the cell is empty.
+  // After the rest dwell, correct one point per kBatteryRestStepMs while off by the tolerance.
+  // At or below the floor the cell is empty.
   void correctAtRest(uint32_t millivolts, uint32_t stepMs) {
     if (restMs_ < kBatteryRestDwellMs) {
       restStepMs_ = 0;
@@ -360,8 +332,7 @@ class BatteryGauge {
     }
   }
 
-  // The shown percent follows the estimate, one point per kBatteryDisplayStepMs. Done shows 100
-  // at once. While charging it never falls, even if the estimate does.
+  // Shown percent follows the estimate, one point per kBatteryDisplayStepMs; done shows 100.
   void updateShown(uint32_t stepMs, bool done) {
     if (done) {
       shownPercent_ = 100;
@@ -399,18 +370,15 @@ class BatteryGauge {
   bool chargedBefore_ = false;
 };
 
-// Tracks the battery from one reading per second. The voltage guards the readings, the charger
-// state is debounced, and the percent comes from the gauge. Timestamps are millis() values;
-// differences use unsigned arithmetic, so they survive the 32-bit wrap.
+// One reading per second. Timestamps are millis() values; differences use unsigned arithmetic,
+// so the 32-bit wrap is safe.
 class BatteryTracker {
  public:
   // Resumes the gauge from a stored state. Call it before the first update.
   void restore(const BatteryGaugeState& state) { gauge_.restore(state); }
 
-  // charging: the charger's LED is lit. It must read the new state for kBatteryChargerDebounceSamples
-  // samples in a row before it changes. loadMilliamps: the current the firmware draws now, 0 when unknown.
-  // plugged: the charger input is connected, already debounced by the caller. Charged is worked out here:
-  // plugged in, the LED dark, and the cell at or above kBatteryChargedMv.
+  // charging: LED lit, debounced here. loadMilliamps: 0 when unknown.
+  // plugged: charger input, debounced by the caller.
   void update(uint32_t millivolts, bool charging, uint32_t nowMs, uint32_t loadMilliamps = 0,
               bool plugged = false) {
     if (millivolts < kBatteryMinimumValidMv || millivolts > kBatteryMaximumValidMv) {
@@ -455,36 +423,32 @@ class BatteryTracker {
   }
 
   bool valid() const { return valid_; }
-  // True only after kBatteryTripSamples readings in a row were outside the valid range, so a
-  // single bad sample never shows a fault.
+  // Only after kBatteryTripSamples invalid readings in a row, never for one bad sample.
   bool unreadable() const { return invalidSamples_ >= kBatteryTripSamples; }
   // The charger's LED is lit: the cell is charging.
   bool charging() const { return valid_ && charging_; }
-  // The charger is plugged in, its LED is dark, and the cell is full. The hold ends when the charger is
-  // taken off, and the estimate then restarts from the voltage.
+  // Plugged in, LED dark, cell full. The hold ends when the charger is removed.
   bool chargeDone() const { return valid_ && chargeDone_ && !charging_; }
   // On the charger: charging, or charged.
   bool docked() const { return valid_ && (charging_ || chargeDone_); }
-  // True once a reading has started the gauge.
   bool started() const { return gauge_.started(); }
-  // The percent on the display. -1 while no reading has been taken.
+  // Display percent; -1 with no reading.
   int percent() const { return valid_ ? gauge_.shownPercent() : -1; }
-  // The estimate the warnings use. -1 while no reading has been taken.
+  // Estimate used by the warnings; -1 with no reading.
   int estimatePercent() const { return valid_ ? gauge_.estimatePercent() : -1; }
-  // The percent the boot check refuses a cell at: the lower of the estimate and the voltage, so
-  // a drifted estimate cannot let a flat cell start. -1 while no reading has been taken.
+  // Boot refusal percent: the lower of estimate and voltage, so a drifted estimate
+  // cannot pass a flat cell. -1 with no reading.
   int refusePercent() const {
     if (!valid_) return -1;
     return std::min(gauge_.estimatePercent(), static_cast<int>(batteryPercentFromMillivolts(lastMillivolts_)));
   }
   // -1 while there is no reading.
   int32_t minutesRemaining() const { return valid_ ? gauge_.minutesRemaining() : -1; }
-  // True while the minutes rest on the prior rate rather than on this cell's observed behaviour.
+  // True while minutes rest on the prior rate, not this cell's observed behaviour.
   bool estimateApproximate() const { return gauge_.estimateApproximate(); }
   BatteryGaugeState state() const { return gauge_.state(); }
-  // Discharge thresholds are debounced and never apply while the charger's LED is lit. A charger that is
-  // plugged in but not charging does not protect a low cell, so the thresholds still apply then. The voltage
-  // floor counts like the others: a cell at or below kBatteryFloorMv is critical whatever the gauge says.
+  // Thresholds are debounced and skipped while the LED is lit; a plugged-in charger that is not
+  // charging still gets them. The floor is critical whatever the gauge says.
   BatteryLevel level() const {
     if (!valid_ || charging_) return BatteryLevel::Ok;
     if (criticalSamples_ >= kBatteryTripSamples || floorSamples_ >= kBatteryTripSamples) {
@@ -531,9 +495,8 @@ inline bool formatBatteryDuration(char* out, std::size_t capacity, uint32_t minu
   return true;
 }
 
-// The runtime line for the top bar and the battery cards: "Full: 1h 05m" while
-// charging, "6h 20m left" on battery, "Fully charged" at 100%. An estimate that is still
-// approximate carries a "~". Returns false, and writes nothing useful, while there is no reading.
+// Runtime line: "Full: 1h 05m" charging, "6h 20m left" on battery, "Fully charged" at 100%.
+// Approximate adds "~". Returns false with no reading.
 inline bool formatBatteryEstimate(char* out, std::size_t capacity, int32_t minutes, bool charging,
                                   int percent, bool approximate = false) {
   if (capacity == 0) return false;

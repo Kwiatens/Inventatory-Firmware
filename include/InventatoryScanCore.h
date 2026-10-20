@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Inventatory Scan R1 firmware core helpers.
-
 #pragma once
 
 #include <Arduino.h>
@@ -104,8 +102,7 @@ inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields&
       while (index < value.length() && !isIso15434Separator(value[index])) ++index;
       const auto field = value.substring(begin, index);
       String parsed;
-      // Distributor labels put their own `P` identifier before the `1P`
-      // manufacturer part number, so `P` never wins even when it is seen first.
+      // A distributor's P field never fills the manufacturer part number, even when seen first.
       if (iso15434Field(field, "1P", parsed)) {
         if (decoded.manufacturerPartNumber.length() == 0) decoded.manufacturerPartNumber = parsed;
       } else if (iso15434Field(field, "P", parsed)) {
@@ -123,8 +120,7 @@ inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields&
       }
     }
   } else {
-    // A few scanner profiles suppress separators. Recover only fields whose
-    // boundaries are unambiguous; uncertain values remain empty.
+    // Some scanner profiles drop separators: recover only unambiguous fields.
     const auto manufacturerMarker = value.indexOf("1P", offset);
     if (manufacturerMarker >= 0) {
       const auto begin = static_cast<size_t>(manufacturerMarker) + 2U;
@@ -185,10 +181,8 @@ inline bool isBagIdentifier(const String& value) {
   return true;
 }
 
-// Rebuilds the bag code the desktop recognises for a DigiKey bag, from the bag's own identifiers: the ISO/IEC 15434
-// Macro 06 envelope, the DigiKey part number (P) and, when it fits, the manufacturer part number (1P). Only these
-// identifiers leave the scanner. Empty when the bag has no DigiKey part number (one ending in -ND) or the code would not
-// fit in maxLength.
+// Rebuilds the DigiKey bag code the desktop reads (ISO/IEC 15434 Macro 06, P, then 1P if it fits).
+// Only these identifiers leave the scanner. Empty without a -ND number or if it exceeds maxLength.
 inline String digiKeyBagCodeForSync(const String& digiKeyPartNumber, const String& manufacturerPartNumber,
                                     size_t maxLength) {
   const auto partNumber = trimCopy(digiKeyPartNumber);
@@ -215,16 +209,14 @@ inline String digiKeyBagCodeForSync(const String& digiKeyPartNumber, const Strin
   return envelope.length() <= maxLength ? envelope : String();
 }
 
-// The fields of a TME bag's QR text that the desktop reads: the TME symbol (PN), the manufacturer part number (MPN) and
-// the quantity (QTY). The text is a TME label only when it also names the TME product page.
+// TME bag QR fields the desktop reads: PN (symbol), MPN and QTY.
 struct TmeBagLabel {
   String symbol;
   String manufacturerPartNumber;
   int quantity = 1;
 };
 
-// A TME label's manufacturer part number may carry a '*' (CONNFLY's DS1023-1*40S21), which the desktop reads. A TME
-// symbol may not.
+// A TME MPN may carry '*' (e.g. DS1023-1*40S21); a TME symbol may not.
 inline bool isTmeManufacturerPartNumber(const String& value) {
   if (value.length() == 0 || value.length() > kMaximumBagEventCodeBytes) return false;
   for (size_t index = 0; index < value.length(); ++index) {
@@ -243,7 +235,7 @@ inline bool parseTmeBagLabel(const String& text, TmeBagLabel& label) {
     while (end < length && text[end] != ' ') ++end;
     const auto token = text.substring(index, end);
     index = end;
-    if (token.startsWith("https://www.tme.eu/")) continue;  // the product page is optional, as the desktop reads it
+    if (token.startsWith("https://www.tme.eu/")) continue;  // The product page URL is optional.
     const auto colon = token.indexOf(':');
     if (colon <= 0) continue;
     const auto key = token.substring(0, colon);
@@ -268,8 +260,7 @@ inline bool parseTmeBagLabel(const String& text, TmeBagLabel& label) {
   return isBagIdentifier(label.symbol) && isTmeManufacturerPartNumber(label.manufacturerPartNumber);
 }
 
-// The code a TME label scan sends: the symbol and the manufacturer part number, as the desktop reads them. Empty when it
-// would not fit in maxLength.
+// Code sent for a TME label: PN and MPN. Empty if it exceeds maxLength.
 inline String tmeBagCodeForSync(const TmeBagLabel& label, size_t maxLength) {
   String code = "PN:";
   code += label.symbol;
@@ -327,7 +318,6 @@ inline String makeRequestId(const String& deviceId, unsigned long sequence) {
   return out;
 }
 
-// A quantity has at most this many digits.
 constexpr std::size_t kQuantityMaxDigits = 4;
 
 class QuantityComposer {
@@ -386,7 +376,7 @@ class QuantityComposer {
     std::size_t deleteAt = cursor_;
     if (deleteAt >= digits_.length() && deleteAt > 0) --deleteAt;
     if (deleteAt < digits_.length()) digits_.remove(deleteAt, 1);
-    if (!hasNonZeroDigit()) digits_ = "1";  // an empty or all-zero result is reset to 1
+    if (!hasNonZeroDigit()) digits_ = "1";
     cursor_ = min(deleteAt, digits_.length());
   }
 

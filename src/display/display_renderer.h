@@ -19,7 +19,7 @@ class DisplayRenderer {
   void render(const DisplayModel& model, const RenderActivity& activity);
 
  private:
-  // What the top bar's right-hand slot shows. An empty slot has width 0.
+  // Top bar right-hand slot; width 0 when empty.
   struct HeaderSlot {
     String text;
     const uint8_t* font = nullptr;

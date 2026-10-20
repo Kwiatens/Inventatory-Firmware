@@ -18,9 +18,8 @@ namespace inventatory_scan {
 namespace {
 
 constexpr unsigned long kHttpResponseTimeoutMs = 600U;
-// Reads a header that must appear at most once. A repeated header is refused, so two
-// conflicting values can never be read as though there were one. An absent header
-// leaves the value empty and is still reported as success.
+// Reads a header that may appear at most once; a repeat is refused. An absent header leaves
+// the value empty and still succeeds.
 bool uniqueHeaderValue(const String& headers, const char* name, String& value) {
   const auto wanted = String(name);
   bool found = false;
@@ -76,8 +75,7 @@ bool InventatoryClient::begin(const InventatoryClientConfig& config) {
   WiFi.setAutoConnect(false);
   WiFi.setAutoReconnect(false);
   WiFi.persistent(false);
-  // Leaving modem sleep disabled raises current draw and can disturb peripherals
-  // powered from the same small board/regulator, especially during transmission.
+  // Modem sleep stays on, since Wi-Fi current draw can disturb peripherals on the same regulator.
   WiFi.setSleep(true);
   client_.setTimeout(250);
   return true;
@@ -160,8 +158,7 @@ bool InventatoryClient::connectToResolved() {
   }
   client_.stop();
   if (client_.connect(endpointIp_, endpointPort_)) {
-    // Socket options require a live socket; applying this in begin() produces
-    // a harmless but alarming EBADF warning on a fresh boot.
+    // Needs a live socket; setting it in begin() logs a harmless EBADF warning on a fresh boot.
     client_.setNoDelay(true);
     return true;
   }
@@ -229,22 +226,19 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
       }
       response += static_cast<char>(raw);
       if (headerEnd < 0) {
-        // A NUL byte in the header block is refused. The header is read with C-string calls that stop at
-        // NUL, so a NUL could hide a later header line. Only the body may contain NUL bytes.
+        // NUL is refused in the header: C-string calls stop there and could hide a later header line.
         if (raw == 0) {
           client_.stop();
           return false;
         }
-        // The header ends at the first CR LF CR LF. Only the newest four bytes can complete it, so
-        // the buffer is not searched again for every byte.
+        // The header ends at the first CR LF CR LF; only the newest four bytes need checking.
         const auto length = response.length();
         if (length >= 4U && response[length - 1U] == '\n' && response[length - 2U] == '\r' &&
             response[length - 3U] == '\n' && response[length - 4U] == '\r') {
           headerEnd = static_cast<int>(length - 4U);
         } else if (length > kMaxHttpHeaderBytes + 4U) {
-          // The header itself may be exactly kMaxHttpHeaderBytes long, followed by the four bytes of the
-          // blank line. Once the header is longer than that, it is refused before the blank line arrives.
-          // The exact size of the header is checked again below, once it is known.
+          // A header may be kMaxHttpHeaderBytes plus the blank line; a longer one is refused early.
+          // The exact size is checked again below.
           client_.stop();
           return false;
         }
@@ -263,8 +257,7 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
   }
   const auto firstLineEnd = response.indexOf("\r\n");
   const auto statusLine = response.substring(0, firstLineEnd > 0 ? firstLineEnd : response.length());
-  // The status line is unauthenticated until the MAC check below succeeds, so it
-  // is kept in a local and only published through httpStatus after verification.
+  // The status line is unauthenticated until the MAC check passes; only then does it reach httpStatus.
   int parsedStatus = 0;
   if (statusLine.startsWith("HTTP/")) {
     const auto firstSpace = statusLine.indexOf(' ');
@@ -293,8 +286,7 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
       response.length() != static_cast<std::size_t>(headerEnd + 4) + contentLength) {
     return false;
   }
-  // The body is copied by its declared length. A C-string copy would stop at a NUL byte
-  // and then authenticate a truncated body.
+  // Copy by declared length: a C-string copy would stop at NUL and authenticate a truncated body.
   responseBody.reserve(contentLength);
   for (std::size_t index = 0; index < contentLength; ++index) {
     responseBody += response[static_cast<unsigned int>(headerEnd + 4) + static_cast<unsigned int>(index)];

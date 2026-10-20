@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// A corpus of sync responses for the protocol v1 parser. Every malformed document
-// must be refused as a whole (AGENTS.md invariant 5, fail-closed parsing), and every
-// well-formed document must be accepted with its fields decoded exactly. The corpus
-// is shared with the desktop side's round-trip checks (transport v1 specification),
-// so each case states what it is for. Runs on the board and on the host.
+// Sync responses for the protocol v1 parser. Malformed documents are refused whole and
+// well-formed ones decode exactly. The desktop side shares this corpus.
 #include <unity.h>
 
 #include "InventatoryScanHttp.h"
@@ -144,9 +141,7 @@ void test_sync_corpus_rejects_bad_utf8() {
   // UTF-8 encoded surrogate U+D800 (ED A0 80).
   expectRejected("encoded surrogate", withMember(String("\"extra\":\"") + String(static_cast<char>(0xED)) +
                                                     String(static_cast<char>(0xA0)) + String(static_cast<char>(0x80)) + "\""));
-  // A lead byte with no continuation before the closing quote.
   expectRejected("truncated sequence", withMember(String("\"extra\":\"") + String(static_cast<char>(0xE2)) + "\""));
-  // A continuation byte with no lead byte.
   expectRejected("stray continuation byte", withMember(String("\"extra\":\"") + String(static_cast<char>(0x80)) + "\""));
   // Above U+10FFFF (F4 90 80 80).
   expectRejected("code point above U+10FFFF",
@@ -189,8 +184,7 @@ void test_sync_corpus_decodes_escapes_and_unicode() {
   TEST_ASSERT_TRUE(escaped.valid);
   TEST_ASSERT_EQUAL_STRING("a\"b\\c/d\b\f\n\r\t", escaped.requestId.c_str());
 
-  // U+1F600 is four UTF-8 bytes: F0 9F 98 80. Static, so only one SyncResponse
-  // (about half a kilobyte) is on the 8 KiB loop stack at a time.
+  // U+1F600 is F0 9F 98 80 in UTF-8. Static, so the SyncResponse is not on the loop stack.
   static const SyncResponse emoji = parseSyncResponseJson(
       "{\"protocolVersion\":1,\"requestId\":\"r\",\"acceptedEventIds\":[],\"results\":[],\"lookupResult\":"
       "{\"lookupId\":\"l\",\"status\":\"found\",\"itemName\":\"\\uD83D\\uDE00\"}}");

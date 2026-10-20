@@ -12,7 +12,7 @@ for p,s in specs:
     for c in range(128):
         if c<32: r.append(0)
         elif p.endswith('Mono.ttf'): r.append(7.0)
-        else: r.append(round(f.getlength(chr(c))*0.93,2))   # helv bitmap fonts run a little narrower
+        else: r.append(round(f.getlength(chr(c))*0.93,2))   # U8g2 helv bitmap fonts are narrower
     rows.append(r)
 print('double g_char_w[4][128] = {')
 for r in rows: print('{'+','.join(str(x) for x in r)+'},')

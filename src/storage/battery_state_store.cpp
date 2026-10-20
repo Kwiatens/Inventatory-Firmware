@@ -12,7 +12,7 @@ constexpr char kBatteryNamespace[] = "inv_battery";
 constexpr char kRemainingKey[] = "rem_uah";
 constexpr char kChargeKey[] = "chg_ms_pct";
 constexpr char kAverageKey[] = "avg_cma";
-// The largest stored average load, in hundredths of a milliamp (1000 mA).
+// Largest stored average load, in 1/100 mA (1000 mA).
 constexpr uint32_t kMaxAverageCentiMa = 100000UL;
 }  // namespace
 
@@ -25,7 +25,7 @@ bool BatteryStateStore::load(BatteryGaugeState& state) const {
   stored.chargeMsPerPercent = prefs_.getUInt(kChargeKey, 0);
   stored.averageLoadCentiMa = prefs_.getUInt(kAverageKey, 0);
   if (stored.remainingUah > kBatteryNominalCapacityUah) return false;
-  // Zero means no charge has been timed yet. Anything else must lie within the bounds.
+  // Zero means no charge timed yet; otherwise the value must be in range.
   if (stored.chargeMsPerPercent != 0 && (stored.chargeMsPerPercent < kBatteryChargeMsPerPercentMin ||
                                          stored.chargeMsPerPercent > kBatteryChargeMsPerPercentMax)) {
     return false;

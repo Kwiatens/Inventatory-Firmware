@@ -60,8 +60,8 @@ struct LegacyStateV4 {
   LegacyRecordV4 records[OutboxStore::kCapacity]{};
 };
 
-// The version 2 and version 4 layouts start with the same fields as the current header, so a header
-// from either one can be read for its count and sequence.
+// Version 2 and 4 layouts keep the shared header fields at the same offsets, so their count and
+// sequence can be read.
 static_assert(offsetof(LegacyState, version) == 4 && offsetof(LegacyState, count) == 6 &&
                   offsetof(LegacyState, head) == 8 && offsetof(LegacyState, nextSequence) == 12,
               "the version 2 layout must keep the shared header fields at their offsets");
@@ -69,9 +69,7 @@ static_assert(offsetof(LegacyStateV4, version) == 4 && offsetof(LegacyStateV4, c
                   offsetof(LegacyStateV4, head) == 8 && offsetof(LegacyStateV4, nextSequence) == 12,
               "the version 4 layout must keep the shared header fields at their offsets");
 
-// Legacy fields are fixed char arrays that may be completely full with no NUL
-// terminator, so the String is built from at most `capacity` bytes instead of
-// letting String(const char*) read past the end of the array.
+// Legacy char arrays may be full with no NUL; read at most `capacity` bytes so the copy cannot overrun.
 String boundedString(const char* data, std::size_t capacity) {
   if (data == nullptr) return String();
   std::size_t length = 0;
@@ -94,8 +92,8 @@ bool OutboxStore::begin(const char* namespaceName, const char* deviceId, uint32_
 }
 
 bool OutboxStore::ensureStorage() {
-  // A namespace that could not be opened at boot is retried, so a scan is not
-  // refused for the rest of the session because of one transient NVS failure.
+  // Retry a namespace that failed to open, so one transient NVS failure does not
+  // refuse scans for the rest of the session.
   if (storageReady_) return true;
   if (namespaceName_.length() == 0 || namespaceName_.length() > kMaxNamespaceLength) return false;
   storageReady_ = prefs_.begin(namespaceName_.c_str(), false);
@@ -112,8 +110,7 @@ void OutboxStore::copyString(char* dest, std::size_t capacity, const String& val
   if (capacity == 0) return;
   const auto trimmed = trimCopy(value);
   auto limit = std::min(capacity - 1U, static_cast<std::size_t>(trimmed.length()));
-  // Never keep the lead byte of a UTF-8 sequence without its continuation bytes.
-  // Back up to the lead byte, which is the first byte that is not copied.
+  // Do not cut a UTF-8 sequence: back up while the first uncopied byte is a continuation byte.
   while (limit > 0 && limit < trimmed.length() && (static_cast<unsigned char>(trimmed[limit]) & 0xC0U) == 0x80U) {
     --limit;
   }
@@ -138,8 +135,7 @@ DeviceEventRecord OutboxStore::fromRecord(const Record& record) const {
   event.sequence = record.sequence;
   event.eventId = makeRequestId(deviceId_, record.sequence);
   event.kind = static_cast<DeviceEventKind>(record.kind);
-  // The stored fields are fixed arrays whose last byte is not guaranteed to be
-  // NUL, so each one is read with its own capacity.
+  // Fixed arrays may lack a trailing NUL, so each field is read with its own capacity.
   event.code = boundedString(record.code, sizeof(record.code));
   event.manufacturer = boundedString(record.manufacturer, sizeof(record.manufacturer));
   event.manufacturerPartNumber = boundedString(record.manufacturerPartNumber, sizeof(record.manufacturerPartNumber));
@@ -188,8 +184,7 @@ OutboxStore::HeaderState OutboxStore::readHeader(Header& header) {
       prefs_.getBytes(kHeaderKey, &header, sizeof(header)) != sizeof(header) || header.magic != kMagic) {
     return HeaderState::Invalid;
   }
-  // Version 5 is the "e<n>" slot set and version 6 the "f<n>" set (see kVersionAltSlots). Any other version is
-  // another layout, which an empty queue may be adopted from.
+  // Version 5 uses "e<n>" slots, version 6 "f<n>" slots. Any other version is another layout.
   if (header.version != kVersion && header.version != kVersionAltSlots) return HeaderState::OtherVersion;
   if (!outboxHeaderFieldsValid(header.head, header.count, header.nextSequence, kCapacity)) {
     return HeaderState::Invalid;
@@ -197,8 +192,7 @@ OutboxStore::HeaderState OutboxStore::readHeader(Header& header) {
   return HeaderState::Valid;
 }
 
-// Replaces a header of another layout that holds no scans with this layout's empty header. The event
-// sequence carries over, so an id that was issued is never issued again.
+// Replaces an empty header of another layout. The event sequence carries over, so no id is reused.
 bool OutboxStore::adoptEmptyOtherVersionHeader(uint32_t nextSequence) {
   if (!writeHeader(makeOutboxQueueState(0, 0, 0, nextSequence), 0)) return false;
   head_ = 0;
@@ -229,7 +223,7 @@ bool OutboxStore::loadQueue(const Header& header) {
   return true;
 }
 
-// A failed header write keeps the old sequence: the queue still works, and the next boot tries again.
+// A failed header write keeps the old sequence; the next boot tries again.
 void OutboxStore::raiseLowSequenceOfEmptyQueue() {
   if (count_ != 0 || nextSequence_ >= kLowSequenceFloor || freshSequenceStart_ < kLowSequenceFloor) return;
   const auto previous = nextSequence_;
@@ -253,12 +247,11 @@ bool OutboxStore::adoptMigratedRecords(std::size_t count, uint32_t nextSequence)
   nextSequence_ = nextSequence == 0 ? 1U : nextSequence;
   generation_ = 0;
   if (persistQueue()) {
-    // The old monolithic blob is dropped only once the new layout is durable.
+    // Drop the old blob only once the new layout is durable.
     prefs_.remove(kLegacyStateKey);
     return true;
   }
-  // Leave the legacy record in place. A failed migration write must be
-  // retryable on the next boot; clearing the namespace here would lose it.
+  // Keep the legacy blob in place so a failed migration can be retried on the next boot.
   clear();
   return false;
 }
@@ -269,8 +262,7 @@ OutboxStore::MigrationResult OutboxStore::migrateLegacyState() {
     return MigrationResult::NotRecognized;
   }
 
-  // The version-4 blob is 4 KiB, so it is read through the heap rather than the
-  // task stack.
+  // The version 4 blob is 4 KiB, so it is read from the heap, not the task stack.
   const auto buffer = static_cast<uint8_t*>(malloc(storedLength));
   if (buffer == nullptr) return MigrationResult::WriteFailed;
   const bool read = prefs_.getBytes(kLegacyStateKey, buffer, storedLength) == storedLength;
@@ -347,25 +339,23 @@ bool OutboxStore::load() {
 
   if (state == HeaderState::OtherVersion && header.count == 0 && header.nextSequence != 0 &&
       adoptEmptyOtherVersionHeader(header.nextSequence)) {
-    // An empty queue from another layout, as an update leaves it. Nothing can be lost, so the
-    // scanner starts with this layout's empty queue and carries on with the same event sequence.
+    // An empty queue left by an update from another layout. Nothing is lost; the sequence carries on.
     loaded_ = true;
     return true;
   }
 
   if (state == HeaderState::Invalid || state == HeaderState::OtherVersion) {
-    // A header this firmware cannot read: a layout with scans in it (for example after an OTA
-    // rollback), damage, out-of-range fields, or an empty header whose replacement could not be
-    // written. The bytes are left exactly as they are, and the operator can repair (discard) the
-    // queue explicitly. Migration never runs here, so an older blob cannot overwrite a live queue.
+    // Unreadable header: scans from another layout (e.g. after an OTA rollback), damage, out-of-range
+    // fields, or an empty header that could not be replaced. Leave the bytes for an operator repair.
+    // Migration never runs here, so an older blob cannot overwrite a live queue.
     clear();
     unreadable_ = true;
     incompatible_ = true;
     return false;
   }
 
-  // No current-layout header. An older layout is migrated; a blob that is not
-  // recognised is kept and reported, because it may hold the only copy of a queue.
+  // No current header: migrate an older layout. An unrecognised blob is kept and reported,
+  // as it may hold the only copy of the queue.
   if (prefs_.isKey(kLegacyStateKey)) {
     const auto migration = migrateLegacyState();
     if (migration == MigrationResult::Migrated) {
@@ -379,8 +369,7 @@ bool OutboxStore::load() {
     return false;
   }
 
-  // Nothing stored: a new or erased outbox. Start the sequence at a random point
-  // so ids cannot repeat ids the desktop already holds for this device.
+  // Nothing stored: a new or erased outbox. The sequence starts at a random point so ids do not repeat.
   clear();
   nextSequence_ = freshSequenceStart_;
   if (!writeHeader(makeOutboxQueueState(head_, count_, tail_, nextSequence_), generation_)) return false;
@@ -410,10 +399,8 @@ OutboxStore::EnqueueResult OutboxStore::enqueue(DeviceEventKind kind, const Stri
   copyString(record.manufacturer, sizeof(record.manufacturer), manufacturer);
   copyString(record.manufacturerPartNumber, sizeof(record.manufacturerPartNumber), manufacturerPartNumber);
   copyString(record.encodedPartName, sizeof(record.encodedPartName), encodedPartName);
-  // The record is stored before the header so a power cut can only leave an
-  // unreferenced slot behind, never a queued event without its payload.
-  // If either write fails, the old header and in-memory state remain the
-  // source of truth; the new slot is simply unreferenced and harmless.
+  // Store the record before the header: a power cut leaves at most an unreferenced slot.
+  // If either write fails, the old header and RAM state still rule; the new slot is harmless.
   if (!writeSlot(generation_, slot, record) || !writeHeader(next, generation_)) {
     return EnqueueResult::StorageFailed;
   }
@@ -440,8 +427,7 @@ bool OutboxStore::pop(DeviceEventRecord* event) {
   OutboxQueueState next;
   if (!prepareOutboxPop(current, kCapacity, next)) return false;
 
-  // Commit the header before changing RAM or erasing the payload. If NVS
-  // rejects the write, the event remains queued and can be retried safely.
+  // Commit the header before changing RAM or erasing the payload; on failure the event stays queued.
   if (!writeHeader(next, generation_)) return false;
 
   if (event != nullptr) *event = fromRecord(records_[slot]);
@@ -449,8 +435,7 @@ bool OutboxStore::pop(DeviceEventRecord* event) {
   count_ = next.count;
   tail_ = next.tail;
   nextSequence_ = next.nextSequence;
-  // A power cut after the header commit can leave this payload behind, but it
-  // is no longer referenced by the header and is safe to reclaim later.
+  // A power cut after the commit can leave this payload, now unreferenced, to reclaim later.
   eraseSlot(generation_, slot);
   return true;
 }
@@ -463,9 +448,8 @@ void OutboxStore::clear() {
 }
 
 void OutboxStore::resetRecords() {
-  // Assigning a default Record states the intent directly. memset would give the
-  // same bytes, but GCC's -Wclass-memaccess rejects clearing a type that has
-  // default member initialisers.
+  // Assign a default Record: memset gives the same bytes, but -Wclass-memaccess rejects it for types
+  // with default member initialisers.
   for (auto& record : records_) record = Record();
 }
 
@@ -479,11 +463,9 @@ OutboxStore::RepairResult OutboxStore::discardUnreadableQueue(std::size_t& dropp
     }
   }
 
-  // The empty header is written first. A power cut then leaves either the old
-  // unreadable bytes, which are refused and can be repaired again, or an empty
-  // queue. The orphaned slots and any legacy blob are unreferenced after that
-  // commit, so they are erased afterwards. The new sequence starts at this boot's
-  // random point, so the ids of the discarded queue are not reused in practice.
+  // Write the empty header first: a power cut leaves the old unreadable bytes (repairable again) or
+  // an empty queue. Orphaned slots and any legacy blob are erased after that commit. The sequence
+  // restarts at this boot's random point, so discarded ids are not reused in practice.
   if (!writeHeader(makeOutboxQueueState(0, 0, 0, freshSequenceStart_), 0)) return RepairResult::StorageFailed;
   for (std::size_t slot = 0; slot < kCapacity; ++slot) {
     eraseSlot(0, slot);
@@ -499,8 +481,7 @@ OutboxStore::RepairResult OutboxStore::discardUnreadableQueue(std::size_t& dropp
   return RepairResult::Repaired;
 }
 
-// Reads one record for repair. A failed NVS read can be transient, and a record given up here is erased
-// with the rest of its slot set, so a read is tried a few times before the record is counted as lost.
+// Reads one record for repair, retrying a transient NVS failure before the record counts as lost.
 bool OutboxStore::readRecordForRepair(const char* key, Record& record) {
   constexpr uint8_t kReadAttempts = 3;
   for (uint8_t attempt = 0; attempt < kReadAttempts; ++attempt) {
@@ -518,9 +499,8 @@ OutboxStore::RepairResult OutboxStore::repair(std::size_t& salvaged, std::size_t
 
   Header header{};
   if (readHeader(header) != HeaderState::Valid) {
-    // Nothing in a header this firmware cannot read can be trusted to locate the
-    // records, so the whole queue is discarded. This runs only after the operator
-    // confirms the repair.
+    // An unreadable header cannot locate the records, so the whole queue is discarded.
+    // Runs only after the operator confirms the repair.
     return discardUnreadableQueue(dropped);
   }
 
@@ -529,8 +509,7 @@ OutboxStore::RepairResult OutboxStore::repair(std::size_t& salvaged, std::size_t
   const uint8_t oldGeneration = generationOf(header.version);
   const uint8_t newGeneration = static_cast<uint8_t>(oldGeneration ^ 1U);
 
-  // The in-memory queue is unusable while unreadable_ is set, so records_ doubles
-  // as the scratch area (a 16-record array on the stack would be about 4 KB).
+  // records_ doubles as scratch space while unreadable_ is set; a stack array would be about 4 KB.
   Record* const kept = records_;
 
   for (std::size_t offset = 0; offset < count; ++offset) {
@@ -548,11 +527,8 @@ OutboxStore::RepairResult OutboxStore::repair(std::size_t& salvaged, std::size_t
     return RepairResult::NothingToRepair;
   }
 
-  // The salvaged records go into the other slot set. The current header does not
-  // reference that set, so a power cut at any point before the header write leaves the
-  // old queue exactly as it was: still unreadable, and repairable again. The header
-  // write is the single commit. After it the queue is the salvaged set, and the old
-  // slots are unreferenced and erased.
+  // Salvaged records go into the other slot set, which the current header does not reference. The
+  // header write is the single commit; a power cut before it leaves the old queue repairable again.
   for (std::size_t i = 0; i < salvaged; ++i) {
     if (!writeSlot(newGeneration, i, kept[i])) return RepairResult::StorageFailed;
   }

@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Direct tests for the text helpers that build the JSON sent to the desktop and that
-// read barcode identifiers. Each helper was previously exercised only through larger
-// functions, so a regression could hide behind an unrelated assertion. Runs on the
-// board and on the host.
+// Direct tests for the helpers that build the desktop JSON and read barcode identifiers.
 #include <unity.h>
 
 #include "InventatoryScanCore.h"
@@ -25,7 +22,6 @@ void test_text_trim_copy_removes_only_whitespace_at_the_ends();
 void test_text_escape_json_escapes_quotes_backslashes_and_short_controls() {
   TEST_ASSERT_EQUAL_STRING("a\\\"b\\\\c", escapeJson(String("a\"b\\c")).c_str());
   TEST_ASSERT_EQUAL_STRING("\\n\\r\\t", escapeJson(String("\n\r\t")).c_str());
-  // Other control bytes use the six-character \u00XX form, in lower-case hex.
   String controls;
   controls += static_cast<char>(0x01);
   controls += static_cast<char>(0x1D);
@@ -57,7 +53,7 @@ void test_text_iso15434_fields_need_their_identifier_and_a_value() {
   // Surrounding blanks are removed, inner blanks are kept.
   TEST_ASSERT_TRUE(iso15434Field(String("1P  X  Y  "), "1P", value));
   TEST_ASSERT_EQUAL_STRING("X  Y", value.c_str());
-  // No value after the identifier, or only blanks, is not a field.
+  // An identifier with no value, or only blanks, is not a field.
   TEST_ASSERT_FALSE(iso15434Field(String("1P"), "1P", value));
   TEST_ASSERT_FALSE(iso15434Field(String("1P   "), "1P", value));
   TEST_ASSERT_FALSE(iso15434Field(String("P123"), "1P", value));

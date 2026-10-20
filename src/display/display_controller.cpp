@@ -22,8 +22,7 @@ static_assert(kListRowLimit <= sizeof(DisplayModel::listRows) / sizeof(DisplayMo
               "list row limit exceeds DisplayModel::listRows capacity");
 static_assert(kQuickLabelsPerPage <= kListRowLimit, "a quick-label page must fit the list");
 
-// Appends one list row. Drops the row (returns false) instead of writing past the
-// end of the fixed listRows array or past the rows the renderer can show.
+// Appends a row, or drops it (returns false) when the list is full.
 bool appendListRow(DisplayModel& model, const String& row) {
   if (model.listRowCount >= kListRowLimit) return false;
   model.listRows[model.listRowCount++] = row;
@@ -40,8 +39,7 @@ void DisplayController::begin() {
 void DisplayController::markDirty() { dirty_ = true; }
 
 void DisplayController::clearContent() {
-  // Every screen change cancels a pending result dwell; the result setters
-  // re-arm it after calling this. The battery fields are not content and stay.
+  // Cancels any pending result dwell; result setters re-arm it. Battery fields are kept.
   resultUntilMs_ = 0;
   model_.animateEllipsis = false;
   model_.otaProgress = false;
@@ -61,7 +59,7 @@ void DisplayController::clearContent() {
   for (auto& row : model_.listRows) row.clear();
 }
 
-// The codes of the standing problems, in the order the screens take turns at them.
+// Standing problem codes, in screen rotation order.
 std::size_t DisplayController::standingProblemCodes(const char* (&codes)[kStandingProblemCount]) const {
   std::size_t count = 0;
   if (model_.scannerFault) codes[count++] = kScannerFaultCode;
@@ -79,8 +77,7 @@ void DisplayController::refreshReadyContent() {
   model_.header = "Inventatory";
   const char* codes[kStandingProblemCount];
   const std::size_t problems = standingProblemCodes(codes);
-  // With a standing problem the device is not ready to scan, so the screen says so and gives the code
-  // of the problem on show instead of the ready text.
+  // A standing problem blocks scanning: show its rotating code in place of the ready text.
   if (problems > 0) {
     model_.primary = "There is a problem";
     model_.secondary.clear();
@@ -101,7 +98,7 @@ void DisplayController::refreshReadyContent() {
   model_.rail = model_.connectivity == DisplayConnectivityState::Syncing
                     ? DisplayRailStyle::Activity
                     : DisplayRailStyle::Static;
-  // A problem is explained under the # key, from the main screen as from the menu.
+  // The # key explains a problem, from the main screen and the menu.
   model_.actions = problems > 0 ? String("# Fault info C Menu") : String("C Menu");
 }
 
@@ -148,8 +145,7 @@ void DisplayController::showSplash() {
   markDirty();
 }
 
-// The boot splash, held for holdMs. The mark blooms in over the first stages and the name appears
-// once it is whole. Tick keeps the LCD start line refreshed during the hold, as on every other screen.
+// Boot splash held for holdMs; the mark blooms in, and tick() keeps the LCD refreshed.
 void DisplayController::playBootSplash(unsigned long holdMs) {
   showSplash();
   const unsigned long start = millis();
@@ -162,8 +158,7 @@ void DisplayController::playBootSplash(unsigned long holdMs) {
   markDirty();
 }
 
-// Boot keeps the splash on screen until the scanner is ready; a failed stage
-// replaces the product name.
+// Boot stage replaces the product name until the scanner is ready.
 void DisplayController::showBoot(const String& stage, const String& code) {
   showSplash();
   model_.mode = DisplayUiMode::Boot;
@@ -172,8 +167,7 @@ void DisplayController::showBoot(const String& stage, const String& code) {
   model_.secondary = code.length() > 0 ? code : String("See USB serial");
 }
 
-// The soft power-off warning: a countdown bar over the screen beneath, which comes back when the
-// overlay clears.
+// Soft power-off warning: a countdown bar overlay; the screen beneath returns when it clears.
 void DisplayController::showPowerWarning() {
   overlay_ = DisplayModel();
   overlay_.mode = DisplayUiMode::PowerWarning;
@@ -186,8 +180,8 @@ void DisplayController::showPowerWarning() {
   markDirty();
 }
 
-// The power-off ending, run to its end. The mark sinks behind the glass rule in steps, the wake hint rests
-// under it, and the panel goes dark. The caller sleeps the chip after this returns.
+// Plays the power-off ending to the end: the mark sinks behind the glass, then the panel goes dark.
+// The caller sleeps the chip after this returns.
 void DisplayController::playPowerOffSink() {
   clearOverlay();
   clearContent();
@@ -204,7 +198,7 @@ void DisplayController::playPowerOffSink() {
   dirty_ = false;
 }
 
-// Draws the power-off ending directly, outside tick(), because each step is a timed frame.
+// Draws a power-off frame directly, outside tick(), since each step is timed.
 void DisplayController::renderPowerOffFrame(int markOffsetY) {
   RenderActivity activity = computeActivity(millis());
   activity.markOffsetY = markOffsetY;
@@ -456,12 +450,12 @@ void DisplayController::showMenu(bool blocked, bool unreadable) {
   } else if (blocked) {
     appendListRow(model_, "3  Discard stuck scan");
   }
-  // A scanner fault is explained under the # key, which the menu offers only while there is one.
+  // The # key explains a problem; the menu offers it only while one stands.
   model_.actions = hasProblem() ? String("# Fault info C Back") : String("C Back");
   markDirty();
 }
 
-// The error code on the first line, then what it means and what to check on the last two lines.
+// Fault detail: the error code, then what it means and what to check.
 void DisplayController::showFaultDetail() {
   const char* codes[kStandingProblemCount];
   const std::size_t problems = standingProblemCodes(codes);
@@ -479,7 +473,7 @@ void DisplayController::showFaultDetail() {
   markDirty();
 }
 
-// What each standing problem means and what to check, in the two lines under its code.
+// Explanation lines for one standing problem, under its code.
 void DisplayController::applyFaultDetail(const char* code) {
   model_.errorCode = code;
   if (std::strcmp(code, kQueueUnreadableCode) == 0) {
@@ -505,7 +499,7 @@ void DisplayController::setScannerFault(bool fault) {
   if (model_.scannerFault == fault) return;
   model_.scannerFault = fault;
   model_.problemMark = hasProblem();
-  // The main screen's footer offers the # action only while there is a fault.
+  // The footer offers # only while there is a fault.
   if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
   markDirty();
 }
@@ -694,7 +688,7 @@ void DisplayController::showQuickLabelPrintResult(bool success, const String& me
   model_.showPcStatus = true;
   model_.header = success ? "Done" : "Print failed";
   model_.primary = success ? String("Label sent") : message;
-  // The code takes the place of the hint: a long message wraps over the line that would hold a third line.
+  // The code takes the hint's place; a long message wraps over the line a third line would use.
   model_.secondary = success ? message : (code.length() > 0 ? code : String("Check it on your PC"));
   model_.actions = success ? String() : String("C Dismiss");
   resultUntilMs_ = success ? millis() + kUiSuccessDwellMs : 0;
@@ -767,8 +761,7 @@ RenderActivity DisplayController::computeActivity(unsigned long now) const {
   if (!standby_ && shown.mode == DisplayUiMode::Quantity) {
     activity.quantityCursorVisible = !uiActivityAlternate(now);
   }
-  // Only the screen that is shown animates: the top bar is hidden under an overlay, and the
-  // card fill belongs to the card alone.
+  // Only the shown screen animates; the top bar is hidden under an overlay.
   if (!overlayActive_) {
     const bool hasEstimate = model_.batteryPercent >= 0 && model_.batteryEstimate.length() > 0;
     activity.headerPage = static_cast<uint8_t>(headerPageAt(now, hasEstimate));

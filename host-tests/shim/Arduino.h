@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host stand-in for the Arduino core types used by the firmware's shared
-// headers. It implements only the String members those headers call, with the
-// results the Arduino core gives for them, so the host tests exercise the same
-// logic that runs on the device.
+// Host stand-in for the Arduino core types. Implements only the String members the shared
+// headers call, with Arduino results, so host tests run the same logic as the device.
 #pragma once
 
 #include <algorithm>
@@ -15,8 +13,7 @@
 #include <cstring>
 #include <string>
 
-// Arduino defines min() and max() as macros that accept mixed operand types.
-// A template keeps the same call sites compiling without macro side effects.
+// Templates instead of Arduino's min()/max() macros, to avoid macro side effects.
 template <typename A, typename B>
 constexpr auto min(A a, B b) -> decltype(a < b ? a : b) {
   return a < b ? a : b;
@@ -88,8 +85,7 @@ class String {
   unsigned int length() const { return static_cast<unsigned int>(data_.size()); }
   const char* c_str() const { return data_.c_str(); }
 
-  // Arduino does not bounds-check operator[]. The host build does, so an
-  // out-of-range index fails loudly instead of reading past the buffer.
+  // Arduino does not bounds-check operator[]; the host build does.
   char& operator[](unsigned int index) { return data_.at(index); }
   char operator[](unsigned int index) const { return data_.at(index); }
   void setCharAt(unsigned int index, char value) {
@@ -98,8 +94,7 @@ class String {
 
   void reserve(unsigned int size) { data_.reserve(size); }
 
-  // Arduino semantics: remove(index) truncates at index; remove(index, count)
-  // deletes up to count characters starting at index.
+  // remove(index) truncates; remove(index, count) deletes count characters.
   void remove(unsigned int index) {
     if (index < length()) data_.resize(index);
   }
@@ -110,7 +105,6 @@ class String {
 
   void clear() { data_.clear(); }
 
-  // Arduino semantics: trim() removes leading and trailing whitespace in place.
   void trim() {
     std::size_t begin = 0;
     while (begin < data_.size() && std::isspace(static_cast<unsigned char>(data_[begin])) != 0) ++begin;
@@ -146,8 +140,7 @@ class String {
     return prefix.length() <= length() && data_.compare(0, prefix.length(), prefix.data_) == 0;
   }
 
-  // Arduino clamps the end index to the string length and returns an empty
-  // String when the start index is at or past the end.
+  // Like Arduino: end clamps to length; empty result when begin is at or past end.
   String substring(unsigned int beginIndex) const { return substring(beginIndex, length()); }
   String substring(unsigned int beginIndex, unsigned int endIndex) const {
     endIndex = std::min(endIndex, length());
@@ -172,8 +165,7 @@ class String {
   std::string data_;
 };
 
-// ---- Host stand-ins for the timing, serial and IP helpers the network code uses. ----
-// The clock is fake: it only moves when delay() is called, so timeouts are deterministic.
+// Fake clock: moves only in delay(), so timeouts are deterministic.
 inline unsigned long& hostClockMs() {
   static unsigned long now = 10000UL;
   return now;
@@ -196,8 +188,7 @@ class IPAddress {
   uint8_t bytes_[4]{};
 };
 
-// Serial output is discarded on the host. The firmware never logs secrets (AGENTS.md
-// invariant 1), and the host tests check behaviour, not log text.
+// Serial output is discarded; tests check behaviour, not log text.
 class HostSerial {
  public:
   void begin(unsigned long) {}

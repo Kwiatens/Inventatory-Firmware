@@ -1,16 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host stand-in for the ESP32 Preferences (NVS) API.
-//
-// Namespaces live in process memory, so a new Preferences object sees what an
-// earlier one wrote, the same way a reset device sees its flash. Tests use
-// host_nvs::faults() to fail writes and to simulate power loss partway through
-// a sequence of writes, then host_nvs::reboot() to bring the device back up
-// with whatever reached storage.
-//
-// The name and key limits and the length-query return values follow the NVS
-// rules the firmware depends on (see AGENTS.md section 7).
+// Host stand-in for the ESP32 Preferences (NVS) API. Namespaces persist in process memory,
+// so a new object sees earlier writes, as a reset device sees flash. Tests inject write
+// failures and power cuts with host_nvs::faults(), then call host_nvs::reboot().
 #pragma once
 
 #include "Arduino.h"
@@ -27,18 +20,16 @@ namespace host_nvs {
 // NVS namespace and key names are limited to 15 characters plus the terminator.
 constexpr std::size_t kMaxNameLength = 15;
 
-// Entries the NVS partition can hold. The value is approximate; it only bounds
-// freeEntries() so callers that check free space see a sensible number.
+// Approximate entry capacity; only bounds freeEntries().
 constexpr std::size_t kEntryCapacity = 1000;
 
 using Blob = std::vector<std::uint8_t>;
 using Namespace = std::map<std::string, Blob>;
 
 struct Faults {
-  // Successful writes allowed before power is cut. Negative means never cut.
-  // Once the budget is spent, every later write and remove fails.
+  // Writes allowed before power cut (negative: never). Once spent, later writes and removes fail.
   long long writesBeforePowerCut = -1;
-  // Forces every write and remove to fail, as a full or broken NVS partition would.
+  // Fails every write and remove, like a full or broken partition.
   bool failWrites = false;
 };
 
@@ -108,7 +99,6 @@ class Preferences {
     return open_ && validKey(key) && find(key) != nullptr;
   }
 
-  // Entries left in the namespace budget, as the NVS partition reports them.
   std::size_t freeEntries() {
     std::size_t used = 0;
     const auto space = host_nvs::storage().find(name_);
@@ -129,8 +119,7 @@ class Preferences {
     return length;
   }
 
-  // Returns the number of bytes read, or 0 when the key is missing or the
-  // stored value does not fit in maxLength.
+  // Returns bytes read, or 0 if the key is missing or larger than maxLength.
   std::size_t getBytes(const char* key, void* buffer, std::size_t maxLength) {
     const auto* blob = open_ && validKey(key) ? find(key) : nullptr;
     if (blob == nullptr || blob->size() > maxLength || buffer == nullptr) return 0;
@@ -138,9 +127,7 @@ class Preferences {
     return blob->size();
   }
 
-  // Typed accessors with the ESP32 Arduino Preferences conventions: a put returns
-  // the number of bytes written (0 on failure), and a get returns the default when
-  // the key is missing or holds a value of another size.
+  // Puts return bytes written (0 on failure); gets return the default if missing or wrong size.
   bool getBool(const char* key, bool defaultValue = false) {
     std::uint8_t value = 0;
     return readFixed(key, value) ? value != 0 : defaultValue;

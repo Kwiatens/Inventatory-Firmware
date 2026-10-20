@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Inventatory Scan R1 application controller implementation.
-
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
@@ -37,8 +35,7 @@ void InventatoryScanApp::requestOtaUpdate() {
   otaUploadStarted_ = false;
   otaRequestedAt_ = millis();
   networkPowerOffRequested_ = false;
-  // The worker acknowledges each pause. An acknowledgement left over from an earlier
-  // pause must not satisfy this request, so it is cleared before the pause is requested.
+  // An acknowledgement left from an earlier pause must not satisfy this request, so clear it first.
   networkPauseAcknowledged_ = false;
   networkPaused_ = true;
   scanner_.flushInput();
@@ -143,9 +140,8 @@ bool InventatoryScanApp::startOtaService() {
     }
     const unsigned int percent = (progress * 100U) / total;
     Serial.printf("OTA progress: %u%%\r", percent);
-    // The upload runs to completion inside ArduinoOTA.handle() on this core, so
-    // the loop does not tick the display until it ends; render from here. tick()
-    // only redraws when the percentage changed.
+    // The upload runs inside ArduinoOTA.handle(), so loop() cannot tick the display.
+    // Draw from here; tick() redraws only when the percent changed.
     if (static_cast<int>(percent) != otaDisplayedPercent_) {
       otaDisplayedPercent_ = static_cast<int>(percent);
       display_.showOta("UPDATING", otaDisplayedPercent_);
@@ -191,8 +187,7 @@ bool InventatoryScanApp::startOtaService() {
 
 void InventatoryScanApp::abandonOtaWait(const char* reason, bool showFailure) {
   Serial.println(reason);
-  // The service was started but never received an upload, so it can be stopped
-  // safely here (unlike from inside an ArduinoOTA callback).
+  // No upload was received, so the service can be stopped here, unlike inside a callback.
   if (otaActive_) ArduinoOTA.end();
   recoverFromOtaFailure();
   if (showFailure) {

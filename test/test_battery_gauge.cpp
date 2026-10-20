@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// The battery gauge: the percent follows the load, a charger's raised voltage does not move it, the
-// rest correction is slow, and the shown percent moves at most once per display interval.
-// Expectations are for the 1300 mAh cell in kBatteryNominalCapacityUah.
+// Battery gauge: the percent follows the load, not the charger's raised voltage.
+// Expected values assume the 1300 mAh cell in kBatteryNominalCapacityUah.
 
 #include <unity.h>
 
@@ -20,14 +19,12 @@ constexpr uint32_t kMvAt40 = 3770;
 constexpr uint32_t kMvAt50 = 3830;
 constexpr uint32_t kMvAt95 = 4150;
 
-// The stored charge for a percent of the nominal capacity.
 uint32_t chargeAt(uint32_t percent) { return kBatteryNominalCapacityUah * percent / 100U; }
 
 }  // namespace
 
 void test_gauge_charger_voltage_does_not_move_the_percent() {
-  // The charger lifts the voltage 150 mV above the open-circuit value. The old voltage reading
-  // turned that into a jump of about 20 points; the gauge only counts the charge in.
+  // A 150 mV charger lift must not jump the percent: the gauge only counts charge in.
   BatteryTracker tracker;
   tracker.update(3800, false, 0);
   TEST_ASSERT_EQUAL_INT(45, tracker.percent());
@@ -39,7 +36,7 @@ void test_gauge_charger_voltage_does_not_move_the_percent() {
     TEST_ASSERT_TRUE(tracker.percent() <= kBatteryChargeCapPercent);
     previous = tracker.percent();
   }
-  // Thirty minutes at the prior 93.6 s per point is about 19 points: 45 to about 64.
+  // Thirty minutes at the prior 93.6 s per point is about 19 points.
   TEST_ASSERT_TRUE(tracker.percent() >= 63 && tracker.percent() <= 65);
   TEST_ASSERT_TRUE(tracker.charging());
 
@@ -52,8 +49,7 @@ void test_gauge_charger_voltage_does_not_move_the_percent() {
 }
 
 void test_gauge_load_takes_the_charge_out_at_its_rate() {
-  // 80 mA for an hour is 80 mAh: about 6 points of a 1300 mAh cell, from 70 to 64. The cell is off the
-  // charger and its voltage agrees with the stored charge, so the load counts.
+  // 80 mAh is about 6 points of the 1300 mAh cell: 70 to 64.
   BatteryGaugeState stored;
   stored.remainingUah = chargeAt(70);
   BatteryTracker tracker;
@@ -67,8 +63,7 @@ void test_gauge_load_takes_the_charge_out_at_its_rate() {
 }
 
 void test_gauge_voltage_sag_under_load_does_not_move_the_percent() {
-  // Two cells on the same load. One sags 200 mV for 3 s in every 10 s, as a radio burst does.
-  // The percent must match the other cell at every second.
+  // A 200 mV sag for 3 s in every 10 s (radio burst) must not move the percent.
   BatteryTracker steady;
   BatteryTracker sagging;
   steady.update(kMvAt50, false, 0, 80);
@@ -84,8 +79,7 @@ void test_gauge_voltage_sag_under_load_does_not_move_the_percent() {
 }
 
 void test_gauge_rest_corrects_a_drifted_estimate_slowly() {
-  // The estimate says 60%, but the cell reads 50% at open circuit. Nothing changes for the first
-  // hour of rest; then the estimate moves one point a minute until it is within the tolerance.
+  // Open circuit reads 50% against a 60% estimate: no change for an hour, then a point a minute.
   BatteryGaugeState stored;
   stored.remainingUah = chargeAt(60);
   BatteryTracker tracker;
@@ -105,8 +99,7 @@ void test_gauge_rest_corrects_a_drifted_estimate_slowly() {
 }
 
 void test_gauge_load_prevents_the_rest_correction() {
-  // 80 mA for two hours is 160 mAh, about 12 points of a 1300 mAh cell, off 60%. The open-circuit
-  // reading (50%) must not correct that, because the cell is not at rest.
+  // Under load, the open-circuit reading (50%) must not correct the 60% estimate.
   BatteryGaugeState stored;
   stored.remainingUah = chargeAt(60);
   BatteryTracker tracker;
@@ -119,8 +112,7 @@ void test_gauge_load_prevents_the_rest_correction() {
 }
 
 void test_gauge_rest_at_full_voltage_reads_charged() {
-  // At rest with the LED dark and the cell at 4.15 V, the cell is charged: the estimate reads 100 at once,
-  // whatever it held before. The open-circuit correction covers the band below kBatteryChargedMv.
+  // At rest, LED dark at 4.15 V reads 100 at once, whatever was stored.
   BatteryGaugeState stored;
   stored.remainingUah = chargeAt(60);
   BatteryTracker tracker;
@@ -133,9 +125,7 @@ void test_gauge_rest_at_full_voltage_reads_charged() {
 }
 
 void test_gauge_charged_hold_reseeds_from_the_voltage_when_it_ends() {
-  // Unplugged from a full cell, the estimate holds at 100 while the voltage stays charged, since the hold
-  // counts no load. Once the voltage falls below the release point it restarts from the voltage, so it is
-  // not left about 20 points high.
+  // Unplugged from full, the estimate holds at 100, then reseeds from the voltage when it falls.
   BatteryTracker tracker;
   tracker.update(kMvAt95, false, 0, 0, true);
   for (uint32_t second = 1; second <= 600; ++second) {
@@ -169,7 +159,7 @@ void test_gauge_full_charge_teaches_the_rate() {
     nowMs = second * 1000UL;
     tracker.update(kMvAt40, true, nowMs);
   }
-  // The LED goes dark at 4.15 V. The charge ends there, and its rate is learned.
+  // The charge ends when the LED goes dark, and the rate is learned.
   tracker.update(kMvAt95, false, nowMs + 1000UL, 0, true);
   tracker.update(kMvAt95, false, nowMs + 2000UL, 0, true);
   tracker.update(kMvAt95, false, nowMs + 3000UL, 0, true);
@@ -179,7 +169,7 @@ void test_gauge_full_charge_teaches_the_rate() {
 }
 
 void test_gauge_done_at_boot_teaches_nothing() {
-  // A boot that finds the cell charged, with the LED dark, has not timed a charge, so it learns no rate.
+  // Booting already charged times no charge, so no rate is learned.
   BatteryTracker tracker;
   tracker.update(kMvAt95, false, 0, 0, true);
   tracker.update(kMvAt95, false, 1000, 0, true);
@@ -189,8 +179,7 @@ void test_gauge_done_at_boot_teaches_nothing() {
 }
 
 void test_gauge_charge_stops_at_99_until_the_charger_is_done() {
-  // From 95% the prior rate would pass 100% in about 6 minutes. The estimate stops at 99 while the LED
-  // is lit, and then it reads 100 once the LED goes dark with the cell full.
+  // The estimate caps at 99 while the LED is lit; it reads 100 once the LED goes dark.
   BatteryTracker tracker;
   tracker.update(kMvAt95, true, 0);
   for (uint32_t second = 1; second <= 7200; ++second) {
@@ -205,8 +194,7 @@ void test_gauge_charge_stops_at_99_until_the_charger_is_done() {
 }
 
 void test_gauge_shown_percent_moves_at_most_once_per_interval() {
-  // A charge that adds a point every 20 s is faster than the display allows: the shown percent may
-  // move only once per 30 s, so it trails the estimate.
+  // The shown percent moves at most once per 30 s, so it trails a faster estimate.
   BatteryGaugeState stored;
   stored.remainingUah = chargeAt(40);
   stored.chargeMsPerPercent = 20000U;
@@ -228,7 +216,7 @@ void test_gauge_shown_percent_moves_at_most_once_per_interval() {
 }
 
 void test_gauge_gap_longer_than_a_step_is_not_load() {
-  // A stall of 10 s must not count as 10 s of load. The gauge takes at most kBatteryMaxStepMs.
+  // A 10 s stall counts as at most kBatteryMaxStepMs of load.
   BatteryGauge gauge;
   gauge.update(kMvAt50, false, false, 3600, 0);
   const uint32_t before = static_cast<uint32_t>(gauge.state().remainingUah);
@@ -250,8 +238,7 @@ void test_gauge_time_left_on_battery_follows_the_load() {
 }
 
 void test_gauge_time_left_while_charging_uses_the_timed_rate() {
-  // 60 points to go at the prior 93.6 s per point is about 94 minutes, approximate until a charge
-  // is timed.
+  // 60 points at the prior 93.6 s each is about 94 minutes, marked approximate.
   BatteryTracker tracker;
   tracker.update(kMvAt40, false, 0);
   tracker.update(kMvAt40, true, 1000);
@@ -262,9 +249,7 @@ void test_gauge_time_left_while_charging_uses_the_timed_rate() {
 }
 
 void test_tracker_voltage_floor_is_critical_whatever_the_estimate() {
-  // The estimate says 40%, but the cell reads 3.30 V undocked. Four samples, as for the other limits. The
-  // estimate starts from a reading at 40%, not from a stored charge: a stored charge is checked at boot, and
-  // the floor's 0% would replace it.
+  // Undocked at the floor is critical whatever the estimate says, after four samples.
   BatteryTracker tracker;
   tracker.update(kMvAt40, false, 0);
   for (uint32_t second = 1; second <= 3; ++second) tracker.update(kBatteryFloorMv, false, second * 1000UL);
@@ -275,9 +260,7 @@ void test_tracker_voltage_floor_is_critical_whatever_the_estimate() {
 }
 
 void test_gauge_stored_full_charge_is_checked_at_boot() {
-  // The device was switched off after a charge, and the cell fell to 3.65 V (21%) while it was off. The
-  // gauge cannot count that, so the stored 100% is replaced by the voltage at the first reading, and the
-  // shown percent starts at 21 and counts down from there.
+  // The stored 100% is replaced by the boot voltage (21%): charge lost while off is not counted.
   BatteryGaugeState stored;
   stored.remainingUah = kBatteryNominalCapacityUah;
   BatteryTracker tracker;
@@ -293,7 +276,7 @@ void test_gauge_stored_full_charge_is_checked_at_boot() {
 }
 
 void test_gauge_stored_full_charge_is_not_held_off_the_charger() {
-  // The charged hold needs the charger. Booted off it at 4.15 V, the cell reads 95%, not the stored 100%.
+  // The charged hold needs the charger: off it, 4.15 V reads 95%, not the stored 100%.
   BatteryGaugeState stored;
   stored.remainingUah = kBatteryNominalCapacityUah;
   BatteryTracker tracker;
@@ -315,7 +298,7 @@ void test_gauge_stored_full_charge_is_held_on_the_charger_at_boot() {
 }
 
 void test_gauge_stored_charge_within_tolerance_is_kept_at_boot() {
-  // 60% stored against a cell at 50%: 10 points apart, within the tolerance. The rest correction handles it.
+  // 60% stored against 50% is within tolerance; the rest correction handles it.
   BatteryGaugeState stored;
   stored.remainingUah = chargeAt(60);
   BatteryTracker tracker;
@@ -325,8 +308,7 @@ void test_gauge_stored_charge_within_tolerance_is_kept_at_boot() {
 }
 
 void test_gauge_stored_charge_is_checked_while_charging() {
-  // The charger only raises the voltage, so a cell that reads 21% under the charger's LED is still low, and
-  // the stored 80% is replaced.
+  // The charger only raises the voltage: a 21% reading still replaces the stored 80%.
   BatteryGaugeState stored;
   stored.remainingUah = chargeAt(80);
   BatteryTracker tracker;

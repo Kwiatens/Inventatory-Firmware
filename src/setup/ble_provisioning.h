@@ -24,18 +24,16 @@ class BleProvisioning {
   void end();
   bool active() const { return active_; }
   uint32_t pairingCode() const { return pairingCode_.load(); }
-  // True once pairing attempts failed too often or the advertising window
-  // closed; only a physical keypress on the device re-arms it.
+  // Set after too many failed pairings or the advertising window closes; a device keypress re-arms it.
   bool locked() const { return locked_; }
   // Core 1 housekeeping: closes the advertising window.
   void service();
-  // Starts a new advertising window with a fresh passkey (keypress on device).
+  // New advertising window with a fresh passkey; called on a device keypress.
   void rearm();
-  // True once after the passkey changed, so Core 1 can redraw the LCD.
+  // True once after the passkey changes, so Core 1 redraws the LCD.
   bool takePasskeyChanged() { return passkeyChanged_.exchange(false); }
-  // Called from BLE stack callbacks (Bluetooth task). They only record the event;
-  // service() acts on it from Core 1 so the stack is never touched concurrently
-  // with end().
+  // Called from BLE callbacks on the Bluetooth task; they only record the event. service() acts on it
+  // from Core 1, never concurrently with end().
   void onAuthenticationResult(bool success) { if (!success) authFailed_ = true; }
   void onClientDisconnected() { clientDisconnected_ = true; }
   bool takeRequest(ProvisionedSettings& settings);
@@ -46,7 +44,7 @@ class BleProvisioning {
   void rotatePasskey();
   void lockOut();
   bool parseRequest(const std::string& value, ProvisionedSettings& settings) const;
-  // Status text written from the BLE callback is queued here and published from Core 1.
+  // BLE callback status text is queued here and published from Core 1.
   void queueStatus(const String& publicMessage);
   void flushStatus();
   void publishStatus(const String& publicMessage);
@@ -63,14 +61,14 @@ class BleProvisioning {
   std::atomic<bool> clientDisconnected_{false};
   std::atomic<uint8_t> failedAttempts_{0};
   std::atomic<unsigned long> advertisingStartedAt_{0};
-  // requestMutex_ guards these: the request, and the latest status text not yet published.
+  // Guarded by requestMutex_: the request and the unpublished status text.
   bool requestPending_ = false;
   ProvisionedSettings pending_;
   bool statusPending_ = false;
   String pendingStatus_;
   SemaphoreHandle_t requestMutex_ = nullptr;
-  // end() releases the Bluetooth memory, and the library cannot start again after that in the same boot.
-  // The advertising service list is also never cleared. So begin() runs at most once per boot.
+  // end() frees the Bluetooth memory and the BLE library cannot restart in one boot, so begin()
+  // runs at most once per boot.
   bool startedOnce_ = false;
 };
 
