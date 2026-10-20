@@ -8,6 +8,7 @@
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/version.h"
+#include "log/device_log.h"
 
 #include <WiFi.h>
 
@@ -64,7 +65,7 @@ bool InventatoryScanApp::startNetworkWorker() {
   if (networkMutex_.load() == nullptr) {
     networkMutex_ = xSemaphoreCreateMutex();
     if (networkMutex_.load() == nullptr) {
-      Serial.println("Network worker: mutex allocation failed");
+      deviceLog.println("Network worker: mutex allocation failed");
       return false;
     }
   }
@@ -75,7 +76,7 @@ bool InventatoryScanApp::startNetworkWorker() {
                                                 &createdTask, 0);
   if (created != pdPASS) {
     // Core 1 creates the worker and no worker is running, so this is safe here.
-    Serial.println("Network worker: task allocation failed");
+    deviceLog.println("Network worker: task allocation failed");
     vSemaphoreDelete(networkMutex_.load());
     networkMutex_ = nullptr;
     return false;
@@ -98,7 +99,7 @@ void InventatoryScanApp::networkTaskLoop() {
   networkInitializationSucceeded_ = clientReady;
   networkInitializationComplete_ = true;
   if (!clientReady) {
-    Serial.println("Network worker: client initialization failed");
+    deviceLog.println("Network worker: client initialization failed");
     networkStarted_ = false;
     networkTask_ = nullptr;
     vTaskDelete(nullptr);
@@ -170,10 +171,10 @@ void InventatoryScanApp::networkTaskLoop() {
         xSemaphoreGive(networkMutex_);
       }
     } else if (hasDebug && WiFi.isConnected()) {
-      Serial.print("Scanner diagnostic [");
-      Serial.print(debugLevel.c_str());
-      Serial.print("]: ");
-      Serial.println(debugMessage.c_str());
+      deviceLog.print("Scanner diagnostic [");
+      deviceLog.print(debugLevel.c_str());
+      deviceLog.print("]: ");
+      deviceLog.println(debugMessage.c_str());
     }
 
     vTaskDelay(pdMS_TO_TICKS(10));
@@ -208,7 +209,7 @@ void InventatoryScanApp::reconnectWiFiWorker() {
       wifiConnectedReported_ = true;
       lastSyncAttempt_ = 0;
       // Keep provisioning details off the serial console.
-      Serial.println("Local Wi-Fi connected");
+      deviceLog.println("Local Wi-Fi connected");
     }
     return;
   }
@@ -221,11 +222,11 @@ void InventatoryScanApp::reconnectWiFiWorker() {
   lastReconnectAttempt_ = millis();
 
   if (provisionedSettings_.wifiSsid.length() == 0) {
-    Serial.println("Wi-Fi setup is incomplete; staying offline.");
+    deviceLog.println("Wi-Fi setup is incomplete; staying offline.");
     return;
   }
 
-  Serial.println("Reconnecting to saved local Wi-Fi.");
+  deviceLog.println("Reconnecting to saved local Wi-Fi.");
   WiFi.begin(provisionedSettings_.wifiSsid.c_str(), provisionedSettings_.wifiPassword.c_str());
 }
 
@@ -296,8 +297,8 @@ void InventatoryScanApp::processNetworkResult() {
 
   if (!sent || status != 200) {
     pcOnline_ = false;
-    Serial.print("POST /api/v1/device/sync failed, status ");
-    Serial.println(status);
+    deviceLog.print("POST /api/v1/device/sync failed, status ");
+    deviceLog.println(status);
     // An authenticated 5xx may mean the desktop already printed but could not fit its response in
     // the body budget. Keep the request so the cached result is delivered without printing twice.
     const bool retryableServerFailure = sent && status >= 500 && status <= 599;
@@ -325,7 +326,7 @@ void InventatoryScanApp::processNetworkResult() {
   const auto response = parseSyncResponseJson(body);
   if (!response.valid || response.requestId != requestId) {
     pcOnline_ = false;
-    Serial.println("Invalid protocol v1 sync response.");
+    deviceLog.println("Invalid protocol v1 sync response.");
     return;
   }
   pcOnline_ = true;
@@ -382,7 +383,7 @@ void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
     headAccepted = true;
     if (!outbox_.pop()) {
       // Keep the event queued if its acknowledgement is not durable; the next sync retries it.
-      Serial.println("Outbox acknowledgement was not persisted; retaining event.");
+      deviceLog.println("Outbox acknowledgement was not persisted; retaining event.");
       break;
     }
     poppedAny = true;

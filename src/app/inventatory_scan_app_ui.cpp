@@ -8,6 +8,7 @@
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/version.h"
+#include "log/device_log.h"
 
 namespace inventatory_scan {
 
@@ -26,7 +27,7 @@ void InventatoryScanApp::enterStandby() {
     return;
   }
 
-  Serial.println("Entering standby mode.");
+  deviceLog.println("Entering standby mode.");
   resetPending();
   otaRequested_ = false;
   otaActive_ = false;
@@ -40,7 +41,7 @@ void InventatoryScanApp::enterStandby() {
   powerMode_ = PowerMode::Standby;
   pcOnline_ = false;
   display_.setStandby(true);
-  Serial.println("Standby mode active. Hold D again to wake.");
+  deviceLog.println("Standby mode active. Hold D again to wake.");
   sendDebugMessage("standby entered", "warn");
 }
 
@@ -49,7 +50,7 @@ void InventatoryScanApp::exitStandby() {
     return;
   }
 
-  Serial.println("Waking from standby mode.");
+  deviceLog.println("Waking from standby mode.");
   // Waking from an energy-saving sleep restarts the sequence.
   if (energyPhase_ == EnergyPhase::Asleep) energyPhase_ = EnergyPhase::Awake;
   const bool scannerReady = scanner_.resume();
@@ -62,21 +63,21 @@ void InventatoryScanApp::exitStandby() {
   display_.setStandby(false);
 
   if (!scannerReady) {
-    Serial.println("Scanner resume failed; verify the GM65 connection and profile.");
+    deviceLog.println("Scanner resume failed; verify the GM65 connection and profile.");
     display_.showLocalFailure(localFailure("local-scanner", kScannerFaultCode, "Check scanner cable"));
   }
 
   if (provisionedSettings_.wifiSsid.length() == 0) {
-    Serial.println("Standby exit complete; Wi-Fi remains offline.");
+    deviceLog.println("Standby exit complete; Wi-Fi remains offline.");
   }
   sendDebugMessage("standby exited", "warn");
 }
 
 void InventatoryScanApp::logState(const char* reason) const {
-  Serial.print("State update [");
-  Serial.print(reason);
-  Serial.print("]: ");
-  Serial.println(state_ == State::Idle ? "idle" : state_ == State::AwaitQuantity ? "awaiting quantity" : "other");
+  deviceLog.print("State update [");
+  deviceLog.print(reason);
+  deviceLog.print("]: ");
+  deviceLog.println(state_ == State::Idle ? "idle" : state_ == State::AwaitQuantity ? "awaiting quantity" : "other");
 }
 
 void InventatoryScanApp::openQuickLabels() {
@@ -115,7 +116,7 @@ void InventatoryScanApp::stepBacklightMode(int step) {
 
 void InventatoryScanApp::persistBacklightMode() {
   if (!deviceSettings_.saveBacklightMode(static_cast<uint8_t>(backlightMode_))) {
-    Serial.println("Could not save backlight mode.");
+    deviceLog.println("Could not save backlight mode.");
   }
 }
 
@@ -134,7 +135,7 @@ void InventatoryScanApp::toggleEnergySaving() {
 }
 
 void InventatoryScanApp::persistEnergySaving() {
-  if (!deviceSettings_.saveEnergySavingEnabled(energySavingOn_)) Serial.println("Could not save energy saving.");
+  if (!deviceSettings_.saveEnergySavingEnabled(energySavingOn_)) deviceLog.println("Could not save energy saving.");
 }
 
 // Independent of energy saving.
@@ -146,7 +147,7 @@ void InventatoryScanApp::toggleDockMode() {
 }
 
 void InventatoryScanApp::persistDockMode() {
-  if (!deviceSettings_.saveDockModeEnabled(dockMode_)) Serial.println("Could not save dock mode.");
+  if (!deviceSettings_.saveDockModeEnabled(dockMode_)) deviceLog.println("Could not save dock mode.");
 }
 
 void InventatoryScanApp::openSleepAfterSettings() {
@@ -164,7 +165,7 @@ void InventatoryScanApp::stepSleepDelay(int step) {
 }
 
 void InventatoryScanApp::persistSleepDelay() {
-  if (!deviceSettings_.saveSleepDelay(static_cast<uint8_t>(sleepDelay_))) Serial.println("Could not save sleep delay.");
+  if (!deviceSettings_.saveSleepDelay(static_cast<uint8_t>(sleepDelay_))) deviceLog.println("Could not save sleep delay.");
 }
 
 void InventatoryScanApp::openPowerOffSettings() {
@@ -183,7 +184,7 @@ void InventatoryScanApp::stepPowerOffDelay(int step) {
 
 void InventatoryScanApp::persistPowerOffDelay() {
   if (!deviceSettings_.savePowerOffDelay(static_cast<uint8_t>(powerOffDelay_))) {
-    Serial.println("Could not save power off delay.");
+    deviceLog.println("Could not save power off delay.");
   }
 }
 
@@ -222,7 +223,7 @@ void InventatoryScanApp::requestQuickLabelPrint(uint8_t presetIndex) {
 }
 
 void InventatoryScanApp::persistContrast() {
-  if (!deviceSettings_.saveContrast(lcdContrast_)) Serial.println("Could not save LCD contrast.");
+  if (!deviceSettings_.saveContrast(lcdContrast_)) deviceLog.println("Could not save LCD contrast.");
 }
 
 DisplayConnectivityState InventatoryScanApp::connectivityState() const {
