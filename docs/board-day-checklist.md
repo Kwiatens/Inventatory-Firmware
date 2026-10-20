@@ -65,7 +65,7 @@ and 63.
 - [ ] A long item name wraps to two lines without hitting the footer.
 - [ ] Sending, Done, Check result, Needs attention.
 - [ ] Menu (with and without item 3), Quick labels (one page and several), Device settings, Display,
-      Contrast, Backlight, Energy saving, both delay pickers.
+      Contrast, Backlight, Energy, both delay pickers.
 - [ ] Re-pair, discard and repair confirmations.
 - [ ] Fault detail for each code that can stand: `SCN-01`, `STO-03`, `SYN-01`, `PWR-01`.
 - [ ] Pairing screens: ready, locked, connecting, failed.
@@ -105,7 +105,7 @@ and 63.
       on battery. The top bar and card agree.
 - [ ] Bounce the charger contact: the card does not re-appear on every flicker.
 - [ ] Time left shows a `~` estimate straight away, and the `~` goes once enough load has been observed.
-      **Calibrate** the load values (`kBatteryLoad*Ma`), `kBatteryNominalCapacityUah`, `kBatteryRestDwellMs`,
+      **Calibrate** the load values (`kBatteryLoad*Ma`), `kBatteryReferenceCapacityUah`, `kBatteryRestDwellMs`,
       `kBatteryPriorChargeMsPerPercent` and `kBatteryFloorMv` from the bench run in the battery plan
       (assumed: 3.7 V nominal LiPo of 1300 mAh, about 80 mA in use, 93.6 s per percent while charging at 500 mA).
       Also calibrate `kBatteryChargedMv` (4.10 V) and `kBatteryChargedReleaseMv` (4.00 V) against a full charge.
@@ -127,8 +127,10 @@ and 63.
       then power off. A key press or scan cancels a countdown; a key wakes standby (not power-off).
 - [ ] A menu, a quantity being typed, an error, a warning, or an update keeps the device awake.
 - [ ] Backlight: Off, On, Auto 1 min. Warnings and pairing stay lit in every mode.
-- [ ] Settings survive a reboot: contrast, backlight, energy saving and both delays.
-- [ ] Dock mode off (Energy saving, row 4): on the charger the device stays on with energy saving on, and is not
+- [ ] Settings survive a reboot: contrast, backlight, energy saving, both delays and the battery capacity.
+- [ ] Energy: D moves to page 2/2 and back. Battery, then a typed capacity: 99 is refused on A, 2500 saves and
+      shows "2500 mAh", # deletes a digit, C leaves without a change. The percent stays the same after the change.
+- [ ] Dock mode off (Energy, row 4): on the charger the device stays on with energy saving on, and is not
       put to sleep. Plug in while it is off: it wakes, shows the charging card, and stays on.
 - [ ] Dock mode on: plug in, the charging card shows, and the device turns off about 5 s later. Take the charger
       off: it wakes and stays on. Plug in while it is off: it wakes, shows the card, and turns off again.

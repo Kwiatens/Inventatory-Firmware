@@ -59,8 +59,18 @@ constexpr uint32_t kBatteryEstimateMinSpanMs = 300000UL;
 constexpr int32_t kBatteryEstimateMaxMinutes = 9999;
 
 // Gauge calibration: placeholders until bench measurements replace them.
-// 3.7 V nominal, 1300 mAh; usable capacity still needs a discharge test.
-constexpr uint32_t kBatteryNominalCapacityUah = 1300000UL;
+// 3.7 V nominal. The usable capacity still needs a discharge test.
+// The cell capacity the estimate counts in. It is typed in Device settings / Energy / Battery, in mAh, and starts at
+// kBatteryDefaultCapacityMah. The stored charge and charge rate are kept on the reference cell's scale
+// (kBatteryReferenceCapacityUah), which stays fixed: changing it would misread the stored state.
+constexpr uint16_t kBatteryDefaultCapacityMah = 3400;
+constexpr uint32_t kBatteryReferenceCapacityUah = 1300000UL;
+// The capacities that can be typed, in mAh.
+constexpr uint16_t kBatteryCapacityMinMah = 100;
+constexpr uint16_t kBatteryCapacityMaxMah = 9999;
+static_assert(kBatteryDefaultCapacityMah >= kBatteryCapacityMinMah &&
+                  kBatteryDefaultCapacityMah <= kBatteryCapacityMaxMah,
+              "default capacity out of range");
 // Average current in milliamps for each state. Together they are about 80 mA with everything on.
 constexpr uint32_t kBatteryLoadStandbyMa = 3;
 constexpr uint32_t kBatteryLoadBaseMa = 45;
@@ -84,7 +94,7 @@ constexpr uint32_t kBatteryRestStepMs = 60000UL;
 // At boot, a stored charge this many points above the voltage's charge is replaced: the gauge
 // cannot count charge lost while off. Smaller gaps go to the rest correction (load sag, ADC error).
 constexpr uint8_t kBatteryRestoreTolerancePercent = 20;
-// Prior charge rate, a guess until measured: 1300 mAh at 500 mA is 2.6 h, 93.6 s per point.
+// Prior charge rate on the reference cell, a guess until measured: 1300 mAh at 500 mA is 2.6 h, 93.6 s per point.
 constexpr uint32_t kBatteryPriorChargeMsPerPercent = 93600UL;
 // A learned rate outside these bounds is not trusted.
 constexpr uint32_t kBatteryChargeMsPerPercentMin = 20000UL;
@@ -95,6 +105,26 @@ constexpr uint8_t kBatteryChargeLearnMinPoints = 20;
 constexpr uint8_t kBatteryChargeCapPercent = 99;
 // The shown percent moves by at most one point per this interval.
 constexpr uint32_t kBatteryDisplayStepMs = 30000UL;
+
+// A typed capacity the gauge accepts.
+inline bool batteryCapacityAccepted(uint16_t mah) {
+  return mah >= kBatteryCapacityMinMah && mah <= kBatteryCapacityMaxMah;
+}
+
+// A stored capacity outside the accepted range falls back to the default.
+inline uint16_t batteryCapacityFromStored(uint16_t mah) {
+  return batteryCapacityAccepted(mah) ? mah : kBatteryDefaultCapacityMah;
+}
+
+inline uint32_t batteryCapacityUah(uint16_t mah) {
+  return static_cast<uint32_t>(batteryCapacityFromStored(mah)) * 1000UL;
+}
+
+// Converts a value counted on one capacity to another, rounded to the nearest unit. A charge and a charge rate
+// both scale with the capacity.
+inline uint64_t scaleToCapacity(uint64_t value, uint32_t fromUah, uint32_t toUah) {
+  return (value * toUah + fromUah / 2U) / fromUah;
+}
 
 inline uint8_t batteryPercentFromMillivolts(uint32_t millivolts) {
   constexpr std::size_t kPoints = kBatteryCurveCount;
@@ -127,7 +157,8 @@ inline bool signalHighNext(bool high, uint32_t midpointMv) {
   return high ? midpointMv >= kSignalLowBelowMv : midpointMv > kSignalHighAboveMv;
 }
 
-// Kept across power-off. A zero charge rate means none timed yet: the prior applies.
+// Kept across power-off, on the reference cell's scale (kBatteryReferenceCapacityUah), so it does not depend on the
+// capacity setting. A zero charge rate means none timed yet: the prior applies.
 struct BatteryGaugeState {
   uint32_t remainingUah = 0;
   uint32_t chargeMsPerPercent = 0;
@@ -140,14 +171,26 @@ struct BatteryGaugeState {
 class BatteryGauge {
  public:
   // Resumes from a stored state; the first update checks the stored charge against the voltage.
+  // Call setCapacity first: the stored charge is a share of the cell, and it is counted in the set capacity.
   void restore(const BatteryGaugeState& state) {
     restored_ = true;
-    remainingUah_ = std::min<uint64_t>(state.remainingUah, kBatteryNominalCapacityUah);
+    remainingUah_ = scaleToCapacity(std::min<uint64_t>(state.remainingUah, kBatteryReferenceCapacityUah),
+                                    kBatteryReferenceCapacityUah, capacityUah_);
     chargeLearned_ = state.chargeMsPerPercent != 0;
     if (chargeLearned_) chargeMsPerPercent_ = state.chargeMsPerPercent;
     averageCentiMa_ = state.averageLoadCentiMa;
     // A stored average is an observed one, so the time left shows without "~" from the start.
     if (averageCentiMa_ != 0) observedMs_ = kBatteryEstimateMinSpanMs;
+  }
+
+  // Changes the cell the estimate counts in. The percent is kept, so the charge scales with the capacity. The charge
+  // rate is kept on the reference cell's scale and needs no change. A charge being timed is dropped, so no rate is
+  // learned across the change.
+  void setCapacity(uint32_t capacityUah) {
+    if (capacityUah == capacityUah_) return;
+    remainingUah_ = scaleToCapacity(remainingUah_, capacityUah_, capacityUah);
+    capacityUah_ = capacityUah;
+    chargeTiming_ = false;
   }
 
   // One valid reading per second. charging and full are debounced; loadMilliamps 0 means unknown.
@@ -168,7 +211,7 @@ class BatteryGauge {
     } else {
       if (done) {
         // Charged: hold at 100 until the voltage falls and load removes charge.
-        remainingUah_ = kBatteryNominalCapacityUah;
+        remainingUah_ = capacityUah_;
         dischargeRemainder_ = 0;
         if (chargeTiming_) learnCharge();
       } else {
@@ -187,7 +230,7 @@ class BatteryGauge {
 
   // The estimate, rounded, 0 to 100.
   int estimatePercent() const {
-    const uint64_t percent = (remainingUah_ * 100U + kBatteryNominalCapacityUah / 2U) / kBatteryNominalCapacityUah;
+    const uint64_t percent = (remainingUah_ * 100U + capacityUah_ / 2U) / capacityUah_;
     return static_cast<int>(std::min<uint64_t>(percent, 100U));
   }
   int shownPercent() const { return shownPercent_; }
@@ -201,7 +244,7 @@ class BatteryGauge {
     if (!started_) return -1;
     uint64_t minutes = 0;
     if (wasCharging_) {
-      minutes = static_cast<uint64_t>(100 - estimatePercent()) * chargeMsPerPercent_ / 60000U;
+      minutes = static_cast<uint64_t>(100 - estimatePercent()) * actualMsPerPercent() / 60000U;
     } else {
       if (averageCentiMa_ == 0) return -1;
       // uAh / (hundredths of a milliamp) x 6 gives minutes.
@@ -212,16 +255,22 @@ class BatteryGauge {
   }
   BatteryGaugeState state() const {
     BatteryGaugeState result;
-    result.remainingUah = static_cast<uint32_t>(remainingUah_);
+    result.remainingUah =
+        static_cast<uint32_t>(scaleToCapacity(remainingUah_, capacityUah_, kBatteryReferenceCapacityUah));
     result.chargeMsPerPercent = chargeLearned_ ? chargeMsPerPercent_ : 0U;
     result.averageLoadCentiMa = averageCentiMa_;
     return result;
   }
 
  private:
+  // The charge rate for this cell: the reference cell's rate scaled to the capacity, since a bigger cell takes longer.
+  uint32_t actualMsPerPercent() const {
+    return static_cast<uint32_t>(scaleToCapacity(chargeMsPerPercent_, kBatteryReferenceCapacityUah, capacityUah_));
+  }
+
   // Charge (uAh) that this voltage's open-circuit percent stands for.
   uint64_t chargeFromMillivolts(uint32_t millivolts) const {
-    return static_cast<uint64_t>(kBatteryNominalCapacityUah) * batteryPercentFromMillivolts(millivolts) / 100U;
+    return static_cast<uint64_t>(capacityUah_) * batteryPercentFromMillivolts(millivolts) / 100U;
   }
 
   // The first reading takes the voltage as charge; a restored charge is checked against it.
@@ -255,23 +304,24 @@ class BatteryGauge {
 
   // 100 points take 100 x chargeMsPerPercent_ ms; the remainder carries over so short steps add up.
   void addCharge(uint32_t stepMs) {
-    const uint64_t cap = static_cast<uint64_t>(kBatteryNominalCapacityUah) * kBatteryChargeCapPercent / 100U;
+    const uint64_t cap = static_cast<uint64_t>(capacityUah_) * kBatteryChargeCapPercent / 100U;
     if (remainingUah_ >= cap) return;
-    const uint64_t fullScaleMs = static_cast<uint64_t>(chargeMsPerPercent_) * 100U;
-    chargeRemainder_ += static_cast<uint64_t>(kBatteryNominalCapacityUah) * stepMs;
+    const uint64_t fullScaleMs = static_cast<uint64_t>(actualMsPerPercent()) * 100U;
+    chargeRemainder_ += static_cast<uint64_t>(capacityUah_) * stepMs;
     const uint64_t added = chargeRemainder_ / fullScaleMs;
     chargeRemainder_ %= fullScaleMs;
     remainingUah_ = std::min(cap, remainingUah_ + added);
   }
 
-  // Called at done: the rate is the average time per point since the charge began.
+  // Called at done: the rate is the average time per point since the charge began, on the reference cell's scale.
   void learnCharge() {
     chargeTiming_ = false;
     const int points = 100 - chargeStartPercent_;
     if (points < kBatteryChargeLearnMinPoints) return;
+    const uint64_t sample =
+        scaleToCapacity(chargeElapsedMs_ / static_cast<uint64_t>(points), capacityUah_, kBatteryReferenceCapacityUah);
     // Faster than the fastest allowed rate is not a real charge (e.g. boot with charger done).
-    if (chargeElapsedMs_ < static_cast<uint64_t>(kBatteryChargeMsPerPercentMin) * points) return;
-    const uint64_t sample = chargeElapsedMs_ / static_cast<uint64_t>(points);
+    if (sample < kBatteryChargeMsPerPercentMin) return;
     const uint64_t value = chargeLearned_ ? (static_cast<uint64_t>(chargeMsPerPercent_) * 3U + sample) / 4U : sample;
     chargeMsPerPercent_ = static_cast<uint32_t>(std::min<uint64_t>(
         std::max<uint64_t>(value, kBatteryChargeMsPerPercentMin), kBatteryChargeMsPerPercentMax));
@@ -324,9 +374,9 @@ class BatteryGauge {
     restStepMs_ += stepMs;
     if (restStepMs_ < kBatteryRestStepMs) return;
     restStepMs_ = 0;
-    const uint64_t step = kBatteryNominalCapacityUah / 100U;
+    const uint64_t step = capacityUah_ / 100U;
     if (target > estimate) {
-      remainingUah_ = std::min<uint64_t>(kBatteryNominalCapacityUah, remainingUah_ + step);
+      remainingUah_ = std::min<uint64_t>(capacityUah_, remainingUah_ + step);
     } else {
       remainingUah_ = remainingUah_ > step ? remainingUah_ - step : 0;
     }
@@ -348,6 +398,7 @@ class BatteryGauge {
     shownPercent_ += target > shownPercent_ ? 1 : -1;
   }
 
+  uint32_t capacityUah_ = kBatteryReferenceCapacityUah;
   uint64_t remainingUah_ = 0;
   uint32_t chargeMsPerPercent_ = kBatteryPriorChargeMsPerPercent;
   bool chargeLearned_ = false;
@@ -376,6 +427,9 @@ class BatteryTracker {
  public:
   // Resumes the gauge from a stored state. Call it before the first update.
   void restore(const BatteryGaugeState& state) { gauge_.restore(state); }
+
+  // The cell the estimate counts in. Call it before restore, since the stored charge is counted in it.
+  void setCapacity(uint32_t capacityUah) { gauge_.setCapacity(capacityUah); }
 
   // charging: LED lit, debounced here. loadMilliamps: 0 when unknown.
   // plugged: charger input, debounced by the caller.

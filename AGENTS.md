@@ -434,7 +434,7 @@ preserved:
   PC on the same Wi-Fi. While Wi-Fi is down the newest lines are kept (`kLogLineSlots`). `kLogOverAirEnabled` turns it off.
 - **Backlight**: `Off`, `On`, or an Auto idle timeout (1, 3, 5, 10 min), set under Device
   settings / Display. The warnings and pairing keep the backlight on whatever the setting says.
-- **Energy saving**: a switch under Device settings / Energy saving, off by default. When on, the device
+- **Energy saving**: a switch under Device settings / Energy, off by default. When on, the device
   sleeps (standby) after 1, 3, 5, 10 or 30 min idle, and turns off (deep sleep) after 1, 5, 10 or
   30 min or 1 hour asleep, or never. The delays are counted from the last key press or scan and
   from the moment it sleeps. Only the Ready screen with nothing in progress starts the sequence, so
@@ -443,7 +443,11 @@ preserved:
   nothing else, a scan is handled as usual. A device asleep on this timer wakes on a short key press.
   After the automatic power off only `*` wakes it, and it restarts. Holding `D` still toggles
   standby as before. On the charger (charging or charged) the device is never put to sleep by this timer.
-- **Dock mode**: row 4 of the Energy saving screen, off by default and independent of the energy saving
+- **Battery capacity**: page 2 of the Energy screen (`D` moves between the two pages). Type the capacity in mAh,
+  100 to 9999, and `A` saves it; `C` leaves it unchanged. Stored under `batt_mah` in `inv_device`, default 3400. The
+  stored charge and charge rate are on the 1300 mAh reference scale (`kBatteryReferenceCapacityUah`), so a change keeps the
+  shown percent.
+- **Dock mode**: row 4 of the Energy screen, off by default and independent of the energy saving
   switch. While it is on, the device goes to standby about 5 s after the charger is plugged in
   (`kDockPowerOffDelayMs`), and taking the charger off brings it back at once. Standby keeps the chip awake
   and polls the charger input every `kChargerSampleIntervalMs`, because a deep sleep cannot be woken by the

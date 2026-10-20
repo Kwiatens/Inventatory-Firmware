@@ -28,6 +28,9 @@ class DeviceSettingsStore {
   // Dock mode is off when nothing is stored.
   bool dockModeEnabled() const;
   bool saveDockModeEnabled(bool enabled);
+  // Typed battery capacity in mAh; the default when nothing valid is stored.
+  uint16_t batteryCapacity() const;
+  bool saveBatteryCapacity(uint16_t mah);
 
  private:
   bool saveCached(const char* key, uint8_t value, int16_t& last);
@@ -39,6 +42,7 @@ class DeviceSettingsStore {
   int16_t lastSleepDelay_ = -1;
   int16_t lastPowerOffDelay_ = -1;
   int16_t lastDockMode_ = -1;
+  int16_t lastBatteryCapacity_ = -1;
 };
 
 }  // namespace inventatory_scan
