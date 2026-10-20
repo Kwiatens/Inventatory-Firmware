@@ -23,6 +23,9 @@ constexpr bool displayHeaderCanShowStatus(int titleWidth, int statusWidth,
 // Quick labels per page; keys 1 to 4 pick one.
 constexpr std::size_t kQuickLabelsPerPage = 4U;
 
+// Energy list pages: the switch, the two delays and dock mode, then the battery capacity. D moves between them.
+constexpr std::size_t kEnergyPageCount = 2U;
+
 constexpr bool displayQueueDepth(std::size_t queueDepth) { return queueDepth > 0; }
 
 template <typename PrefixWidth>

@@ -5,6 +5,7 @@
 
 #include "storage/device_settings_store.h"
 
+#include "InventatoryScanBattery.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/hardware.h"
 
@@ -23,6 +24,7 @@ bool DeviceSettingsStore::begin() {
   lastSleepDelay_ = sleepDelay();
   lastPowerOffDelay_ = powerOffDelay();
   lastDockMode_ = dockModeEnabled() ? 1 : 0;
+  lastBatteryCapacity_ = batteryCapacity();
   return true;
 }
 
@@ -76,6 +78,19 @@ bool DeviceSettingsStore::dockModeEnabled() const { return prefs_.getUChar("dock
 
 bool DeviceSettingsStore::saveDockModeEnabled(bool enabled) {
   return saveCached("dock", enabled ? 1 : 0, lastDockMode_);
+}
+
+uint16_t DeviceSettingsStore::batteryCapacity() const {
+  return batteryCapacityFromStored(prefs_.getUShort("batt_mah", kBatteryDefaultCapacityMah));
+}
+
+// The capacity is a whole number of mAh, so it is stored as a 16-bit value rather than through saveCached.
+bool DeviceSettingsStore::saveBatteryCapacity(uint16_t mah) {
+  const uint16_t value = batteryCapacityFromStored(mah);
+  if (lastBatteryCapacity_ >= 0 && value == lastBatteryCapacity_) return true;
+  if (prefs_.putUShort("batt_mah", value) != sizeof(uint16_t)) return false;
+  lastBatteryCapacity_ = static_cast<int16_t>(value);
+  return true;
 }
 
 }  // namespace inventatory_scan

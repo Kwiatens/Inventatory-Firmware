@@ -24,8 +24,8 @@ bool BatteryStateStore::load(BatteryGaugeState& state) const {
   stored.remainingUah = prefs_.getUInt(kRemainingKey, 0);
   stored.chargeMsPerPercent = prefs_.getUInt(kChargeKey, 0);
   stored.averageLoadCentiMa = prefs_.getUInt(kAverageKey, 0);
-  if (stored.remainingUah > kBatteryNominalCapacityUah) return false;
-  // Zero means no charge timed yet; otherwise the value must be in range.
+  if (stored.remainingUah > kBatteryReferenceCapacityUah) return false;
+  // Zero means no charge timed yet; otherwise the value must be in range on the reference cell's scale.
   if (stored.chargeMsPerPercent != 0 && (stored.chargeMsPerPercent < kBatteryChargeMsPerPercentMin ||
                                          stored.chargeMsPerPercent > kBatteryChargeMsPerPercentMax)) {
     return false;

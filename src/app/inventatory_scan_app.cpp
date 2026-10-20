@@ -82,8 +82,22 @@ bool InventatoryScanApp::begin() {
   battery_.begin();
   display_.playBootSplash(kBootSplashHoldMs);
   keypadInit();
-  // Gauge resumes from the state saved at power-off; a first boot uses the voltage.
+  if (!deviceSettings_.begin()) {
+    deviceLog.println("Device settings storage unavailable; using default contrast.");
+  } else {
+    lcdContrast_ = deviceSettings_.contrast();
+    display_.setContrast(lcdContrast_);
+    backlightMode_ = backlightModeFromStored(deviceSettings_.backlightMode());
+    energySavingOn_ = deviceSettings_.energySavingEnabled();
+    dockMode_ = deviceSettings_.dockModeEnabled();
+    sleepDelay_ = sleepDelayFromStored(deviceSettings_.sleepDelay());
+    powerOffDelay_ = powerOffDelayFromStored(deviceSettings_.powerOffDelay());
+    batteryCapacity_ = batteryCapacityFromStored(deviceSettings_.batteryCapacity());
+  }
+  // Gauge resumes from the state saved at power-off; a first boot uses the voltage. The capacity is set first,
+  // because the stored charge is a share of it.
   BatteryGaugeState storedBattery;
+  batteryTracker_.setCapacity(batteryCapacityUah(batteryCapacity_));
   if (batteryStore_.begin() && batteryStore_.load(storedBattery)) batteryTracker_.restore(storedBattery);
   const uint32_t bootMillivolts = battery_.readMillivolts();
   deviceLog.printf("Battery %lu mV\r\n", static_cast<unsigned long>(bootMillivolts));
@@ -137,17 +151,6 @@ bool InventatoryScanApp::begin() {
     }
     deviceLog.printf("Outbox ready: %u queued, %u free NVS entries.\r\n", static_cast<unsigned>(outbox_.size()),
                   static_cast<unsigned>(outbox_.freeStorageEntries()));
-  }
-  if (!deviceSettings_.begin()) {
-    deviceLog.println("Device settings storage unavailable; using default contrast.");
-  } else {
-    lcdContrast_ = deviceSettings_.contrast();
-    display_.setContrast(lcdContrast_);
-    backlightMode_ = backlightModeFromStored(deviceSettings_.backlightMode());
-    energySavingOn_ = deviceSettings_.energySavingEnabled();
-    dockMode_ = deviceSettings_.dockModeEnabled();
-    sleepDelay_ = sleepDelayFromStored(deviceSettings_.sleepDelay());
-    powerOffDelay_ = powerOffDelayFromStored(deviceSettings_.powerOffDelay());
   }
   if (!setupStore_.begin() || !setupStore_.load(provisionedSettings_)) {
     setupMode_ = true;
