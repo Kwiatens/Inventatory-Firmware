@@ -123,7 +123,65 @@ void InventatoryScanApp::persistBacklightMode() {
 void InventatoryScanApp::openEnergySaving() {
   state_ = State::EnergySaving;
   display_.showEnergySaving(energySavingOn_, String(sleepDelayShortLabel(sleepDelay_)),
-                            String(powerOffDelayShortLabel(powerOffDelay_)), dockMode_);
+                            String(powerOffDelayShortLabel(powerOffDelay_)), dockMode_, energyPage_,
+                            String(batteryCapacity_) + " mAh");
+}
+
+// D moves to the next page of the energy list, as D does on Quick labels.
+void InventatoryScanApp::cycleEnergyPage() {
+  energyPage_ = static_cast<uint8_t>((energyPage_ + 1U) % kEnergyPageCount);
+  openEnergySaving();
+}
+
+// The capacity is typed in mAh. Nothing changes until A saves it, and C leaves it as it was.
+void InventatoryScanApp::openBatteryCapacityEntry() {
+  state_ = State::AwaitBatteryCapacity;
+  batteryEntryMah_ = 0;
+  refreshBatteryCapacityEntry(false);
+}
+
+void InventatoryScanApp::refreshBatteryCapacityEntry(bool rejected) {
+  String value = "Type mAh";
+  String detail = "Now " + String(batteryCapacity_) + " mAh";
+  if (batteryEntryMah_ > 0) {
+    value = String(batteryEntryMah_) + " mAh";
+    detail = "# deletes a digit";
+  }
+  if (rejected) detail = "Use " + String(kBatteryCapacityMinMah) + " to " + String(kBatteryCapacityMaxMah) + " mAh";
+  display_.showBatteryCapacityEntry(value, detail);
+}
+
+void InventatoryScanApp::appendBatteryCapacityDigit(char digit) {
+  const uint32_t next = static_cast<uint32_t>(batteryEntryMah_) * 10U + static_cast<uint32_t>(digit - '0');
+  if (next > kBatteryCapacityMaxMah) return;
+  batteryEntryMah_ = static_cast<uint16_t>(next);
+  refreshBatteryCapacityEntry(false);
+}
+
+void InventatoryScanApp::deleteBatteryCapacityDigit() {
+  batteryEntryMah_ = static_cast<uint16_t>(batteryEntryMah_ / 10U);
+  refreshBatteryCapacityEntry(false);
+}
+
+// A saves the typed capacity. Nothing typed goes back with no change, and a value outside the range stays on screen.
+void InventatoryScanApp::confirmBatteryCapacity() {
+  if (batteryEntryMah_ == 0) {
+    openEnergySaving();
+    return;
+  }
+  if (!batteryCapacityAccepted(batteryEntryMah_)) {
+    refreshBatteryCapacityEntry(true);
+    return;
+  }
+  batteryCapacity_ = batteryEntryMah_;
+  batteryTracker_.setCapacity(batteryCapacityUah(batteryCapacity_));
+  persistBatteryCapacity();
+  noteUserActivity();
+  openEnergySaving();
+}
+
+void InventatoryScanApp::persistBatteryCapacity() {
+  if (!deviceSettings_.saveBatteryCapacity(batteryCapacity_)) deviceLog.println("Could not save battery capacity.");
 }
 
 // Delays are kept while energy saving is off.

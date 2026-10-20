@@ -548,7 +548,7 @@ void DisplayController::showQuickSettings() {
   model_.showPcStatus = false;
   model_.header = "Device settings";
   appendListRow(model_, "1  Display");
-  appendListRow(model_, "2  Energy saving");
+  appendListRow(model_, "2  Energy");
   appendListRow(model_, "3  Pair with new PC");
   appendListRow(model_, "4  Software update");
   model_.actions = "C Back";
@@ -573,20 +573,40 @@ void DisplayController::showBacklight(const String& label, const String& detail,
   showChoice(DisplayUiMode::Backlight, "Backlight", label, detail, index, count);
 }
 
-// Energy saving: the switch, then the two delays, then dock mode. Each delay opens its own picker.
+// Energy, in pages as Quick labels are: the switch, the two delays and dock mode, then the battery capacity.
+// Each delay opens its own picker, and the capacity is typed in.
 void DisplayController::showEnergySaving(bool enabled, const String& sleepLabel, const String& powerOffLabel,
-                                         bool dockMode) {
+                                         bool dockMode, std::size_t page, const String& batteryLabel) {
   clearContent();
   model_.mode = DisplayUiMode::EnergySaving;
   model_.bodyKind = DisplayBodyKind::List;
   model_.rail = DisplayRailStyle::None;
   model_.showPcStatus = false;
-  model_.header = "Energy saving";
-  appendListRow(model_, String("1  Enabled  ") + (enabled ? "On" : "Off"));
-  appendListRow(model_, "2  Sleep after  " + sleepLabel);
-  appendListRow(model_, "3  Turn off after  " + powerOffLabel);
-  appendListRow(model_, String("4  Dock mode  ") + (dockMode ? "On" : "Off"));
-  model_.actions = "C Back";
+  model_.header = "Energy";
+  model_.pageText = String(page + 1U) + "/" + kEnergyPageCount;
+  if (page == 0) {
+    appendListRow(model_, String("1  Enabled  ") + (enabled ? "On" : "Off"));
+    appendListRow(model_, "2  Sleep after  " + sleepLabel);
+    appendListRow(model_, "3  Turn off after  " + powerOffLabel);
+    appendListRow(model_, String("4  Dock mode  ") + (dockMode ? "On" : "Off"));
+  } else {
+    appendListRow(model_, "1  Battery  " + batteryLabel);
+  }
+  model_.actions = "D Next C Back";
+  markDirty();
+}
+
+// The typed battery capacity: the value so far, and a line below it saying what the keys do.
+void DisplayController::showBatteryCapacityEntry(const String& value, const String& detail) {
+  clearContent();
+  model_.mode = DisplayUiMode::BatteryCapacity;
+  model_.bodyKind = DisplayBodyKind::Choice;
+  model_.rail = DisplayRailStyle::None;
+  model_.showPcStatus = false;
+  model_.header = "Battery";
+  model_.primary = value;
+  model_.secondary = detail;
+  model_.actions = "A Save C Back";
   markDirty();
 }
 
