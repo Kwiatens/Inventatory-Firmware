@@ -36,18 +36,16 @@ class OutboxStore {
 
   enum class EnqueueResult : uint8_t {
     Queued,
-    QueueFull,       // The queue holds kCapacity events; the PC must sync first.
+    QueueFull,       // Queue holds kCapacity events; the PC must sync first.
     Rejected,        // The event itself cannot be represented (empty/oversized code, zero value).
     StorageFailed,   // NVS refused the write; the event was not persisted.
   };
 
-  // ESP32 NVS namespaces are limited to 15 characters plus the terminator. A
-  // longer name makes nvs_open fail with KEY_TOO_LONG, and nothing can be saved.
+  // NVS namespace limit: 15 characters plus terminator. A longer name fails nvs_open.
   static constexpr std::size_t kMaxNamespaceLength = 15;
 
-  // freshSequenceStart is used only when the namespace has no queue header yet (a
-  // new or erased outbox). The firmware passes freshOutboxSequenceStart(entropy).
-  // The default of 1 is for tests.
+  // freshSequenceStart applies only when there is no queue header yet. Firmware passes
+  // freshOutboxSequenceStart(); the default of 1 is for tests.
   bool begin(const char* namespaceName = "inv_outbox", const char* deviceId = nullptr,
              uint32_t freshSequenceStart = 1U);
   void end();
@@ -67,8 +65,7 @@ class OutboxStore {
   std::size_t freeStorageEntries() { return storageReady_ ? prefs_.freeEntries() : 0U; }
   uint32_t nextSequence() const { return nextSequence_; }
   bool unreadable() const { return unreadable_; }
-  // True when the stored queue is in a layout this firmware cannot read, so a repair
-  // removes every stored scan rather than salvaging the readable ones.
+  // Stored queue is in a layout this firmware cannot read; repair removes every stored scan.
   bool incompatible() const { return incompatible_; }
 
   enum class RepairResult : uint8_t { Repaired, NothingToRepair, StorageFailed };
@@ -76,23 +73,19 @@ class OutboxStore {
 
  private:
   static constexpr uint32_t kMagic = 0x48534f51UL;
-  // Firmware before the random start numbered every queue from 1, and the desktop keeps the event ids it has
-  // stored. A queue that is empty below this number moves on to a fresh start, so its next event is not a stored one.
+  // Older firmware numbered queues from 1, and the desktop keeps those event ids. An empty queue
+  // below this floor moves to a fresh start, so its next id is not a stored one.
   static constexpr uint32_t kLowSequenceFloor = 1000000UL;
-  // The header version names the slot set the queue uses. Version 5 keeps the "e<n>" keys
-  // every queue has been written with so far. Version 6 is the same layout under "f<n>" keys,
-  // which repair() writes into before it commits. Older firmware reads version 6 as an unreadable
-  // header: it never misreads the queue, but its only remedy is to discard the stored scans.
+  // The header version names the slot set: 5 for "e<n>" keys, 6 for "f<n>" keys, which repair()
+  // writes into before it commits. Older firmware reads version 6 as unreadable, never misreads it.
   static constexpr uint16_t kVersion = 5;
   static constexpr uint16_t kVersionAltSlots = 6;
   static constexpr std::size_t kCodeLen = 65;  // 64-character MPN plus null terminator.
   static constexpr std::size_t kManufacturerLen = 48;
   static constexpr std::size_t kNameLen = 64;
 
-  // Each queued event is persisted under its own NVS key. A single 4 KiB blob
-  // for the whole queue exceeded the NVS single-page chunk size, so every scan
-  // rewrote a multi-page blob and needed room for two copies at once inside the
-  // 20 KiB nvs partition. Per-record keys keep each write to one small chunk.
+  // One NVS key per event. A single queue blob spanned several NVS pages and needed room for two
+  // copies in the 20 KiB partition; per-record keys keep each write to one small chunk.
   struct Record {
     uint32_t sequence = 0;
     int32_t value = 0;
@@ -104,9 +97,8 @@ class OutboxStore {
     char encodedPartName[kNameLen]{};
   };
 
-  // The first 16 bytes of the header are the same in every layout: magic, version, count, head,
-  // reserved and the event sequence. A header of another version is read through them, which is how
-  // an empty queue is adopted after an update. Keep these offsets in every future layout.
+  // The first 16 bytes keep the same layout in every version, so an empty queue of another version
+  // can be adopted after an update. Keep these offsets in every future layout.
   struct Header {
     uint32_t magic = kMagic;
     uint16_t version = kVersion;
@@ -135,8 +127,8 @@ class OutboxStore {
   bool readSlot(std::size_t slot);
   void eraseSlot(uint8_t generation, std::size_t slot);
   enum class MigrationResult : uint8_t { Migrated, NotRecognized, WriteFailed };
-  // Absent: no header key. Valid: a header this firmware can read. OtherVersion: a header of
-  // another layout, read through the fields every layout shares. Invalid: damaged or out of range.
+  // Absent: no header key. Valid: readable here. OtherVersion: another layout, read via the shared
+  // fields. Invalid: damaged or out of range.
   enum class HeaderState : uint8_t { Absent, Valid, Invalid, OtherVersion };
 
   bool ensureStorage();

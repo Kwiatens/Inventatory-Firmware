@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Inventatory Scan R1 application controller implementation.
-
 #include "app/inventatory_scan_app.h"
 
 #include "InventatoryScanCore.h"
@@ -52,7 +50,7 @@ void InventatoryScanApp::exitStandby() {
   }
 
   Serial.println("Waking from standby mode.");
-  // A device that slept on its energy saving timer is awake now, so the sequence starts again.
+  // Waking from an energy-saving sleep restarts the sequence.
   if (energyPhase_ == EnergyPhase::Asleep) energyPhase_ = EnergyPhase::Awake;
   const bool scannerReady = scanner_.resume();
   networkPowerOffRequested_ = false;
@@ -107,7 +105,7 @@ void InventatoryScanApp::openBacklightSettings() {
                          static_cast<std::size_t>(backlightMode_), kBacklightModeCount);
 }
 
-// A and B move along the list. The change takes effect at once and is saved, like the contrast.
+// A and B step the list; the change applies and saves at once.
 void InventatoryScanApp::stepBacklightMode(int step) {
   backlightMode_ = stepOption(backlightMode_, step, kBacklightModeCount);
   persistBacklightMode();
@@ -127,7 +125,7 @@ void InventatoryScanApp::openEnergySaving() {
                             String(powerOffDelayShortLabel(powerOffDelay_)), dockMode_);
 }
 
-// The delays are kept while energy saving is off, so switching it back on restores them.
+// Delays are kept while energy saving is off.
 void InventatoryScanApp::toggleEnergySaving() {
   energySavingOn_ = !energySavingOn_;
   persistEnergySaving();
@@ -139,7 +137,7 @@ void InventatoryScanApp::persistEnergySaving() {
   if (!deviceSettings_.saveEnergySavingEnabled(energySavingOn_)) Serial.println("Could not save energy saving.");
 }
 
-// Dock mode is its own switch, so it works with energy saving on or off.
+// Independent of energy saving.
 void InventatoryScanApp::toggleDockMode() {
   dockMode_ = !dockMode_;
   persistDockMode();
@@ -157,7 +155,7 @@ void InventatoryScanApp::openSleepAfterSettings() {
                           static_cast<std::size_t>(sleepDelay_), kSleepDelayCount);
 }
 
-// A and B move along the list, as for the backlight. The change takes effect at once and is saved.
+// A and B step the list, as for the backlight.
 void InventatoryScanApp::stepSleepDelay(int step) {
   sleepDelay_ = stepOption(sleepDelay_, step, kSleepDelayCount);
   persistSleepDelay();
@@ -175,7 +173,7 @@ void InventatoryScanApp::openPowerOffSettings() {
                              static_cast<std::size_t>(powerOffDelay_), kPowerOffDelayCount);
 }
 
-// Moves along the list as the sleep picker does: A towards the shortest, B towards Never.
+// A steps towards the shortest delay, B towards Never.
 void InventatoryScanApp::stepPowerOffDelay(int step) {
   powerOffDelay_ = stepOption(powerOffDelay_, step, kPowerOffDelayCount);
   persistPowerOffDelay();
@@ -189,8 +187,7 @@ void InventatoryScanApp::persistPowerOffDelay() {
   }
 }
 
-// The backlight stays lit for pairing and warnings whatever the setting says, and
-// stays dark in standby, where the panel itself is off.
+// Pairing and warnings keep the backlight lit whatever the setting; standby keeps it dark.
 void InventatoryScanApp::serviceBacklight() {
   const bool forced = lowBatteryWarning_ || setupMode_ || otaRequested_ || otaActive_ || energyWarningShown();
   const bool lit = powerMode_ != PowerMode::Standby &&
@@ -243,8 +240,8 @@ DisplayConnectivityState InventatoryScanApp::connectivityState() const {
   return DisplayConnectivityState::Online;
 }
 
-// The scanner is off on purpose in standby. Otherwise it is faulted when its boot profile was not
-// acknowledged, or when it did not wake.
+// Off on purpose in standby. Otherwise faulted if the boot profile was not acknowledged,
+// or if it did not wake.
 bool InventatoryScanApp::scannerFaulted() const {
   return scannerFaultShown(powerMode_ == PowerMode::Standby, scanner_.active());
 }

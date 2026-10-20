@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Recovery tests for the offline outbox. They cover a queue header this firmware
-// cannot read (for example after an OTA rollback to an older image), the
-// operator-confirmed discard that clears it, the random start of a new event
-// sequence, and the rule that every stored header field is range-checked rather
-// than clamped. Each test starts from empty NVS (see main.cpp).
+// Outbox recovery tests: unreadable headers (e.g. after an OTA rollback), operator-confirmed
+// discard, the random fresh sequence start, and range-checking (never clamping) header fields.
 #include <unity.h>
 
 #include <cstdint>
@@ -38,8 +35,7 @@ constexpr char kNamespace[] = "inv_outbox";
 constexpr char kDevice[] = "R1-TEST";
 constexpr uint32_t kMagic = 0x48534f51UL;
 
-// The header as the firmware writes it, mirrored here so the tests can damage
-// individual fields and check the bytes that are left behind.
+// Mirrors the stored header so tests can damage single fields.
 struct RawHeader {
   uint32_t magic;
   uint16_t version;
@@ -96,8 +92,7 @@ void test_host_outbox_fresh_sequence_start_is_odd_nonzero_and_bounded() {
     TEST_ASSERT_TRUE(start >= 1U);
     TEST_ASSERT_TRUE(start < 0x80000000U);
   }
-  // The start must follow the entropy, not a constant: otherwise every device would
-  // begin at the same id, which is the collision the random start exists to prevent.
+  // The start must follow the entropy, or every device would begin at the same id.
   TEST_ASSERT_EQUAL_UINT32(0x12345679U, freshOutboxSequenceStart(0x12345678U));
   TEST_ASSERT_EQUAL_UINT32(0x12345679U, freshOutboxSequenceStart(0x92345678U));
   TEST_ASSERT_EQUAL_UINT32(1U, freshOutboxSequenceStart(0x80000000U));
@@ -134,8 +129,7 @@ void test_host_outbox_erased_outbox_does_not_reuse_event_ids() {
   DeviceEventRecord issued[3];
   for (std::size_t offset = 0; offset < 3; ++offset) TEST_ASSERT_TRUE(first.peek(offset, issued[offset]));
 
-  // A full flash erase wipes NVS. The device boots with a new random start.
-  // The outbox namespace is never cleared on its own (AGENTS.md section 7).
+  // Erased flash: NVS is gone and the device boots with a new random start.
   host_nvs::reset();
   host_nvs::reboot();
 
@@ -157,7 +151,7 @@ void test_host_outbox_out_of_range_head_is_refused_not_clamped() {
   expectQueued(outbox, "B");
 
   RawHeader damaged = readRawHeader();
-  damaged.head = 16;  // one past the last slot; the old code silently used slot 15
+  damaged.head = 16;  // one past the last slot: refuse, do not clamp
   storeRawHeader(damaged);
   uint8_t before[sizeof(RawHeader)] = {};
   TEST_ASSERT_EQUAL_UINT32(sizeof(before), storedHeaderBytes(before));
@@ -174,8 +168,8 @@ void test_host_outbox_out_of_range_head_is_refused_not_clamped() {
 }
 
 void test_host_outbox_foreign_header_with_scans_is_refused_and_kept_intact() {
-  // A header from a newer layout that still lists a queued scan, as left behind before an OTA rollback.
-  // Version 6 is a layout this firmware reads (the alternate slot set), so the foreign version is 7.
+  // Foreign header (version 7) still listing a scan, as left by an OTA rollback. Version 6 is
+  // the alternate slot set this firmware reads, so 7 is foreign.
   storeRawHeader(RawHeader{kMagic, 7, 1, 0, 0, 1});
 
   OutboxStore outbox;
@@ -188,9 +182,8 @@ void test_host_outbox_foreign_header_with_scans_is_refused_and_kept_intact() {
 }
 
 void test_host_outbox_empty_foreign_header_is_adopted_and_keeps_its_sequence() {
-  // A header from another layout with no scans in it, as an update leaves it. Nothing can be lost, so
-  // this layout's empty header replaces it: the scanner keeps working, and the event sequence carries on,
-  // so no event id is issued twice.
+  // Foreign header with no scans, as an update leaves it. Nothing is lost, so this layout's empty
+  // header replaces it and the event sequence carries on: no event id is issued twice.
   OutboxStore first;
   TEST_ASSERT_TRUE(bootWithSeed(first, 0x1001U));
   const uint16_t current = readRawHeader().version;
@@ -211,7 +204,7 @@ void test_host_outbox_empty_foreign_header_is_adopted_and_keeps_its_sequence() {
 }
 
 void test_host_outbox_empty_foreign_header_without_a_sequence_is_refused_and_kept() {
-  // Without an event sequence the header cannot be continued safely, so it is kept as it is.
+  // Without an event sequence the header cannot continue safely, so it is kept.
   storeRawHeader(RawHeader{kMagic, 7, 0, 0, 0, 0});
 
   OutboxStore outbox;
@@ -221,7 +214,7 @@ void test_host_outbox_empty_foreign_header_without_a_sequence_is_refused_and_kep
 }
 
 void test_host_outbox_failed_adoption_keeps_the_header_and_retries_at_next_boot() {
-  // If the replacement header cannot be written, the old header stays and the next boot tries again.
+  // If the replacement header cannot be written, the old one stays and the next boot retries.
   storeRawHeader(RawHeader{kMagic, 7, 0, 0, 0, 0x4001U});
 
   host_nvs::faults().failWrites = true;
@@ -251,8 +244,7 @@ void test_host_outbox_operator_discard_recovers_a_foreign_header() {
   TEST_ASSERT_FALSE(bootWithSeed(outbox, 0x5001U));
   TEST_ASSERT_TRUE(outbox.unreadable());
 
-  // The operator confirms the repair. Nothing can be salvaged from a header that
-  // this firmware cannot locate, so both stored records are removed.
+  // Nothing is salvageable from a header this firmware cannot locate, so both records are dropped.
   std::size_t salvaged = 99;
   std::size_t dropped = 0;
   TEST_ASSERT_TRUE(outbox.repair(salvaged, dropped) == OutboxStore::RepairResult::Repaired);
@@ -261,7 +253,7 @@ void test_host_outbox_operator_discard_recovers_a_foreign_header() {
   TEST_ASSERT_FALSE(outbox.unreadable());
   TEST_ASSERT_EQUAL_UINT32(0x5001U, outbox.nextSequence());
 
-  // The device works again straight away, and the new queue survives a reboot.
+  // The new queue survives a reboot.
   expectQueued(outbox, "C");
   host_nvs::reboot();
   OutboxStore rebooted;
@@ -274,8 +266,7 @@ void test_host_outbox_operator_discard_recovers_a_foreign_header() {
 }
 
 void test_host_outbox_operator_discard_removes_an_unrecognised_legacy_blob() {
-  // A blob of a size no layout uses. It may be the only copy of an old queue, so
-  // it is kept until the operator confirms the discard.
+  // Blob of a size no layout uses. Kept until discard is confirmed: it may be the only copy.
   Preferences prefs;
   TEST_ASSERT_TRUE(prefs.begin(kNamespace, false));
   const uint8_t unknown[7] = {1, 2, 3, 4, 5, 6, 7};
@@ -310,8 +301,7 @@ void test_host_outbox_copy_never_splits_a_utf8_sequence() {
   TEST_ASSERT_EQUAL_UINT32(47, exact.manufacturer.length());
   TEST_ASSERT_EQUAL_STRING(fits.c_str(), exact.manufacturer.c_str());
 
-  // 46 ASCII bytes then U+00E9 would need 48 bytes. The copy stops before the
-  // whole character rather than keeping a lone lead byte.
+  // 46 ASCII bytes plus U+00E9 need 48 bytes: the copy stops before the whole character.
   String overflows;
   for (int index = 0; index < 46; ++index) overflows += 'a';
   overflows += "\xC3\xA9";
