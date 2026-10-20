@@ -8,6 +8,7 @@
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "keypad.h"
+#include "log/device_log.h"
 
 namespace {
 
@@ -237,23 +238,23 @@ void keypadInit() {
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1) {
     // Diagnostic: '*' column level at wake. Low with '*' released means the line was pulled low.
     pinMode(kColumnPins[kStarColumn], INPUT_PULLUP);
-    Serial.printf("Woke from deep sleep on the * column; level %d\r\n", digitalRead(kColumnPins[kStarColumn]));
+    deviceLog.printf("Woke from deep sleep on the * column; level %d\r\n", digitalRead(kColumnPins[kStarColumn]));
   }
-  Serial.print("Keypad rows: ");
+  deviceLog.print("Keypad rows: ");
   for (byte i = 0; i < kRows; i++) {
     if (i > 0) {
-      Serial.print(", ");
+      deviceLog.print(", ");
     }
-    Serial.print(kRowPins[i]);
+    deviceLog.print(kRowPins[i]);
   }
-  Serial.print(" | cols: ");
+  deviceLog.print(" | cols: ");
   for (byte i = 0; i < kColumns; i++) {
     if (i > 0) {
-      Serial.print(", ");
+      deviceLog.print(", ");
     }
-    Serial.print(kColumnPins[i]);
+    deviceLog.print(kColumnPins[i]);
   }
-  Serial.println();
+  deviceLog.println();
 }
 
 bool keypadPoll(InventatoryKeyEvent& event) {
