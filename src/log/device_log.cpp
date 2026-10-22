@@ -27,6 +27,7 @@ WiFiUDP gLogUdp;
 
 size_t DeviceLog::write(uint8_t byte) {
   const size_t written = Serial.write(byte);
+  if (!kLogOverAirEnabled) return written;
   const uint32_t now = millis();
   portENTER_CRITICAL(&gLogMux);
   assembler_.add(byte, now, ring_);
@@ -36,6 +37,7 @@ size_t DeviceLog::write(uint8_t byte) {
 
 size_t DeviceLog::write(const uint8_t* buffer, size_t size) {
   const size_t written = Serial.write(buffer, size);
+  if (!kLogOverAirEnabled) return written;
   const uint32_t now = millis();
   portENTER_CRITICAL(&gLogMux);
   for (size_t index = 0; index < size; ++index) assembler_.add(buffer[index], now, ring_);

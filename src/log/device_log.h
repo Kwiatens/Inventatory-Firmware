@@ -9,8 +9,9 @@
 
 namespace inventatory_scan {
 
-// Set to false to keep the log on the USB serial port only.
-constexpr bool kLogOverAirEnabled = true;
+// Set to true for bench work to also broadcast the log to the local network. It is off in a release:
+// any host on the network can read the broadcast, and the lines say when an OTA update is waiting.
+constexpr bool kLogOverAirEnabled = false;
 // The UDP port the log is broadcast on. tools/device_log_listener.py listens on it.
 constexpr uint16_t kLogUdpPort = 5140;
 
