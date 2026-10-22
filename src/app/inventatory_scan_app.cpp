@@ -10,6 +10,7 @@
 #include "config/hardware.h"
 #include "config/version.h"
 #include "log/device_log.h"
+#include "ota/firmware_validity.h"
 
 #include <WiFi.h>
 
@@ -176,6 +177,7 @@ bool InventatoryScanApp::begin() {
 }
 
 void InventatoryScanApp::loop() {
+  loopStarted_ = true;
   deviceLog.serviceOverAir(millis());
   serviceChargerInput(millis());
   serviceBattery();

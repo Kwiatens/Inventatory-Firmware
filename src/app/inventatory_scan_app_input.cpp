@@ -9,6 +9,7 @@
 #include "config/config.h"
 #include "config/version.h"
 #include "log/device_log.h"
+#include "ota/firmware_validity.h"
 
 #include <cctype>
 
@@ -544,6 +545,7 @@ void InventatoryScanApp::confirmReprovision() {
   const bool paused = pauseNetworkForSetupTransition();
   if (paused && setupStore_.clear()) {
     deviceLog.println("Re-pair requested from quick settings; restarting BLE setup.");
+    confirmRunningFirmware("restarted for re-pairing");
     ESP.restart();
   }
   if (paused) resumeNetworkAfterSetupTransition();

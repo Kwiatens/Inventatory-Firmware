@@ -57,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An exclamation mark shows in the top bar while any problem stands: the barcode scanner is not replying, the scan queue cannot be read (`STO-03`), a scan is blocked (`SYN-01`), or the battery voltage cannot be read (`PWR-01`). The main screen and the menu then offer `# Fault info`, which shows the code (`SCN-01`), what it means and what to check. While the fault shows, the main screen reads "There is a problem" with the code below it, in place of "Ready to scan".
 - Every problem the scanner reports has an error code, such as `SCN-01` or `STO-02`. The codes appear on the failure screens, and each one is explained at kwiatens.github.io/Inventatory-Site/docs/scanner/error-codes/.
 - When several problems stand at once, the main screen and the fault screen show each code in turn, three seconds each.
-- New firmware is confirmed only after 30 seconds of healthy running. A crash or reset before that, including powering the device off straight after an update, returns it to the previous firmware.
+- New firmware is confirmed after 30 seconds of healthy running, or earlier when the device is powered off or restarted on purpose once it has started. A crash or reset before that returns it to the previous firmware, and so does a low-battery refusal at start-up. The serial log says when an update was rolled back.
 - Holding `#` opens the re-pair confirmation (idle only); `C` returns to Ready.
 - The battery level shows in the top bar, in turn with the status and the time left. While the dock supplies power it shows "Charging" with a bolt and the time to full.
 - A card appears when the dock is connected or removed.

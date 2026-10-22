@@ -9,6 +9,7 @@
 #include "InventatoryScanUiPolicy.h"
 #include "config/hardware.h"
 #include "log/device_log.h"
+#include "ota/firmware_validity.h"
 
 #include <esp_sleep.h>
 
@@ -91,6 +92,8 @@ void InventatoryScanApp::enterPowerOff() {
   scanner_.deepSleep();
   deviceLog.println("Powered off. Press * to wake.");
   saveBatteryState();
+  // Waking from deep sleep is a reset: an update still pending would be rolled back.
+  if (loopStarted_) confirmRunningFirmware("powered off after a healthy start");
   esp_deep_sleep_start();
 }
 
