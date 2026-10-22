@@ -5,8 +5,12 @@
 
 // Copy to config.h and fill in real values. config.h is private and git-ignored.
 
+// Letters, digits and '-' only, up to 63 characters. Give each scanner its own id: it names the device on
+// the network (mDNS, OTA), in Bluetooth setup and in its event ids.
 const char DEVICE_ID[] = "Inventatory-SCAN-R1";
 // The firmware refuses OTA updates until this is changed to a private password of 12 or more characters.
+// Use a random one, for example the output of `openssl rand -hex 16`. espota receives it on its command line,
+// so avoid verbose uploads (`pio run -v`) on a shared machine.
 const char OTA_PASSWORD[] = "paste-your-ota-password-here";
 
 // Used only if mDNS discovery fails.

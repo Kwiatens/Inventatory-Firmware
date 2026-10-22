@@ -150,3 +150,24 @@ Still open, and not changed here: the OTA image is not signed (ArduinoOTA checks
 build from the example configuration shares the device id `Inventatory-SCAN-R1`, so two such scanners on one
 network share an mDNS name; `bootNonce_` and the first outbox sequence are drawn before the radio starts,
 which affects only their uniqueness, not a secret.
+
+### Security deep dive (same review)
+
+A separate read-only security pass over the firmware, the desktop side of the protocol and the exact
+Arduino-ESP32 sources the build uses. Dispositions:
+
+| Finding | Disposition | Verification |
+| --- | --- | --- |
+| Self-hosted hardware runner reachable from fork pull requests | Repository settings, not code: `docs/releasing.md` now says not to keep the runner registered, and to require approval for all outside collaborators. | owner action pending |
+| ArduinoOTA does not authenticate the image; a LAN man-in-the-middle can install firmware during a real update | Documented in `SECURITY.md` and the changelog. Fixing it needs signed images (Secure Boot) or an update pulled over the authenticated channel. | open |
+| Legacy BLE pairing accepted when the central lacks LE Secure Connections | Fixed: `ESP_BLE_SM_ONLY_ACCEPT_SPECIFIED_SEC_AUTH` refuses it. | stub, hardware pending (pair with an SC-capable PC, and confirm a legacy-only central is refused) |
+| `WiFiClient::setTimeout(250)` is seconds, so a SYN-dropping host stalls the worker | Fixed: `connect()` with 1500 ms; the host shim has no `setTimeout`, so a call fails the host build. | host, hardware pending |
+| OTA password crackable offline, fleet-wide, on the command line | Documented (random password, verbose uploads). A per-device OTA secret is a possible follow-up. | open |
+| Wi-Fi driver kept its own SSID, password and PMK in `nvs.net80211` | Fixed: `WiFi.persistent(false)` before any `WiFi.mode()`, the namespace erased at boot and on re-pair. | host, hardware pending (read the NVS partition of a provisioned unit) |
+| First mDNS answer pinned even when it never authenticates | Fixed: dropped after three exchanges in a row without a signed reply. Only the first mDNS answer is still tried. | host |
+| Signed but unreadable 200 stalled the queue silently | Fixed: counts toward "Sync blocked". The desktop should also replace invalid UTF-8 in `jsonEscape`. | stub; desktop change open |
+| OTA rollback after a deep sleep or restart within 30 s of an update | Open: a deliberate confirm before power off, or a "update reverted" notice, is an owner decision. | open |
+| Logging gate blind spots (`;` in literals, log macros, `printf`) | Fixed in `tools/check_logging.py`; probe cases caught. | script run |
+| Label request nonce drawn before the radio starts | Fixed: drawn at the first label print. | stub |
+| `DEVICE_ID` unvalidated; advertised setup name shared by default builds | Documented in `config.example.h`. | open |
+| A signed 409 counts as a refusal of the head event | Open: a separate state for 409 needs the desktop's replay rules. | open |

@@ -98,6 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bluetooth setup starts at most once per boot. If the normal runtime fails right after setup, the device restarts into pairing. Before, a second start in the same boot advertised a duplicate service UUID, or did nothing.
 - Each setup session no longer allocates new Bluetooth callback objects.
 - A BLE disconnect no longer restarts advertising from inside the Bluetooth callback. Core 1 does it on its next pass.
+- A signed reply from the PC that the scanner cannot read counts toward "Sync blocked". Before, it stalled the queue while the screen read "PC offline".
 - An item name, location, message or label preset with a character such as `µ` or `Ω` shows correctly. The screen's fonts are Latin-1 and the desktop sends UTF-8, so "10µF" drew as "10Âµ F". Latin-1 characters now show as themselves, `Ω` as "Ohm", dashes as `-`, and other characters as `?`.
 - Plugging in the charger during the energy saving power-off countdown cancels it. Before, the device still turned off on the charger.
 - Holding `D` while an OTA update is waiting no longer enters standby. It dropped the request but left the update listener open; `C` cancels the update first.
@@ -112,6 +113,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The name from an mDNS answer is used in the HTTP `Host` header only when it holds DNS name characters, so a host on the network cannot add header lines to a sync request.
 - The BLE pairing passkey is drawn after the Bluetooth radio starts, so the hardware random number generator has its entropy source, and without modulo bias.
 - The transport keys derived for each MAC are cleared from memory after use.
+- Bluetooth setup accepts only LE Secure Connections pairing. A PC without it fell back to legacy pairing, whose key a nearby listener can recover, and with it the Wi-Fi password and pairing token. Such a PC can no longer set up the scanner.
+- The Wi-Fi password is no longer kept a second time by the Wi-Fi driver in its own storage, which re-pairing did not erase. A copy left by an earlier firmware is erased at start-up.
+- A host that does not answer TCP no longer holds the network for minutes: a connection attempt now gives up after 1.5 s. Before, re-pairing and OTA updates could fail while the scanner waited. After three exchanges in a row without a signed reply, the scanner asks mDNS for the PC again instead of staying with the host that answered first.
 - The CI logging check is `tools/check_logging.py`. It covers `deviceLog`, which every log line now goes through and which the old patterns missed, and it reads each file whole, so a logging call split over several lines is checked. The old multi-line `git grep -z` check never matched across lines.
 
 ### Known issues
@@ -120,6 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The battery curve is approximate and needs calibrating on the device with a full discharge.
 - A barcode that is not recognised shows no code on the screen.
 - After a queue repair, an older firmware cannot read the queue. It reports the queue as unreadable, and its repair menu discards the stored scans. Sync the scans to the PC before you flash an older build over a repaired queue.
+- An OTA update needs a network where no other host can intercept traffic: the password does not protect the image itself (see `SECURITY.md`).
 - The BLE setup session has no hardware test on a board yet. The host tests cover the parser, the queue and the transport, not the Bluetooth stack.
 
 ## [0.1.0]
