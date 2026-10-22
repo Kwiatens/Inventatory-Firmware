@@ -71,14 +71,14 @@ the coverage report (`make -C host-tests coverage`).
 ## Data, secrets and logging
 
 The firmware enforces a zero-sensitive-logging rule. Passwords, tokens, HMAC keys, raw UART buffers, and
-decoded barcodes must never be logged. CI fails the build if any of these `git grep` checks matches. Run them
-from the repository root before opening a pull request; each must print nothing (exit code 1):
+decoded barcodes must never be logged. This covers `deviceLog`, the firmware's log, as well as `Serial`. CI
+fails the build if the check below finds a logging call that names one of these values. Run it from the
+repository root before opening a pull request:
 ```bash
-git grep -n -E -e "GM65 rx|GM65 scan:" -- src include
-git grep -n -E -e "sendDebugMessage\(.*(scannedCode_|trimmed|forwardedCode|manufacturerPartNumber)" -- src include
-git grep -n -E -e "(Serial\.(print|println|printf)|sendDebugMessage)\(.*(scannedCode_|forwardedCode|wifiPassword|deviceToken|clientConfig_\.token|settings\.deviceToken)" -- src include
+python3 tools/check_logging.py
 ```
-The patterns in `.github/workflows/firmware.yml` are authoritative; keep this list in step with them.
+The script reads each file whole, so a logging call split over several lines is checked too. Its patterns are
+authoritative.
 
 Do not include secrets, credentials, or a modified `config.h` in a commit or pull request.
 
