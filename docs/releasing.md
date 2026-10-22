@@ -34,13 +34,10 @@ before or right after the repository is made public:
 - [ ] Set the default workflow token permission to read-only and require
       approval for workflows from all outside collaborators, not only
       first-time contributors (Settings, Actions).
-- [ ] Do not keep a self-hosted runner registered on the public repository.
-      The hardware job's `workflow_dispatch` condition is not a boundary: a
-      pull request can edit the workflow, or add one, that targets the
-      runner's labels, and it then runs on the bench PC with the board and
-      any private `config.h` on it. Register an ephemeral runner
-      (`config.cmd --ephemeral`) just before a manual hardware run and
-      remove it afterwards, or run the hardware tests from a private mirror.
-      Run it as an unprivileged account on a machine with no private
-      configuration.
+- [ ] Do not register a self-hosted runner on the public repository. A pull
+      request can add a workflow that targets its labels, and it then runs on
+      the bench PC with the board and any private `config.h` on it. CI has no
+      self-hosted job: run the hardware tests on the bench PC by hand
+      (`pio test -e waveshare_esp32s3_nano_usb`). Remove a runner left
+      registered from earlier (Settings, Actions, Runners).
 - [ ] Confirm the community profile (`/community`) shows every item complete.

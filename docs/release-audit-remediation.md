@@ -158,7 +158,7 @@ Arduino-ESP32 sources the build uses. Dispositions:
 
 | Finding | Disposition | Verification |
 | --- | --- | --- |
-| Self-hosted hardware runner reachable from fork pull requests | Repository settings, not code: `docs/releasing.md` now says not to keep the runner registered, and to require approval for all outside collaborators. | owner action pending |
+| Self-hosted hardware runner reachable from fork pull requests | Fixed in CI: the self-hosted `hardware-tests` job is removed, so every job runs on GitHub-hosted runners, and hardware tests run on the bench PC by hand. A pull request could still add a workflow for a runner that stays registered, so `docs/releasing.md` says to remove it. | owner action pending: unregister the runner |
 | ArduinoOTA does not authenticate the image; a LAN man-in-the-middle can install firmware during a real update | Documented in `SECURITY.md` and the changelog. Fixing it needs signed images (Secure Boot) or an update pulled over the authenticated channel. | open |
 | Legacy BLE pairing accepted when the central lacks LE Secure Connections | Fixed: `ESP_BLE_SM_ONLY_ACCEPT_SPECIFIED_SEC_AUTH` refuses it. | stub, hardware pending (pair with an SC-capable PC, and confirm a legacy-only central is refused) |
 | `WiFiClient::setTimeout(250)` is seconds, so a SYN-dropping host stalls the worker | Fixed: `connect()` with 1500 ms; the host shim has no `setTimeout`, so a call fails the host build. | host, hardware pending |
