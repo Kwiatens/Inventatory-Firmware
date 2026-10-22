@@ -28,6 +28,9 @@ class SetupStateStore {
   bool reserveTransportCounter(std::uint64_t& counter);
   bool clear();
   bool complete() const;
+  // Erases the Wi-Fi driver's own copy of the network settings (SSID, password, PMK) from NVS. The firmware
+  // keeps those in this store only; the driver wrote its copy while it was left persistent.
+  static bool clearWifiDriverCopy();
 
  private:
   static constexpr uint32_t kMagic = 0x49534554UL;  // "ISET"

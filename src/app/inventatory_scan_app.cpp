@@ -74,6 +74,10 @@ bool waitFor(Done done) {
 
 bool InventatoryScanApp::begin() {
   deviceLog.println("Inventatory Scan R1 booting");
+  // Before any WiFi.mode(): the driver picks flash or RAM storage once, at its first start, and in flash
+  // it keeps its own copy of the SSID, password and PMK. A copy left by an earlier build is erased too.
+  WiFi.persistent(false);
+  if (!SetupStateStore::clearWifiDriverCopy()) deviceLog.println("Could not erase the Wi-Fi driver's stored settings.");
   display_.begin();
   // Lit for the splash; the configured mode takes over in loop().
   backlight_.begin();

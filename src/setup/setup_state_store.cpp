@@ -13,6 +13,8 @@ namespace {
 
 constexpr char kSetupNamespace[] = "inv_setup";
 static_assert(sizeof(kSetupNamespace) <= 16, "NVS namespace exceeds ESP32's 15-character limit");
+// The ESP-IDF Wi-Fi driver's namespace in the default NVS partition.
+constexpr char kWifiDriverNamespace[] = "nvs.net80211";
 
 }  // namespace
 
@@ -87,7 +89,18 @@ bool SetupStateStore::reserveTransportCounter(uint64_t& counter) {
 
 bool SetupStateStore::clear() {
   counterBlockValid_ = false;
-  return prefs_.clear();
+  const bool cleared = prefs_.clear();
+  // Best effort: the record above decides whether pairing was cleared.
+  clearWifiDriverCopy();
+  return cleared;
+}
+
+bool SetupStateStore::clearWifiDriverCopy() {
+  Preferences driver;
+  if (!driver.begin(kWifiDriverNamespace, false)) return false;
+  const bool cleared = driver.clear();
+  driver.end();
+  return cleared;
 }
 
 }  // namespace inventatory_scan

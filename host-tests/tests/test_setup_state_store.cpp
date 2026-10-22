@@ -24,6 +24,7 @@ void test_host_setup_incomplete_record_is_not_loaded();
 void test_host_setup_rejects_bad_token_and_oversized_fields();
 void test_host_setup_power_cut_during_save_never_looks_complete();
 void test_host_setup_clear_removes_credentials_and_counter();
+void test_host_setup_clear_erases_the_wifi_driver_copy();
 
 namespace {
 
@@ -210,6 +211,38 @@ void test_host_setup_clear_removes_credentials_and_counter() {
   TEST_ASSERT_FALSE(after.reserveTransportCounter(counter));
 }
 
+void test_host_setup_clear_erases_the_wifi_driver_copy() {
+  // The Wi-Fi driver kept its own SSID, password and PMK in nvs.net80211 while it was persistent.
+  Preferences driver;
+  TEST_ASSERT_TRUE(driver.begin("nvs.net80211", false));
+  TEST_ASSERT_TRUE(driver.putString("sta.ssid", "Shop-Net") > 0);
+  TEST_ASSERT_TRUE(driver.putString("sta.pswd", "correct horse") > 0);
+  driver.end();
+  storeProvisioned();
+
+  SetupStateStore store;
+  TEST_ASSERT_TRUE(store.begin());
+  TEST_ASSERT_TRUE(store.clear());
+
+  TEST_ASSERT_TRUE(driver.begin("nvs.net80211", true));
+  TEST_ASSERT_FALSE(driver.isKey("sta.ssid"));
+  TEST_ASSERT_FALSE(driver.isKey("sta.pswd"));
+  driver.end();
+
+  // The boot-time erase alone leaves the pairing record in place.
+  TEST_ASSERT_TRUE(driver.begin("nvs.net80211", false));
+  TEST_ASSERT_TRUE(driver.putString("sta.pswd", "correct horse") > 0);
+  driver.end();
+  storeProvisioned();
+  TEST_ASSERT_TRUE(SetupStateStore::clearWifiDriverCopy());
+  SetupStateStore after;
+  TEST_ASSERT_TRUE(after.begin());
+  TEST_ASSERT_TRUE(after.complete());
+  TEST_ASSERT_TRUE(driver.begin("nvs.net80211", true));
+  TEST_ASSERT_FALSE(driver.isKey("sta.pswd"));
+  driver.end();
+}
+
 void runHostSetupStateTests() {
   RUN_TEST(test_host_setup_counter_is_strictly_increasing_across_blocks);
   RUN_TEST(test_host_setup_counter_skips_but_never_reuses_after_reboot);
@@ -220,4 +253,5 @@ void runHostSetupStateTests() {
   RUN_TEST(test_host_setup_rejects_bad_token_and_oversized_fields);
   RUN_TEST(test_host_setup_power_cut_during_save_never_looks_complete);
   RUN_TEST(test_host_setup_clear_removes_credentials_and_counter);
+  RUN_TEST(test_host_setup_clear_erases_the_wifi_driver_copy);
 }
