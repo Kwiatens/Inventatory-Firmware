@@ -98,6 +98,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bluetooth setup starts at most once per boot. If the normal runtime fails right after setup, the device restarts into pairing. Before, a second start in the same boot advertised a duplicate service UUID, or did nothing.
 - Each setup session no longer allocates new Bluetooth callback objects.
 - A BLE disconnect no longer restarts advertising from inside the Bluetooth callback. Core 1 does it on its next pass.
+- An item name, location, message or label preset with a character such as `µ` or `Ω` shows correctly. The screen's fonts are Latin-1 and the desktop sends UTF-8, so "10µF" drew as "10Âµ F". Latin-1 characters now show as themselves, `Ω` as "Ohm", dashes as `-`, and other characters as `?`.
+- Plugging in the charger during the energy saving power-off countdown cancels it. Before, the device still turned off on the charger.
+- Holding `D` while an OTA update is waiting no longer enters standby. It dropped the request but left the update listener open; `C` cancels the update first.
 - A TME label whose quantity is above 9999 is refused, as a Data Matrix already was. Before, the quantity screen cut it to four digits, so `QTY:10000` showed and was added as 1000.
 
 ### Security

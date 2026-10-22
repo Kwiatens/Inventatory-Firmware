@@ -323,12 +323,13 @@ void InventatoryScanApp::processNetworkResult() {
     return;
   }
 
-  const auto response = parseSyncResponseJson(body);
+  auto response = parseSyncResponseJson(body);
   if (!response.valid || response.requestId != requestId) {
     pcOnline_ = false;
     deviceLog.println("Invalid protocol v1 sync response.");
     return;
   }
+  prepareSyncResponseForDisplay(response);
   pcOnline_ = true;
   if (pendingResultAck_.length() > 0) pendingResultAck_.clear();
   handleSyncResponse(response);
