@@ -327,6 +327,12 @@ void InventatoryScanApp::processNetworkResult() {
   if (!response.valid || response.requestId != requestId) {
     pcOnline_ = false;
     deviceLog.println("Invalid protocol v1 sync response.");
+    // The reply was signed, so the desktop sent it. One it keeps sending that this firmware cannot read
+    // would stall the queue silently, so it counts toward "Sync blocked" like a refusal.
+    DeviceEventRecord front;
+    if (!outbox_.empty() && outbox_.peek(0, front) && front.eventId == lastSyncHeadEventId_) {
+      if (outboxBlockedHead_.recordRefusal()) display_.setSyncBlocked(true);
+    }
     return;
   }
   prepareSyncResponseForDisplay(response);
