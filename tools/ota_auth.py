@@ -6,6 +6,8 @@ import re
 
 Import("env")
 
+# Keep in step with kOtaPasswordPlaceholder and kMinimumOtaPasswordLength in
+# include/InventatoryScanSecurity.h: the firmware refuses OTA under the same rule.
 OTA_PASSWORD_PLACEHOLDER = "paste-your-ota-password-here"
 MIN_OTA_PASSWORD_LENGTH = 12
 

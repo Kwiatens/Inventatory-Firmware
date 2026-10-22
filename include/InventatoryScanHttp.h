@@ -23,4 +23,19 @@ inline bool httpBodyWithinLimit(std::size_t bodyBytes) {
   return bodyBytes <= kMaxHttpBodyBytes;
 }
 
+// A name from an mDNS answer goes into the request's Host header. Any host on the network can answer,
+// so only DNS name characters are allowed: a CR, LF or other byte could add header lines.
+constexpr std::size_t kMaxHttpHostNameBytes = 253U;
+
+inline bool isSafeHttpHostName(const char* name, std::size_t length) {
+  if (name == nullptr || length == 0U || length > kMaxHttpHostNameBytes) return false;
+  for (std::size_t index = 0; index < length; ++index) {
+    const char ch = name[index];
+    const bool allowed = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+                         ch == '-' || ch == '.';
+    if (!allowed) return false;
+  }
+  return true;
+}
+
 }  // namespace inventatory_scan
