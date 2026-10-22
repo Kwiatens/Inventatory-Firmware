@@ -138,7 +138,9 @@ bool InventatoryScanApp::begin() {
   otaRequested_ = false;
   otaActive_ = false;
   lastSyncAttempt_ = 0;
-  bootNonce_ = esp_random() & 0xFFFFFFUL;
+  // Drawn at the first label print, once Wi-Fi runs: before the radio starts esp_random() is only
+  // pseudo-random, and a nonce repeated across boots could match a print result the desktop cached.
+  bootNonce_ = 0;
   syncSequence_ = 1;
   lookupSequence_ = 1;
 
