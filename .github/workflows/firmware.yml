@@ -58,42 +58,9 @@ jobs:
       - name: Bootstrap non-secret build configuration
         run: cp src/config/config.example.h src/config/config.h
 
-      - name: Reject scanner payload diagnostics
-        run: |
-          # git grep exits 0 on a match, 1 when nothing matches, and >1 on error.
-          # Only exit 1 passes; a match or a git error fails the step.
-          reject_pattern() {
-            local pattern="$1"
-            local status=0
-            git grep -n -E -e "$pattern" -- src include || status=$?
-            if [ "$status" -eq 0 ]; then
-              echo "::error::Forbidden pattern matched in src or include: $pattern"
-              exit 1
-            elif [ "$status" -gt 1 ]; then
-              echo "::error::git grep failed with exit $status for pattern: $pattern"
-              exit "$status"
-            fi
-          }
-          reject_pattern 'GM65 rx|GM65 scan:'
-          reject_pattern 'sendDebugMessage\(.*(scannedCode_|trimmed|forwardedCode|manufacturerPartNumber)'
-          reject_pattern '(Serial\.(print|println|printf)|sendDebugMessage)\(.*(scannedCode_|forwardedCode|wifiPassword|deviceToken|clientConfig_\.token|settings\.deviceToken)'
-
-          # A logging call can be split over several lines. Match up to its ';' across
-          # newlines: git grep -z reads each file as one record.
-          reject_multiline_pattern() {
-            local pattern="$1"
-            local status=0
-            git grep -z -q -P -e "$pattern" -- src include || status=$?
-            if [ "$status" -eq 0 ]; then
-              echo "::error::Forbidden multi-line pattern matched in src or include: $pattern"
-              exit 1
-            elif [ "$status" -gt 1 ]; then
-              echo "::error::git grep failed with exit $status for pattern: $pattern"
-              exit "$status"
-            fi
-          }
-          reject_multiline_pattern '(Serial\.(print|println|printf)|sendDebugMessage)\([^;]*(scannedCode_|forwardedCode|wifiPassword|deviceToken|clientConfig_\.token|settings\.deviceToken)'
-          reject_multiline_pattern 'sendDebugMessage\([^;]*(scannedCode_|trimmed|forwardedCode|manufacturerPartNumber)'
+      - name: Reject sensitive logging
+        # Reads each source file whole, so a logging call split over several lines is checked too.
+        run: python3 tools/check_logging.py
 
       - name: Build USB firmware
         run: pio run -e waveshare_esp32s3_nano_usb

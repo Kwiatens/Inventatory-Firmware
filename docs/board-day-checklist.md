@@ -21,7 +21,7 @@ How to use it:
 - [ ] `pio run -e waveshare_esp32s3_nano_ota` builds (set a throwaway `OTA_PASSWORD` first).
 - [ ] `pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing` compiles.
 - [ ] `make -C host-tests SANITIZE=address,undefined test` passes. `python3 tools/check_error_codes.py` passes.
-- [ ] Zero-logging greps return nothing (the three `git grep` rules in `AGENTS.md` section 10).
+- [ ] `python3 tools/check_logging.py` passes (the zero-logging check in `AGENTS.md` section 10).
 
 **Blocker:** if a build fails, nothing below is worth running.
 
