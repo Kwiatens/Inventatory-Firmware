@@ -10,15 +10,20 @@ Run this on a PC on the same Wi-Fi network as the device:
     python3 tools/device_log_listener.py
     python3 tools/device_log_listener.py --file scan-r1.log
 
+The broadcast is off in release builds: set kLogOverAirEnabled in src/log/device_log.h to turn it on.
 The script only listens. Stop it with Ctrl+C.
 """
 
 import argparse
+import re
 import socket
 import sys
 from datetime import datetime
 
 DEFAULT_PORT = 5140
+# Any host on the network can send to the port. Control bytes, such as terminal escape sequences, are
+# shown as '.' so a datagram cannot drive the terminal.
+CONTROL_BYTES = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def main() -> int:
@@ -35,7 +40,7 @@ def main() -> int:
     try:
         while True:
             data, address = sock.recvfrom(2048)
-            text = data.decode("ascii", errors="replace").rstrip("\r\n")
+            text = CONTROL_BYTES.sub(".", data.decode("ascii", errors="replace").rstrip("\r\n"))
             line = f"{datetime.now():%H:%M:%S} {address[0]} {text}"
             print(line, flush=True)
             if sink is not None:
