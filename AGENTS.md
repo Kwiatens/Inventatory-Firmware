@@ -396,7 +396,7 @@ preserved:
   - `#`: Short press deletes selected quantity digit, and on the main screen or in the menu opens the
     scanner fault screen while the fault mark shows; holding `#` (from the idle screen only) opens the "Pair with new PC?"
     confirmation; `A` confirms the reset.
-  - `D` hold (about 1.8 s, `*` not pressed): toggles standby; ignored unless on the idle screen.
+  - `D` hold (about 1.8 s, `*` not pressed): toggles standby; ignored unless on the idle screen, and does not enter standby while an OTA update is requested.
   - `*` hold (`D` not pressed): after 1 s a warning shows a countdown bar, and releasing `*`
     or pressing `D` or `#` cancels it. Holding to 4 s powers off into deep sleep: the `›i` sinks behind the
     glass, and the chip sleeps once `*` is released. Ignored unless on the idle screen, during setup, or
