@@ -40,10 +40,13 @@ it.
 
 Over-the-air updates: an update is accepted only after the operator asks for one on the keypad, only for
 two minutes, and only with the private `OTA_PASSWORD` from `config.h`. The firmware refuses OTA while that
-password is the example placeholder or shorter than 12 characters. ArduinoOTA checks the password with a
-challenge and response; the firmware image itself is not signed, so anyone who knows the password and is on
-the same network during that window can install firmware. Use a long, random password, keep it out of
-release builds you share, and update on a network you trust.
+password is the example placeholder or shorter than 12 characters. The password does not protect the image:
+ArduinoOTA's challenge covers neither the image nor its checksum, and the device downloads the image from
+the uploader's address after the check. A host that can intercept traffic on the network during the update
+can therefore install its own firmware without knowing the password. One captured update also lets an
+observer test password guesses offline, and the password is the same in every image built with it. Treat
+OTA as safe only on a network where no other host can intercept traffic, prefer USB updates, and use a long
+random password such as the output of `openssl rand -hex 16`. Signed images (Secure Boot) would close this.
 
 Other assumptions on the local network: the desktop is found by mDNS, so any host can answer in its place.
 It then receives the scan data, which is not encrypted, but it cannot forge a response without the pairing
@@ -51,7 +54,8 @@ token. The device log is kept on the USB serial port in a release; its broadcast
 option (`kLogOverAirEnabled`) that any host on the network can read.
 
 For a device that may be lost or handed on, enable ESP32 flash encryption and NVS encryption when it is
-provisioned: without them, the Wi-Fi password and the pairing token can be read from the flash chip.
+provisioned: without them, the Wi-Fi password and the pairing token can be read from the flash chip. Sync the
+queue before handing a device on: "Pair with new PC" keeps queued scans, which then go to the new PC.
 
 Out of scope: vulnerabilities in third-party components, such as U8g2, Unity or
 the ESP32 Arduino core. Report those upstream, and tell us as well if this
