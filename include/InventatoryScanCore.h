@@ -56,6 +56,10 @@ inline bool isStandardManufacturerPartNumber(const String& value) {
   return hasAlphanumeric;
 }
 
+// The largest quantity the quantity screen can show and submit (kQuantityMaxDigits nines). A label quantity
+// above it refuses the scan: the screen would cut it to four digits and add the wrong amount.
+constexpr int kMaximumLabelQuantity = 9999;
+
 struct DecodedComponentFields {
   String manufacturer;
   String manufacturerPartNumber;
@@ -145,7 +149,6 @@ inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields&
     }
   }
   if (quantityText.length() > 0) {
-    constexpr int kMaximumEditableQuantity = 9999;  // kQuantityMaxDigits nines
     int parsedQuantity = 0;
     bool numeric = true;
     for (size_t index = 0; index < quantityText.length(); ++index) {
@@ -155,7 +158,7 @@ inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields&
         break;
       }
       const int digit = static_cast<int>(ch - '0');
-      if (parsedQuantity > (kMaximumEditableQuantity - digit) / 10) return false;
+      if (parsedQuantity > (kMaximumLabelQuantity - digit) / 10) return false;
       parsedQuantity = parsedQuantity * 10 + digit;
     }
     if (numeric && parsedQuantity > 0) decoded.quantity = parsedQuantity;
@@ -244,7 +247,7 @@ inline bool parseTmeBagLabel(const String& text, TmeBagLabel& label) {
       label.symbol = value;
     } else if (key == "MPN") {
       label.manufacturerPartNumber = value;
-    } else if (key == "QTY" && value.length() > 0 && value.length() <= 6U) {
+    } else if (key == "QTY" && value.length() > 0) {
       int quantity = 0;
       bool numeric = true;
       for (size_t digit = 0; digit < value.length(); ++digit) {
@@ -252,7 +255,10 @@ inline bool parseTmeBagLabel(const String& text, TmeBagLabel& label) {
           numeric = false;
           break;
         }
-        quantity = quantity * 10 + (value[digit] - '0');
+        const int next = value[digit] - '0';
+        // As for a Data Matrix, a quantity the screen cannot show refuses the label.
+        if (quantity > (kMaximumLabelQuantity - next) / 10) return false;
+        quantity = quantity * 10 + next;
       }
       if (numeric && quantity > 0) label.quantity = quantity;
     }

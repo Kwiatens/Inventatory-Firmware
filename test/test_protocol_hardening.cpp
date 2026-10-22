@@ -152,6 +152,27 @@ void test_decodeComponentDataMatrix_quantity_bounds() {
   TEST_ASSERT_EQUAL_INT(1, decoded.quantity);
 }
 
+void test_parseTmeBagLabel_quantity_bounds() {
+  // A TME quantity above 9999 refuses the label. Before, "10000" showed and was added as 1000.
+  TmeBagLabel label;
+  TEST_ASSERT_FALSE(parseTmeBagLabel("QTY:10000 PN:0ZCM0010FF2G MPN:0ZCM0010FF2G", label));
+  TEST_ASSERT_FALSE(parseTmeBagLabel("QTY:999999 PN:0ZCM0010FF2G MPN:0ZCM0010FF2G", label));
+  TEST_ASSERT_FALSE(parseTmeBagLabel("QTY:99999999999999999999 PN:0ZCM0010FF2G MPN:0ZCM0010FF2G", label));
+
+  TEST_ASSERT_TRUE(parseTmeBagLabel("QTY:9999 PN:0ZCM0010FF2G MPN:0ZCM0010FF2G", label));
+  TEST_ASSERT_EQUAL_INT(9999, label.quantity);
+  QuantityComposer composer;
+  composer.setDefaultValue(label.quantity);
+  TEST_ASSERT_EQUAL_STRING("9999", composer.displayText().c_str());
+  TEST_ASSERT_EQUAL_INT(9999, composer.consume(true));
+
+  // Leading zeros are digits, not extra quantity; zero keeps the default of one.
+  TEST_ASSERT_TRUE(parseTmeBagLabel("QTY:0005 PN:0ZCM0010FF2G MPN:0ZCM0010FF2G", label));
+  TEST_ASSERT_EQUAL_INT(5, label.quantity);
+  TEST_ASSERT_TRUE(parseTmeBagLabel("QTY:0 PN:0ZCM0010FF2G MPN:0ZCM0010FF2G", label));
+  TEST_ASSERT_EQUAL_INT(1, label.quantity);
+}
+
 void test_quantity_composer_limit() {
   QuantityComposer composer;
   composer.appendDigit('9');
@@ -212,6 +233,7 @@ void registerProtocolHardeningTests() {
   RUN_TEST(test_deviceResponseMac_changes);
   RUN_TEST(test_decodeComponentDataMatrix_missing_prefix_and_empty);
   RUN_TEST(test_decodeComponentDataMatrix_quantity_bounds);
+  RUN_TEST(test_parseTmeBagLabel_quantity_bounds);
   RUN_TEST(test_quantity_composer_limit);
   RUN_TEST(test_ota_password_policy);
   RUN_TEST(test_wipeSecret_clears_buffer);
