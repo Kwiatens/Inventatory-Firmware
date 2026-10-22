@@ -323,6 +323,8 @@ struct EnergyInputs {
   uint32_t sleepRemainingMs;
   // Time left before power off, from the moment it slept.
   uint32_t offRemainingMs;
+  // The charger is plugged in: energy saving never powers the device off.
+  bool onCharger;
 };
 
 // Sequence: awake, warned, asleep, warned, powered off. A key press or scan during a
@@ -337,10 +339,10 @@ inline EnergyAction energyNextAction(EnergyPhase phase, const EnergyInputs& in) 
       if (!in.enabled || !in.idleReady || in.updating) return EnergyAction::CancelWarning;
       return in.sleepRemainingMs == 0U ? EnergyAction::Sleep : EnergyAction::None;
     case EnergyPhase::Asleep:
-      if (!in.enabled || !in.powerOffSet || in.updating) return EnergyAction::None;
+      if (!in.enabled || !in.powerOffSet || in.updating || in.onCharger) return EnergyAction::None;
       return energyWarningDue(in.offRemainingMs) ? EnergyAction::StartOffWarning : EnergyAction::None;
     case EnergyPhase::OffWarning:
-      if (!in.enabled || in.updating) return EnergyAction::CancelWarning;
+      if (!in.enabled || in.updating || in.onCharger) return EnergyAction::CancelWarning;
       return in.offRemainingMs == 0U ? EnergyAction::PowerOff : EnergyAction::None;
   }
   return EnergyAction::None;

@@ -710,8 +710,22 @@ void test_backlight_policy() {
 
 static EnergyInputs energyCase(bool enabled, bool powerOffSet, bool idleReady, bool updating, uint32_t sleepLeftMs,
                                uint32_t offLeftMs) {
-  EnergyInputs in{enabled, powerOffSet, idleReady, updating, sleepLeftMs, offLeftMs};
+  EnergyInputs in{enabled, powerOffSet, idleReady, updating, sleepLeftMs, offLeftMs, false};
   return in;
+}
+
+void test_energy_saving_never_powers_off_on_the_charger() {
+  // A charger plugged in during the power-off countdown cancels it; before, the device still turned off.
+  EnergyInputs charging = energyCase(true, true, true, false, 0, 5000);
+  charging.onCharger = true;
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::OffWarning, charging) == EnergyAction::CancelWarning);
+  charging.offRemainingMs = 0;
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::OffWarning, charging) == EnergyAction::CancelWarning);
+  // Asleep on the charger, the power-off countdown does not start.
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::Asleep, charging) == EnergyAction::None);
+  // Off the charger the countdown runs as before.
+  charging.onCharger = false;
+  TEST_ASSERT_TRUE(energyNextAction(EnergyPhase::OffWarning, charging) == EnergyAction::PowerOff);
 }
 
 void test_energy_saving_policy() {
@@ -1241,6 +1255,7 @@ void setup() {
   RUN_TEST(test_battery_card_fill_steps);
   RUN_TEST(test_backlight_policy);
   RUN_TEST(test_energy_saving_policy);
+  RUN_TEST(test_energy_saving_never_powers_off_on_the_charger);
   RUN_TEST(test_battery_curve_policy);
   RUN_TEST(test_battery_tracker_guards_and_debounce);
   RUN_TEST(test_battery_unreadable_needs_four_bad_readings_in_a_row);
