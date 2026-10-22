@@ -325,6 +325,7 @@ void InventatoryScanApp::serviceEnergySaving() {
   in.idleReady = powerMode_ == PowerMode::Normal && state_ == State::Idle && !setupMode_ &&
                  !lowBatteryWarning_ && !powerOffWarning_ && !display_.errorVisible() && !chargerPlugged_;
   in.updating = otaRequested_ || otaActive_;
+  in.onCharger = chargerPlugged_;
   in.sleepRemainingMs = energyRemainingMs(now, lastUserActivityAt_, sleepDelayMs(sleepDelay_));
   in.offRemainingMs = energyRemainingMs(now, sleepStartedAt_, powerOffDelayMs(powerOffDelay_));
 
