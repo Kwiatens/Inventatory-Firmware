@@ -296,7 +296,8 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     if (state_ != State::Idle) return;
     if (powerMode_ == PowerMode::Standby) {
       exitStandby();
-    } else {
+    } else if (!updating) {
+      // Standby during an update would drop the request but leave the OTA listener open; C cancels it first.
       enterStandby();
     }
     return;
