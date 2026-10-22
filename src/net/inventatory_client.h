@@ -43,6 +43,8 @@ class InventatoryClient {
   bool endpointValid_ = false;
   bool mdnsStarted_ = false;
   unsigned long lastResolveAttempt_ = 0;
+  // Exchanges in a row with the current endpoint that gave no authenticated response.
+  uint8_t failedExchanges_ = 0;
 };
 
 }  // namespace inventatory_scan
