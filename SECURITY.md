@@ -38,6 +38,21 @@ NVS. Production device policy for secure boot, flash encryption, JTAG, and eFuse
 is set by manufacturing and provisioning, and this source tree does not establish
 it.
 
+Over-the-air updates: an update is accepted only after the operator asks for one on the keypad, only for
+two minutes, and only with the private `OTA_PASSWORD` from `config.h`. The firmware refuses OTA while that
+password is the example placeholder or shorter than 12 characters. ArduinoOTA checks the password with a
+challenge and response; the firmware image itself is not signed, so anyone who knows the password and is on
+the same network during that window can install firmware. Use a long, random password, keep it out of
+release builds you share, and update on a network you trust.
+
+Other assumptions on the local network: the desktop is found by mDNS, so any host can answer in its place.
+It then receives the scan data, which is not encrypted, but it cannot forge a response without the pairing
+token. The device log is kept on the USB serial port in a release; its broadcast to the network is a bench
+option (`kLogOverAirEnabled`) that any host on the network can read.
+
+For a device that may be lost or handed on, enable ESP32 flash encryption and NVS encryption when it is
+provisioned: without them, the Wi-Fi password and the pairing token can be read from the flash chip.
+
 Out of scope: vulnerabilities in third-party components, such as U8g2, Unity or
 the ESP32 Arduino core. Report those upstream, and tell us as well if this
 firmware makes them worse.

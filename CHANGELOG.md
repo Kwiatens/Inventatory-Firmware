@@ -22,6 +22,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On the quantity screen the item name and its code no longer touch, and "Change quantity by:" is now "Change by:" so a four-digit quantity fits.
 - The backlight picker says "Off after 5 min idle" instead of "Dims after 5 min idle", because the backlight only switches on and off.
 - Screen layout numbers that were written inline in the renderer are now named in `display_style.h`, and centred lines share one helper.
+- The power-off hold is four seconds of `*`, not 1.8 s. The first second opens the countdown, so a short press does nothing.
+- The boot screen is the logo with the name and version and no animated dot. On wake the mark blooms in over the first 0.9 s of the 1.2 s splash hold, and the name appears once it is whole.
+- Device settings opens Display, which holds the contrast and the backlight.
+- Device settings lists Energy saving in place of Standby. Holding `D` still toggles standby.
+- The firmware targets the Waveshare ESP32-S3-Nano (16 MB flash) instead of the Tenstar ESP32-S3-Zero. The LCD, keypad and scanner pins moved to match.
+- A result message no longer closes a screen that you have moved on to.
+- The pairing passkey changes after every attempt. Three failed attempts, or five minutes of advertising, lock pairing until `A` is pressed on the device.
+- OTA updates are ignored during setup. A request that waits longer than two minutes is abandoned, and `C` cancels it.
+- Typing `0` as a quantity can no longer produce a hidden default quantity.
+- A scan that the server keeps rejecting can be discarded from the menu, after the operator confirms.
+- A new outbox starts its event numbering at a random point, so the desktop never receives an event id it has already stored for the device.
+- A 5xx response for the head event counts toward the "Sync blocked" warning, as a 4xx response already did.
+- A partial barcode is dropped if its end does not arrive, instead of being reported as a scan.
+- The scanner failure notice after standby quotes the code `SCN-01`, not `SCANNER ERROR`.
+- "Queue unreadable" and "Sync blocked" on the Ready screen now read "There is a problem" with their code, `STO-03` or `SYN-01`, in place of the old words.
+- The low-battery and empty-battery warnings show no error code. Only a battery reading that cannot be trusted has one: a voltage outside 2.5 V to 4.5 V for four seconds in a row shows `PWR-01` as a standing problem, with the top-bar mark.
+- The failure codes take the numbers of the error-code reference. For example, `STORAGE ERROR` is now `STO-02`.
+- The error codes run without gaps in each area, and a code that the device cannot show is not listed.
+- A firmware update no longer shows `STO-03` when the queue holds no scans. The device takes over the empty queue and keeps its event sequence. Only a queue with scans waiting in it, from another firmware version, shows `STO-03`.
+- The top bar's status gives way to the battery when the title leaves no room for it, as the runtime estimate already did.
+- The host test suite covers the queue migrations, the replay counter and the provisioning parser. A coverage report is available with `make -C host-tests coverage`.
+- The device log is no longer broadcast to the local network by default. Any host on the network could read it, including the line that says an OTA update is waiting. Set `kLogOverAirEnabled` in `src/log/device_log.h` to turn it on for bench work. `tools/device_log_listener.py` shows control bytes in a received line as `.`, so a datagram from another host cannot drive the terminal.
 
 ### Added
 - Battery capacity under Device settings / Energy, on page 2 of that screen; D moves between the two pages, as on Quick labels. Type the cell's capacity in mAh, from 100 to 9999: A saves it, and C leaves it as it was. The default is 3400 mAh. The battery estimate counts in the capacity, and changing it keeps the percent on the screen.
@@ -50,31 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Waking from standby no longer waits for the barcode scanner's setup to be sent again. The module keeps its settings while it is powered, so the screen comes back at once and key presses during the wait are no longer lost.
 - After a power off, the barcode scanner is woken and then probed until it answers, for up to three seconds, before its setup is sent. Before, the setup was sent after a fixed half second, which a module still restarting may not answer. The device then showed `SCN-01` and read no codes until the module was power-cycled. A wake that gets no answer is logged as `GM65 did not wake`.
 - The barcode scanner's lights go off when the device powers off. Before, the head lamp could stay on for about 20 seconds, because the module kept reading. The module now stops reading before it sleeps, and the boot profile sets its normal read mode again.
-
-### Changed
-- The power-off hold is four seconds of `*`, not 1.8 s. The first second opens the countdown, so a short press does nothing.
-- The boot screen is the logo with the name and version and no animated dot. On wake the mark blooms in over the first 0.9 s of the 1.2 s splash hold, and the name appears once it is whole.
-- Device settings opens Display, which holds the contrast and the backlight.
-- Device settings lists Energy saving in place of Standby. Holding `D` still toggles standby.
-- The firmware targets the Waveshare ESP32-S3-Nano (16 MB flash) instead of the Tenstar ESP32-S3-Zero. The LCD, keypad and scanner pins moved to match.
-- A result message no longer closes a screen that you have moved on to.
-- The pairing passkey changes after every attempt. Three failed attempts, or five minutes of advertising, lock pairing until `A` is pressed on the device.
-- OTA updates are ignored during setup. A request that waits longer than two minutes is abandoned, and `C` cancels it.
-- Typing `0` as a quantity can no longer produce a hidden default quantity.
-- A scan that the server keeps rejecting can be discarded from the menu, after the operator confirms.
-- A new outbox starts its event numbering at a random point, so the desktop never receives an event id it has already stored for the device.
-- A 5xx response for the head event counts toward the "Sync blocked" warning, as a 4xx response already did.
-- A partial barcode is dropped if its end does not arrive, instead of being reported as a scan.
-- The scanner failure notice after standby quotes the code `SCN-01`, not `SCANNER ERROR`.
-- "Queue unreadable" and "Sync blocked" on the Ready screen now read "There is a problem" with their code, `STO-03` or `SYN-01`, in place of the old words.
-- The low-battery and empty-battery warnings show no error code. Only a battery reading that cannot be trusted has one: a voltage outside 2.5 V to 4.5 V for four seconds in a row shows `PWR-01` as a standing problem, with the top-bar mark.
-- The failure codes take the numbers of the error-code reference. For example, `STORAGE ERROR` is now `STO-02`.
-- The error codes run without gaps in each area, and a code that the device cannot show is not listed.
-- A firmware update no longer shows `STO-03` when the queue holds no scans. The device takes over the empty queue and keeps its event sequence. Only a queue with scans waiting in it, from another firmware version, shows `STO-03`.
-- The top bar's status gives way to the battery when the title leaves no room for it, as the runtime estimate already did.
-- The host test suite covers the queue migrations, the replay counter and the provisioning parser. A coverage report is available with `make -C host-tests coverage`.
-
-### Fixed
 - The Scan R1 keeps trying a code for longer and tries again sooner after each read. The same barcode is not sent again within two seconds of its last read, so a code held in view is sent once.
 - A code printed next to the scanned one, such as on a TME label, no longer shows "Scan not recognised" over the scan that was read. The scan waiting for its quantity stays on screen.
 - A TME label whose manufacturer part number contains a `*`, such as `DS1023-1*40S21`, is read instead of refused.
@@ -101,15 +98,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bluetooth setup starts at most once per boot. If the normal runtime fails right after setup, the device restarts into pairing. Before, a second start in the same boot advertised a duplicate service UUID, or did nothing.
 - Each setup session no longer allocates new Bluetooth callback objects.
 - A BLE disconnect no longer restarts advertising from inside the Bluetooth callback. Core 1 does it on its next pass.
+- A TME label whose quantity is above 9999 is refused, as a Data Matrix already was. Before, the quantity screen cut it to four digits, so `QTY:10000` showed and was added as 1000.
 
 ### Security
 - The transport HTTP status is published only after the response MAC verifies. A missing counter key fails closed.
 - A sync response with a NUL escape or a repeated name is refused, whether or not the field is read. A repeated name counts as the same name after its escapes are decoded, so `"resultId"` repeats `"resultId"`.
 - An HTTP response with a repeated framing header is refused, and its body is authenticated by its declared length, so a NUL byte cannot truncate it.
 - A provisioning request with a NUL byte in any field is refused.
+- An OTA update is refused while `OTA_PASSWORD` is the example placeholder or shorter than 12 characters. A USB build made from the example configuration accepted an update signed with the public placeholder password.
+- The name from an mDNS answer is used in the HTTP `Host` header only when it holds DNS name characters, so a host on the network cannot add header lines to a sync request.
+- The BLE pairing passkey is drawn after the Bluetooth radio starts, so the hardware random number generator has its entropy source, and without modulo bias.
+- The transport keys derived for each MAC are cleared from memory after use.
+- The CI logging check is `tools/check_logging.py`. It covers `deviceLog`, which every log line now goes through and which the old patterns missed, and it reads each file whole, so a logging call split over several lines is checked. The old multi-line `git grep -z` check never matched across lines.
 
 ### Known issues
-- Charging and the backlight need wiring that the board does not have yet: the charger LED of the UPS module must reach GPIO4 (red, header A3) through a 1 MOhm / 1 MOhm divider, and an external transistor must switch the backlight from GPIO38 (header MOSI). Until then the charging screens never appear and the backlight modes do nothing. With the chip's pull-down the lit LED may read as dark, so measure the pin before relying on charging.
+- Charging and the backlight need wiring that the board does not have yet: the charger LED of the UPS module must reach GPIO4 (red, header A3) through a 1 MOhm / 1 MOhm divider, and an external transistor must switch the backlight from GPIO38 (header MOSI). Until then the charging screens never appear and the backlight modes do nothing.
 - A full cell taken off the charger reads "Charged" at 100% until its voltage falls below 4.00 V, and only then does the estimate restart from the voltage. A connector-voltage pin would tell the two cases apart.
 - The battery curve is approximate and needs calibrating on the device with a full discharge.
 - A barcode that is not recognised shows no code on the screen.

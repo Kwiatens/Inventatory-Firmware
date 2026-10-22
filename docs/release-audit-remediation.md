@@ -123,3 +123,30 @@ Image size after this review (`pio run -e waveshare_esp32s3_nano_usb`): RAM 79,4
 partition). The earlier figures in this file were for `5a35df1`. The flash headroom is
 now about 143 KB, which the release notes should mention when the OTA partitions are reviewed.
 
+
+## Release check (October 2026)
+
+A read-through of the firmware, its tools, CI and documentation before the public release, followed by
+fixes. Verification levels are those of the section above. The ESP32 images were **not** built in this
+review (PlatformIO could not be installed), so no row is "compiled"; **stub** means the file was
+type-checked against the stub headers in `tools/dev-harness/`.
+
+| Item | Change | Verification |
+| --- | --- | --- |
+| OTA with the example password | A build made from `config.example.h` accepted OTA uploads signed with the public placeholder. The firmware now refuses OTA while `OTA_PASSWORD` is the placeholder or shorter than 12 characters (`isUsableOtaPassword`), the rule `tools/ota_auth.py` already applied to the OTA build. | host, stub, hardware pending |
+| Logging gate | The CI patterns matched `Serial` and `sendDebugMessage` only, but every log line now goes through `deviceLog`. The multi-line check used `git grep -z`, which does not join lines, so it never matched. Replaced by `tools/check_logging.py`, which covers `deviceLog` and reads each file whole. No current log line names a sensitive value. | script run, planted-line probe caught |
+| Device log broadcast | On by default, readable by any host on the network, including the "OTA ready" line. Now off by default (`kLogOverAirEnabled`); the listener shows control bytes as `.`. | stub (listener run) |
+| mDNS name in the Host header | An mDNS answer could put CR LF into the request's `Host` header. Names are now limited to DNS characters, else the address is used (`isSafeHttpHostName`). | host |
+| BLE passkey entropy | The first passkey was drawn before the Bluetooth radio started, when `esp_random()` is only pseudo-random. It is now drawn after `BLEDevice::init`, without modulo bias. | stub (throwaway BLE stubs), hardware pending |
+| Derived transport keys | Cleared from the stack after each MAC (`wipeSecret`). | host |
+| TME quantity above 9999 | `QTY:10000` was cut to four digits on the quantity screen and added as 1000. The label is now refused, as a Data Matrix already was. | host (failing test first) |
+| Public repository | The agent handoff note `docs/handoff/HANDOFF.md` was removed; the stub harness moved to `tools/dev-harness/`. `CHANGELOG.md` had two Changed and two Fixed sections under Unreleased, now merged. `SECURITY.md` states the OTA, mDNS, log and flash-encryption assumptions. | review |
+
+Repository scan: no credentials, private keys, personal paths, host names or addresses were found in the
+tree or in the history of every branch, `src/config/config.h` was never committed, and the PNG and SVG
+files carry no personal metadata.
+
+Still open, and not changed here: the OTA image is not signed (ArduinoOTA checks only the password); every
+build from the example configuration shares the device id `Inventatory-SCAN-R1`, so two such scanners on one
+network share an mDNS name; `bootNonce_` and the first outbox sequence are drawn before the radio starts,
+which affects only their uniqueness, not a secret.

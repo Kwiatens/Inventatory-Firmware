@@ -123,7 +123,7 @@ agents must distinguish between immutable invariants and mutable implementation 
 ### Mandatory invariants (Must never be broken)
 1. **Zero sensitive logging**: Passwords, Wi-Fi credentials, pairing tokens,
    HMAC keys, raw GM65 UART receive buffers, and decoded barcode payloads must
-   never be output to Serial or network debug messages. Enforced by CI greps. The device log is also sent
+   never be output to Serial or network debug messages. Enforced in CI by `tools/check_logging.py`. The device log can also be sent
    over the air (`deviceLog`), so every line the firmware writes must pass this rule.
 2. **Mutual authentication & directional keys**: Every `POST /api/v1/device/sync`
    request must be signed with HMAC-SHA-256 using the derived `client-to-server`
@@ -213,6 +213,9 @@ agents must distinguish between immutable invariants and mutable implementation 
 │   └── test_inventatory_scan_core.cpp # Embedded Unity unit test suite
 └── tools/
     ├── check_error_codes.py    # Error-code numbering, use, test catalogue and public reference check
+    ├── check_logging.py        # Zero sensitive logging check (CI)
+    ├── dev-harness/            # Stub-header syntax check and LCD contact sheet, for work without PlatformIO
+    ├── device_log_listener.py  # Shows the over-the-air device log when it is enabled for bench work
     └── ota_auth.py             # Pre-build script reading OTA password from config.h
 ```
 
@@ -429,9 +432,10 @@ preserved:
   from the voltage: a load or a radio burst does not move it, and the charger's raised voltage never
   does. The first reading after a boot is the exception: it checks a stored charge against the voltage
   (`kBatteryRestoreTolerancePercent`). Undocked, a cell at or below `kBatteryFloorMv` is critical whatever the percent says.
-- **Device log over the air**: each line of the serial log is also broadcast as one UDP datagram on
+- **Device log over the air**: off in a release (`kLogOverAirEnabled` is false), because any host on the network can
+  read it. Set to true for bench work: each line of the serial log is then also broadcast as one UDP datagram on
   `kLogUdpPort` (5140) to the local network, as `<milliseconds> <text>`. `tools/device_log_listener.py` shows it on a
-  PC on the same Wi-Fi. While Wi-Fi is down the newest lines are kept (`kLogLineSlots`). `kLogOverAirEnabled` turns it off.
+  PC on the same Wi-Fi. While Wi-Fi is down the newest lines are kept (`kLogLineSlots`).
 - **Backlight**: `Off`, `On`, or an Auto idle timeout (1, 3, 5, 10 min), set under Device
   settings / Display. The warnings and pairing keep the backlight on whatever the setting says.
 - **Energy saving**: a switch under Device settings / Energy, off by default. When on, the device
@@ -517,13 +521,11 @@ pio run -d examples/gmg12864_spi_test -e waveshare_esp32s3_nano
 ```
 
 ### CI security audit checks
-Verify the zero sensitive logging policy. Note that in PowerShell and standard
-shells, `git grep` returns exit code `1` when no matches are found. A return of
-zero matches indicates compliance:
-```powershell
-# Must return no matches (exit code 1)
-git grep -n -E "GM65 rx|GM65 scan:" src
-git grep -n -E "sendDebugMessage\(.*(scannedCode_|trimmed|forwardedCode|manufacturerPartNumber)" src
+Verify the zero sensitive logging policy. The check reads each source file whole, so a logging call split
+over several lines is covered, and it fails on any `deviceLog`, `Serial` or `sendDebugMessage` call that
+names a barcode, Wi-Fi credential, token, OTA password or pairing passkey:
+```bash
+python3 tools/check_logging.py
 ```
 
 ### Verification hierarchy (Reporting rules)
@@ -610,7 +612,7 @@ When concluding any task, the agent must provide a factual summary containing:
 - [ ] Persistence: NVS namespaces <= 15 chars; outbox pop staged before commit; pop failure retains event.
 - [ ] Durability: Newly captured scans that fail NVS write show error banner and are not queued.
 - [ ] Security: HMAC mutual auth, directional keys, monotonic counter reservation preserved.
-- [ ] Zero logging: Passed CI grep rules (no raw barcodes, UART buffers, or secrets logged).
+- [ ] Zero logging: `python3 tools/check_logging.py` passes (no raw barcodes, UART buffers, or secrets logged).
 - [ ] Verification: `make -C host-tests test` passes, `python3 tools/check_error_codes.py` passes, `pio test ... --without-uploading --without-testing` passes, and firmware builds pass.
 - [ ] Working tree: No modified `config.h`, `.pio/`, `.bin` files, or unrelated user edits in diff.
 - [ ] Commit format: Follows section 12 and the shared standards. New source files carry the SPDX header.

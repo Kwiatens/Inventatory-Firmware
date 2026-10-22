@@ -5,7 +5,7 @@
 # Fonts are approximate (Liberation/DejaVu stand-ins for U8g2): trust the layout, not glyph widths.
 # Needs g++ and python3 with Pillow.
 set -euo pipefail
-here="$(cd "$(dirname "$0")" && pwd)"; fw="$(cd "$here/../../../.." && pwd)"; stubs="$here/../stubs"
+here="$(cd "$(dirname "$0")" && pwd)"; fw="$(cd "$here/../../.." && pwd)"; stubs="$here/../stubs"
 g++ -std=gnu++17 -O0 -w -include "$stubs/extra.h" -I"$stubs" -I"$stubs/config" -I"$fw/host-tests/shim" \
   -I"$fw/host-tests/shim/config" -I"$fw/include" -I"$fw/src" \
   "$here/driver.cpp" "$here/fonts.cpp" "$fw/src/display/display_controller.cpp" "$fw/src/display/display_renderer.cpp" \

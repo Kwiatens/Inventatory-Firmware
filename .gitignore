@@ -10,3 +10,6 @@ src/config/config.h
 
 # Host-side unit test build output
 host-tests/build/
+
+# Python bytecode from the tools
+__pycache__/
