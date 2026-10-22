@@ -219,6 +219,44 @@ void test_http_host_name_rejects_header_injection() {
   TEST_ASSERT_FALSE(isSafeHttpHostName(tooLong.c_str(), tooLong.length()));
 }
 
+void test_latin1DisplayText_reencodes_utf8_for_the_lcd() {
+  // ASCII is unchanged.
+  TEST_ASSERT_TRUE(latin1DisplayText("Resistor 10k 0603") == "Resistor 10k 0603");
+  // Latin-1 code points become one byte each: the font draws them as one glyph.
+  TEST_ASSERT_TRUE(latin1DisplayText("10\xC2\xB5" "F") == String("10\xB5" "F"));
+  TEST_ASSERT_TRUE(latin1DisplayText("\xC2\xB1" "5%") == String("\xB1" "5%"));
+  TEST_ASSERT_TRUE(latin1DisplayText("Gr\xC3\xBC" "n") == String("Gr\xFC" "n"));
+  // Greek mu is the micro sign; both ohm characters are spelled out; dashes become '-'.
+  TEST_ASSERT_TRUE(latin1DisplayText("4.7\xCE\xBC" "F") == String("4.7\xB5" "F"));
+  TEST_ASSERT_TRUE(latin1DisplayText("10k\xCE\xA9") == "10kOhm");
+  TEST_ASSERT_TRUE(latin1DisplayText("10k\xE2\x84\xA6") == "10kOhm");
+  TEST_ASSERT_TRUE(latin1DisplayText("A\xE2\x80\x93" "B") == "A-B");
+  // Other characters, C1 controls and malformed bytes become '?', never raw bytes.
+  TEST_ASSERT_TRUE(latin1DisplayText("\xE6\x97\xA5") == "?");
+  TEST_ASSERT_TRUE(latin1DisplayText("\xF0\x9F\x94\x8C" "x") == "?x");
+  TEST_ASSERT_TRUE(latin1DisplayText("\xC2\x85") == "?");
+  TEST_ASSERT_TRUE(latin1DisplayText("a\xC3") == "a?");
+  TEST_ASSERT_TRUE(latin1DisplayText("\xB5" "F") == "?F");
+  TEST_ASSERT_TRUE(latin1DisplayText("\xE2\x84" "A") == "??A");
+}
+
+void test_sync_response_display_fields_are_reencoded() {
+  const String body =
+      "{\"protocolVersion\":1,\"requestId\":\"sync-u\",\"acceptedEventIds\":[\"e1\"],"
+      "\"results\":[{\"resultId\":\"r-\xC2\xB5\",\"eventId\":\"e1\",\"status\":\"completed\","
+      "\"itemName\":\"10\xC2\xB5" "F 0805\",\"location\":\"Box \xCE\xA9\",\"message\":\"OK\"}],"
+      "\"quickLabels\":{\"revision\":1,\"presets\":[\"1k\xCE\xA9\"]}}";
+  auto response = parseSyncResponseJson(body);
+  TEST_ASSERT_TRUE(response.valid);
+  prepareSyncResponseForDisplay(response);
+  TEST_ASSERT_TRUE(response.result.itemName == String("10\xB5" "F 0805"));
+  TEST_ASSERT_TRUE(response.result.location == "Box Ohm");
+  TEST_ASSERT_TRUE(response.quickLabelPresets[0] == "1kOhm");
+  // Identifiers stay as the desktop sent them: the acknowledgement must match its records.
+  TEST_ASSERT_TRUE(response.result.resultId == String("r-\xC2\xB5"));
+  TEST_ASSERT_TRUE(response.acceptedEventIds[0] == "e1");
+}
+
 void registerProtocolHardeningTests() {
   RUN_TEST(test_parseSyncResponseJson_padded_body);
   RUN_TEST(test_parseSyncResponseJson_strict_prefix_rejected);
@@ -238,4 +276,6 @@ void registerProtocolHardeningTests() {
   RUN_TEST(test_ota_password_policy);
   RUN_TEST(test_wipeSecret_clears_buffer);
   RUN_TEST(test_http_host_name_rejects_header_injection);
+  RUN_TEST(test_latin1DisplayText_reencodes_utf8_for_the_lcd);
+  RUN_TEST(test_sync_response_display_fields_are_reencoded);
 }

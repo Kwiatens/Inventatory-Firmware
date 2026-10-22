@@ -793,6 +793,84 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
   return response;
 }
 
+// The LCD fonts hold Latin-1 glyphs and draw one byte per glyph, but the desktop sends UTF-8, so "10µF"
+// drew as "10Âµ F". Text for the screen is re-encoded once, after parsing: a code point in Latin-1 becomes
+// its byte, a few common symbols are spelled out, and anything else or any malformed byte becomes '?'.
+inline String latin1DisplayText(const String& utf8) {
+  String out;
+  out.reserve(utf8.length());
+  const std::size_t length = utf8.length();
+  std::size_t index = 0;
+  while (index < length) {
+    const auto first = static_cast<unsigned char>(utf8[index]);
+    if (first < 0x80U) {
+      out += static_cast<char>(first);
+      ++index;
+      continue;
+    }
+    std::size_t continuationCount = 0;
+    uint32_t codePoint = 0;
+    if (first >= 0xC2U && first <= 0xDFU) {
+      continuationCount = 1;
+      codePoint = first & 0x1FU;
+    } else if (first >= 0xE0U && first <= 0xEFU) {
+      continuationCount = 2;
+      codePoint = first & 0x0FU;
+    } else if (first >= 0xF0U && first <= 0xF4U) {
+      continuationCount = 3;
+      codePoint = first & 0x07U;
+    } else {
+      out += '?';
+      ++index;
+      continue;
+    }
+    std::size_t next = index + 1U;
+    bool wellFormed = true;
+    for (std::size_t count = 0; count < continuationCount; ++count, ++next) {
+      if (next >= length || (static_cast<unsigned char>(utf8[next]) & 0xC0U) != 0x80U) {
+        wellFormed = false;
+        break;
+      }
+      codePoint = (codePoint << 6U) | (static_cast<unsigned char>(utf8[next]) & 0x3FU);
+    }
+    index = wellFormed ? next : index + 1U;
+    if (!wellFormed) {
+      out += '?';
+    } else if (codePoint >= 0xA0U && codePoint <= 0xFFU) {
+      out += static_cast<char>(codePoint);
+    } else if (codePoint == 0x03BCU) {
+      out += static_cast<char>(0xB5);  // Greek mu, as the micro sign
+    } else if (codePoint == 0x03A9U || codePoint == 0x2126U) {
+      out += "Ohm";
+    } else if (codePoint == 0x2013U || codePoint == 0x2014U || codePoint == 0x2212U) {
+      out += '-';
+    } else if (codePoint == 0x2018U || codePoint == 0x2019U) {
+      out += '\'';
+    } else if (codePoint == 0x201CU || codePoint == 0x201DU) {
+      out += '"';
+    } else {
+      out += '?';
+    }
+  }
+  return out;
+}
+
+// Re-encodes the fields the screen shows. Identifiers and statuses are left as sent.
+inline void prepareSyncResponseForDisplay(SyncResponse& response) {
+  response.result.itemName = latin1DisplayText(response.result.itemName);
+  response.result.purposeLabel = latin1DisplayText(response.result.purposeLabel);
+  response.result.location = latin1DisplayText(response.result.location);
+  response.result.code = latin1DisplayText(response.result.code);
+  response.result.message = latin1DisplayText(response.result.message);
+  response.lookupItemName = latin1DisplayText(response.lookupItemName);
+  response.lookupPurposeLabel = latin1DisplayText(response.lookupPurposeLabel);
+  for (std::size_t index = 0; index < response.quickLabelPresetCount; ++index) {
+    response.quickLabelPresets[index] = latin1DisplayText(response.quickLabelPresets[index]);
+  }
+  response.quickLabelPrintCode = latin1DisplayText(response.quickLabelPrintCode);
+  response.quickLabelPrintMessage = latin1DisplayText(response.quickLabelPrintMessage);
+}
+
 inline bool isCurrentLookupResult(const SyncResponse& response, const String& activeLookupId) {
   return response.hasLookupResult && activeLookupId.length() > 0 && response.lookupId == activeLookupId;
 }
