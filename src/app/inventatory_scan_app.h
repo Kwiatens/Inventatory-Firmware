@@ -294,6 +294,9 @@ class InventatoryScanApp {
   std::atomic_ulong lastReconnectAttempt_{0};
   // Written by Core 0 (reconnect) and Core 1 (sync and result handling).
   std::atomic_ulong lastSyncAttempt_{0};
+  // Set on the first loop() pass. A deliberate power off or restart after it confirms a pending OTA image;
+  // a refusal during begin(), such as the low-battery notice, proves nothing and leaves it pending.
+  bool loopStarted_ = false;
   // Random per boot, so request ids that embed a sequence (quick-label prints) do not repeat.
   uint32_t bootNonce_ = 0;
   // When the current quick-label print was first issued. Transient failures retry the same request

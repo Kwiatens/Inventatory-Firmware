@@ -166,7 +166,7 @@ Arduino-ESP32 sources the build uses. Dispositions:
 | Wi-Fi driver kept its own SSID, password and PMK in `nvs.net80211` | Fixed: `WiFi.persistent(false)` before any `WiFi.mode()`, the namespace erased at boot and on re-pair. | host, hardware pending (read the NVS partition of a provisioned unit) |
 | First mDNS answer pinned even when it never authenticates | Fixed: dropped after three exchanges in a row without a signed reply. Only the first mDNS answer is still tried. | host |
 | Signed but unreadable 200 stalled the queue silently | Fixed: counts toward "Sync blocked". The desktop should also replace invalid UTF-8 in `jsonEscape`. | stub; desktop change open |
-| OTA rollback after a deep sleep or restart within 30 s of an update | Open: a deliberate confirm before power off, or a "update reverted" notice, is an owner decision. | open |
+| OTA rollback after a deep sleep or restart within 30 s of an update | Fixed: a pending image is confirmed before a deliberate power off or re-pair restart once `loop()` has run (`src/ota/firmware_validity.cpp`). A refusal during start-up, such as the low-battery notice, leaves it pending, since it proves nothing about the image. A rollback is logged at boot. | stub, hardware pending (OTA, then power off with `*` within 30 s: the new image must stay) |
 | Logging gate blind spots (`;` in literals, log macros, `printf`) | Fixed in `tools/check_logging.py`; probe cases caught. | script run |
 | Label request nonce drawn before the radio starts | Fixed: drawn at the first label print. | stub |
 | `DEVICE_ID` unvalidated; advertised setup name shared by default builds | Documented in `config.example.h`. | open |

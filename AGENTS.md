@@ -200,6 +200,8 @@ agents must distinguish between immutable invariants and mutable implementation 
 │   ├── log/                    # Device log: serial mirror and the over-the-air UDP broadcast
 │   ├── keypad/                 # Keypad matrix driver
 │   │   └── keypad.h/.cpp       # 4x4 matrix scanning, debouncing, key event dispatch
+│   ├── ota/                    # OTA image confirmation and rollback report
+│   │   └── firmware_validity.h/.cpp  # Confirms a pending image after a healthy start or before a deliberate power off
 │   ├── net/                    # HTTP client and transport
 │   │   └── inventatory_client.h/.cpp # Endpoint discovery, HMAC signing, HTTP transport
 │   ├── setup/                  # BLE provisioning

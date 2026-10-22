@@ -182,6 +182,8 @@ and 63.
 - [ ] Request an update and press `C` while waiting: cancels back to Ready.
 - [ ] Interrupt an upload (pull Wi-Fi): `OTA-01`, device still works.
 - [ ] Flash a deliberately crashing image over OTA: within 30 s the previous image returns.
+- [ ] OTA a working image, then power off with `*` within 30 s and wake: the new image stays, and the log
+      reads "Firmware confirmed: powered off after a healthy start".
 - [ ] `*` + `D` hold during setup does nothing.
 
 ## 13. Serial log audit (zero sensitive logging)
