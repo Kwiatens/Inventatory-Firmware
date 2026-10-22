@@ -132,6 +132,11 @@ bool BleProvisioning::begin(const String& deviceId) {
   security.setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
   security.setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
   security.setKeySize(16);
+  // SC with MITM is otherwise only requested: a central without LE Secure Connections would fall back to
+  // legacy passkey pairing, whose key a passive sniffer recovers, and read the Wi-Fi password and token.
+  uint8_t onlySecureConnections = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_ENABLE;
+  esp_ble_gap_set_security_param(ESP_BLE_SM_ONLY_ACCEPT_SPECIFIED_SEC_AUTH, &onlySecureConnections,
+                                 sizeof(onlySecureConnections));
 
   server_ = BLEDevice::createServer();
   server_->setCallbacks(&serverCallbacks);
