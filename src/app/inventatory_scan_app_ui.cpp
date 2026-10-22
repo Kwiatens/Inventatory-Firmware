@@ -270,6 +270,8 @@ void InventatoryScanApp::requestQuickLabelPrint(uint8_t presetIndex) {
     state_ = State::Idle;
     return;
   }
+  // Wi-Fi is connected here, so the radio feeds the random number generator. Zero means not drawn yet.
+  while (bootNonce_ == 0) bootNonce_ = esp_random() & 0xFFFFFFUL;
   pendingQuickLabelPrintId_ = clientConfig_.deviceId + String("-label-") + String(bootNonce_, HEX) + String("-") +
                                 String(syncSequence_++);
   pendingQuickLabelPrintStartedAt_ = millis();
