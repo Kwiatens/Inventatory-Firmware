@@ -13,11 +13,13 @@
 
 class WiFiClient {
  public:
-  void setTimeout(unsigned long) {}
+  // No setTimeout(): on the ESP32 core it takes seconds, not milliseconds, so the client passes its
+  // connect timeout in milliseconds to connect() instead. A call to setTimeout() fails the host build.
   void setNoDelay(bool) {}
 
-  bool connect(IPAddress, uint16_t) {
+  bool connect(IPAddress, uint16_t, int32_t timeoutMs) {
     HostConnection& net = hostNetwork();
+    net.lastConnectTimeoutMs = timeoutMs;
     net.request.clear();
     net.response.clear();
     net.readPos = 0;

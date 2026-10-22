@@ -21,6 +21,9 @@ struct HostConnection {
   std::string response;  // bytes the server sends, from the responder
   std::size_t readPos = 0;
   bool responded = false;
+  // The timeout the code under test passed to the last connect(), and how many mDNS queries it made.
+  long lastConnectTimeoutMs = -1;
+  int mdnsQueries = 0;
   // Called on the first read with the request; returns the response. Unset: server stays silent.
   std::function<std::string(const std::string& request)> responder;
 };

@@ -44,6 +44,8 @@ void test_client_refuses_when_no_server_is_found();
 void test_client_refuses_when_the_connection_fails();
 void test_client_refuses_when_wifi_is_down();
 void test_client_gives_every_request_a_higher_counter();
+void test_client_connects_with_a_millisecond_timeout();
+void test_client_asks_mdns_again_after_repeated_unauthenticated_exchanges();
 
 namespace {
 
@@ -409,6 +411,57 @@ void test_client_gives_every_request_a_higher_counter() {
   }
 }
 
+void test_client_connects_with_a_millisecond_timeout() {
+  // WiFiClient::setTimeout() takes seconds on the ESP32 core; the client passes milliseconds to connect().
+  resetNetwork();
+  ResponseSpec spec;
+  int httpStatus = -1;
+  std::string body;
+  TEST_ASSERT_TRUE(syncWith(spec, httpStatus, body));
+  TEST_ASSERT_EQUAL_INT32(1500, hostNetwork().lastConnectTimeoutMs);
+}
+
+void test_client_asks_mdns_again_after_repeated_unauthenticated_exchanges() {
+  // A host that won an mDNS answer and never signs a reply is dropped after three exchanges.
+  resetNetwork();
+  InventatoryClient client;
+  SetupStateStore store;
+  store.begin();
+  InventatoryClientConfig config;
+  config.deviceId = kDeviceId;
+  config.token = kToken;
+  config.transportCounterStore = &store;
+  TEST_ASSERT_TRUE(client.begin(config));
+  const auto unsigned_reply = [](const std::string&) {
+    return std::string("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+  };
+  const auto exchange = [&]() {
+    hostNetwork().responded = false;
+    hostNetwork().readPos = 0;
+    int httpStatus = 0;
+    String responseBody;
+    return client.postSync(String("{}"), httpStatus, responseBody);
+  };
+  hostNetwork().responder = unsigned_reply;
+  for (int attempt = 0; attempt < 3; ++attempt) TEST_ASSERT_FALSE(exchange());
+  TEST_ASSERT_EQUAL_INT(1, hostNetwork().mdnsQueries);
+  // The resolve retry interval passes; the next exchange queries mDNS again and reaches the real server.
+  hostClockMs() += 6000UL;
+  hostNetwork().responder = [](const std::string& request) {
+    ResponseSpec spec;
+    return makeResponse(request, spec);
+  };
+  TEST_ASSERT_TRUE(exchange());
+  TEST_ASSERT_EQUAL_INT(2, hostNetwork().mdnsQueries);
+  // A signed reply resets the count: two more failures keep the endpoint.
+  hostNetwork().responder = unsigned_reply;
+  TEST_ASSERT_FALSE(exchange());
+  TEST_ASSERT_FALSE(exchange());
+  hostClockMs() += 6000UL;
+  TEST_ASSERT_FALSE(exchange());
+  TEST_ASSERT_EQUAL_INT(2, hostNetwork().mdnsQueries);
+}
+
 void runHostClientFramingTests() {
   RUN_TEST(test_client_accepts_a_signed_response);
   RUN_TEST(test_client_reports_a_signed_status_other_than_200);
@@ -434,4 +487,6 @@ void runHostClientFramingTests() {
   RUN_TEST(test_client_refuses_when_the_connection_fails);
   RUN_TEST(test_client_refuses_when_wifi_is_down);
   RUN_TEST(test_client_gives_every_request_a_higher_counter);
+  RUN_TEST(test_client_connects_with_a_millisecond_timeout);
+  RUN_TEST(test_client_asks_mdns_again_after_repeated_unauthenticated_exchanges);
 }

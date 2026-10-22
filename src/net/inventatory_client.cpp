@@ -19,6 +19,12 @@ namespace inventatory_scan {
 namespace {
 
 constexpr unsigned long kHttpResponseTimeoutMs = 600U;
+// Connect and send timeout, in milliseconds. WiFiClient::setTimeout() takes seconds on this core, so the
+// old setTimeout(250) let a host that drops SYNs hold the network worker for minutes.
+constexpr int32_t kTcpConnectTimeoutMs = 1500;
+// Any host can answer mDNS. After this many exchanges in a row without an authenticated response the
+// endpoint is dropped and mDNS is asked again, so a host that won one answer does not keep the device.
+constexpr uint8_t kMaxFailedExchangesPerEndpoint = 3;
 // Reads a header that may appear at most once; a repeat is refused. An absent header leaves
 // the value empty and still succeeds.
 bool uniqueHeaderValue(const String& headers, const char* name, String& value) {
@@ -66,6 +72,7 @@ bool InventatoryClient::begin(const InventatoryClientConfig& config) {
   endpointName_ = "";
   mdnsStarted_ = false;
   lastResolveAttempt_ = 0;
+  failedExchanges_ = 0;
 
   if (config_.deviceId.length() == 0 || !isValidTransportToken(config_.token) ||
       config_.transportCounterStore == nullptr) {
@@ -78,7 +85,6 @@ bool InventatoryClient::begin(const InventatoryClientConfig& config) {
   WiFi.persistent(false);
   // Modem sleep stays on, since Wi-Fi current draw can disturb peripherals on the same regulator.
   WiFi.setSleep(true);
-  client_.setTimeout(250);
   return true;
 }
 
@@ -160,7 +166,7 @@ bool InventatoryClient::connectToResolved() {
     return false;
   }
   client_.stop();
-  if (client_.connect(endpointIp_, endpointPort_)) {
+  if (client_.connect(endpointIp_, endpointPort_, kTcpConnectTimeoutMs)) {
     // Needs a live socket; setting it in begin() logs a harmless EBADF warning on a fresh boot.
     client_.setNoDelay(true);
     return true;
@@ -170,6 +176,7 @@ bool InventatoryClient::connectToResolved() {
   deviceLog.print(':');
   deviceLog.println(endpointPort_);
   endpointValid_ = false;
+  failedExchanges_ = 0;
   return false;
 }
 
@@ -206,7 +213,15 @@ bool InventatoryClient::sendJson(const char* path, const String& body, int& http
   client_.print("Connection: close\r\n\r\n");
   client_.write(reinterpret_cast<const uint8_t*>(body.c_str()), body.length());
 
-  return readResponse(httpStatus, responseBody, counter);
+  const bool authenticated = readResponse(httpStatus, responseBody, counter);
+  if (authenticated) {
+    failedExchanges_ = 0;
+  } else if (++failedExchanges_ >= kMaxFailedExchangesPerEndpoint) {
+    deviceLog.println("Inventatory endpoint: no authenticated response; asking mDNS again");
+    endpointValid_ = false;
+    failedExchanges_ = 0;
+  }
+  return authenticated;
 }
 
 bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint64_t counter) {

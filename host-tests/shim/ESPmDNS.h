@@ -10,7 +10,10 @@
 class MDNSClass {
  public:
   bool begin(const char*) { return true; }
-  int queryService(const char*, const char*) { return hostNetwork().mdnsFindsServer ? 1 : 0; }
+  int queryService(const char*, const char*) {
+    ++hostNetwork().mdnsQueries;
+    return hostNetwork().mdnsFindsServer ? 1 : 0;
+  }
   IPAddress IP(int) { return hostNetwork().serverAddress; }
   uint16_t port(int) { return hostNetwork().serverPort; }
   String hostname(int) { return String("inventatory.local"); }
