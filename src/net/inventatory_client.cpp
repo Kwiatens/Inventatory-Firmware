@@ -117,6 +117,8 @@ bool InventatoryClient::resolveEndpoint(bool force) {
     endpointIp_ = MDNS.IP(0);
     endpointPort_ = MDNS.port(0);
     endpointName_ = MDNS.hostname(0);
+    // An unusable name falls back to the address in the Host header.
+    if (!isSafeHttpHostName(endpointName_.c_str(), endpointName_.length())) endpointName_ = "";
     endpointValid_ = endpointPort_ != 0U;
     if (endpointValid_) {
       deviceLog.print("Inventatory endpoint: discovered ");

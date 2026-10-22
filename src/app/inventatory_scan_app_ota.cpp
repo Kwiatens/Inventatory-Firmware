@@ -5,6 +5,7 @@
 
 #include "InventatoryScanCore.h"
 #include "InventatoryScanErrorCodes.h"
+#include "InventatoryScanSecurity.h"
 #include "InventatoryScanUiPolicy.h"
 #include "config/config.h"
 #include "config/version.h"
@@ -27,6 +28,12 @@ void InventatoryScanApp::requestOtaUpdate() {
   }
   if (setupMode_ || provisionedSettings_.wifiSsid.length() == 0) {
     deviceLog.println("OTA update ignored because setup is incomplete.");
+    return;
+  }
+  // A build from the example config would otherwise accept any upload signed with the public placeholder.
+  if (!isUsableOtaPassword(OTA_PASSWORD)) {
+    deviceLog.println("OTA update refused: set a private OTA password of 12 or more characters in config.h.");
+    display_.showLocalFailure(localFailure("local-ota", kUpdateFailedCode, "OTA password not set"));
     return;
   }
 
@@ -114,6 +121,7 @@ bool InventatoryScanApp::ensureWiFiForOta() {
 }
 
 bool InventatoryScanApp::startOtaService() {
+  if (!isUsableOtaPassword(OTA_PASSWORD)) return false;
   WiFi.setSleep(false);
   ArduinoOTA.setHostname(clientConfig_.deviceId.c_str());
   ArduinoOTA.setPassword(OTA_PASSWORD);

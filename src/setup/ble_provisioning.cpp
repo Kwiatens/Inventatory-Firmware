@@ -29,6 +29,16 @@ constexpr char kRequestUuid[] = "d4d4f5b0-4c21-4a7e-a1a1-4b0db2d00003";
 constexpr uint8_t kMaxFailedPairingAttempts = 3;
 constexpr unsigned long kAdvertisingWindowMs = 5UL * 60UL * 1000UL;
 
+// A six-digit passkey, uniform over 100000-999999. Rejection sampling avoids the modulo bias, and the
+// caller draws it only while the radio runs: esp_random() is only pseudo-random with the radio off.
+uint32_t newPasskey() {
+  constexpr uint32_t kRange = 900000UL;
+  constexpr uint32_t kLimit = UINT32_MAX - (UINT32_MAX % kRange);
+  uint32_t value = esp_random();
+  while (value >= kLimit) value = esp_random();
+  return 100000UL + (value % kRange);
+}
+
 class ServerCallbacks final : public BLEServerCallbacks {
  public:
   explicit ServerCallbacks(BleProvisioning& owner) : owner_(owner) {}
@@ -87,10 +97,11 @@ bool BleProvisioning::begin(const String& deviceId) {
   failedAttempts_ = 0;
   authFailed_ = false;
   clientDisconnected_ = false;
-  pairingCode_ = 100000UL + (esp_random() % 900000UL);
   const auto suffix = deviceId.length() > 4 ? deviceId.substring(deviceId.length() - 4) : deviceId;
   const String advertisedName = String("Inventatory Setup ") + suffix;
   BLEDevice::init(advertisedName.c_str());
+  // Drawn after init, so the Bluetooth radio feeds the hardware random number generator.
+  pairingCode_ = newPasskey();
   // Drop earlier bonds: a bonded peer could reconnect without the passkey on screen.
   {
     int bondCount = esp_ble_get_bond_device_num();
@@ -170,7 +181,7 @@ void BleProvisioning::end() {
 
 void BleProvisioning::rotatePasskey() {
   if (security_ == nullptr) return;
-  pairingCode_ = 100000UL + (esp_random() % 900000UL);
+  pairingCode_ = newPasskey();
   // Update only the passkey: BLESecurity::setStaticPIN() would also reset the IO capability,
   // key size and authentication mode (to SC without MITM).
   uint32_t passkey = pairingCode_.load();

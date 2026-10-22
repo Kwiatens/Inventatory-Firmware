@@ -4,12 +4,30 @@
 #pragma once
 
 #include <Arduino.h>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <mbedtls/md.h>
 
 namespace inventatory_scan {
 
 constexpr int kInventatoryScanProtocolVersion = 1;
+
+// The OTA password in config.example.h is public, so a build that keeps it, or a password too short
+// to resist guessing, must not accept updates. tools/ota_auth.py applies the same rule to the OTA build.
+constexpr char kOtaPasswordPlaceholder[] = "paste-your-ota-password-here";
+constexpr std::size_t kMinimumOtaPasswordLength = 12;
+
+inline bool isUsableOtaPassword(const char* password) {
+  return password != nullptr && std::strlen(password) >= kMinimumOtaPasswordLength &&
+         std::strcmp(password, kOtaPasswordPlaceholder) != 0;
+}
+
+// Clears key material; the volatile writes keep the compiler from dropping the stores.
+inline void wipeSecret(void* data, std::size_t length) {
+  volatile auto* bytes = static_cast<volatile uint8_t*>(data);
+  while (length-- > 0U) *bytes++ = 0U;
+}
 
 inline int transportHexDigit(char ch) {
   if (ch >= '0' && ch <= '9') return ch - '0';
@@ -56,11 +74,13 @@ inline String transportMac(const String& token, const char* direction, const Str
   uint8_t root[32]{};
   uint8_t key[32]{};
   uint8_t mac[32]{};
-  if (!decodeTransportToken(token, root) ||
-      !transportHmac(root, sizeof(root), String("Inventatory Scan R1 transport v1 ") + direction, key) ||
-      !transportHmac(key, sizeof(key), input, mac)) {
-    return {};
-  }
+  const bool computed =
+      decodeTransportToken(token, root) &&
+      transportHmac(root, sizeof(root), String("Inventatory Scan R1 transport v1 ") + direction, key) &&
+      transportHmac(key, sizeof(key), input, mac);
+  wipeSecret(root, sizeof(root));
+  wipeSecret(key, sizeof(key));
+  if (!computed) return {};
   return transportHex(mac, sizeof(mac));
 }
 

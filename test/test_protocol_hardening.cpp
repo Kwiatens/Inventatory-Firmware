@@ -162,6 +162,42 @@ void test_quantity_composer_limit() {
   TEST_ASSERT_EQUAL_INT(9999, composer.valueOrOne());
 }
 
+void test_ota_password_policy() {
+  // The example placeholder is public; a build that keeps it must not accept an update.
+  TEST_ASSERT_FALSE(isUsableOtaPassword(kOtaPasswordPlaceholder));
+  TEST_ASSERT_FALSE(isUsableOtaPassword("paste-your-ota-password-here"));
+  TEST_ASSERT_FALSE(isUsableOtaPassword(nullptr));
+  TEST_ASSERT_FALSE(isUsableOtaPassword(""));
+  TEST_ASSERT_FALSE(isUsableOtaPassword("elevenchars"));
+  TEST_ASSERT_TRUE(isUsableOtaPassword("twelve-chars"));
+  TEST_ASSERT_TRUE(isUsableOtaPassword("a much longer private OTA password"));
+}
+
+void test_wipeSecret_clears_buffer() {
+  uint8_t secret[32];
+  for (auto& byte : secret) byte = 0xA5U;
+  wipeSecret(secret, sizeof(secret));
+  for (const auto byte : secret) TEST_ASSERT_EQUAL_UINT8(0U, byte);
+}
+
+void test_http_host_name_rejects_header_injection() {
+  TEST_ASSERT_TRUE(isSafeHttpHostName("inventatory-pc", 14));
+  TEST_ASSERT_TRUE(isSafeHttpHostName("inventatory-pc.local", 20));
+  const char injected[] = "pc\r\nX-Inventatory-Mac: 00";
+  TEST_ASSERT_FALSE(isSafeHttpHostName(injected, sizeof(injected) - 1U));
+  TEST_ASSERT_FALSE(isSafeHttpHostName("pc name", 7));
+  TEST_ASSERT_FALSE(isSafeHttpHostName("pc:80", 5));
+  const char embeddedNul[] = {'p', 'c', '\0', 'x'};
+  TEST_ASSERT_FALSE(isSafeHttpHostName(embeddedNul, sizeof(embeddedNul)));
+  TEST_ASSERT_FALSE(isSafeHttpHostName("", 0));
+  TEST_ASSERT_FALSE(isSafeHttpHostName(nullptr, 3));
+  String longest;
+  while (longest.length() < kMaxHttpHostNameBytes) longest += 'a';
+  TEST_ASSERT_TRUE(isSafeHttpHostName(longest.c_str(), longest.length()));
+  const String tooLong = longest + "c";
+  TEST_ASSERT_FALSE(isSafeHttpHostName(tooLong.c_str(), tooLong.length()));
+}
+
 void registerProtocolHardeningTests() {
   RUN_TEST(test_parseSyncResponseJson_padded_body);
   RUN_TEST(test_parseSyncResponseJson_strict_prefix_rejected);
@@ -177,4 +213,7 @@ void registerProtocolHardeningTests() {
   RUN_TEST(test_decodeComponentDataMatrix_missing_prefix_and_empty);
   RUN_TEST(test_decodeComponentDataMatrix_quantity_bounds);
   RUN_TEST(test_quantity_composer_limit);
+  RUN_TEST(test_ota_password_policy);
+  RUN_TEST(test_wipeSecret_clears_buffer);
+  RUN_TEST(test_http_host_name_rejects_header_injection);
 }

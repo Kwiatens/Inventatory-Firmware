@@ -6,6 +6,7 @@
 // Copy to config.h and fill in real values. config.h is private and git-ignored.
 
 const char DEVICE_ID[] = "Inventatory-SCAN-R1";
+// The firmware refuses OTA updates until this is changed to a private password of 12 or more characters.
 const char OTA_PASSWORD[] = "paste-your-ota-password-here";
 
 // Used only if mDNS discovery fails.
