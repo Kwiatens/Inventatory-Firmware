@@ -65,6 +65,9 @@ struct DecodedComponentFields {
   String manufacturerPartNumber;
   String encodedPartName;
   String auxiliaryPartNumber;
+  // The 14K line and 11K invoice fields a Mouser bag prints; a Mouser bag is recognised by both.
+  String customerLine;
+  String invoiceNumber;
   int quantity = 1;
 };
 
@@ -111,6 +114,10 @@ inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields&
         if (decoded.manufacturerPartNumber.length() == 0) decoded.manufacturerPartNumber = parsed;
       } else if (iso15434Field(field, "P", parsed)) {
         if (decoded.auxiliaryPartNumber.length() == 0) decoded.auxiliaryPartNumber = parsed;
+      } else if (decoded.customerLine.length() == 0 && iso15434Field(field, "14K", parsed)) {
+        decoded.customerLine = parsed;
+      } else if (decoded.invoiceNumber.length() == 0 && iso15434Field(field, "11K", parsed)) {
+        decoded.invoiceNumber = parsed;
       } else if (decoded.manufacturer.length() == 0 && iso15434Field(field, "1V", parsed)) {
         decoded.manufacturer = parsed;
       } else if (decoded.manufacturer.length() == 0 && iso15434Field(field, "V", parsed)) {
@@ -165,7 +172,9 @@ inline bool decodeComponentDataMatrix(const String& raw, DecodedComponentFields&
   }
   if (decoded.manufacturerPartNumber.length() > 0 &&
       !isStandardManufacturerPartNumber(decoded.manufacturerPartNumber)) decoded.manufacturerPartNumber.clear();
-  return decoded.manufacturerPartNumber.length() > 0 || decoded.encodedPartName.length() > 0;
+  // A Mouser bag has neither 1P nor 20P: its P field is the only part number it prints.
+  return decoded.manufacturerPartNumber.length() > 0 || decoded.encodedPartName.length() > 0 ||
+         decoded.auxiliaryPartNumber.length() > 0;
 }
 
 // The longest code the outbox keeps: its code field holds 64 characters and a terminator.
@@ -210,6 +219,53 @@ inline String digiKeyBagCodeForSync(const String& digiKeyPartNumber, const Strin
   envelope += '\x1E';
   envelope += '\x04';
   return envelope.length() <= maxLength ? envelope : String();
+}
+
+// True for text a Mouser manufacturer name may be sent as: printable ASCII with no separator.
+inline bool isSendableManufacturerName(const String& value) {
+  if (value.length() == 0) return false;
+  for (size_t index = 0; index < value.length(); ++index) {
+    const auto byte = static_cast<unsigned char>(value[index]);
+    if (byte < 0x20U || byte > 0x7EU) return false;
+  }
+  return true;
+}
+
+// Rebuilds the Mouser bag code the desktop reads: Macro 06 with 14K, 11K, P and, if it fits, 1V. The Mouser
+// bag names no Mouser number, so P (the customer part number, which Mouser fills with the manufacturer part
+// number) is what the desktop looks up. Empty without 14K, 11K and a P field, for a -ND number (DigiKey's), or if
+// even the shortest form exceeds maxLength. A manufacturer name that is not plain ASCII is left out.
+inline String mouserBagCodeForSync(const DecodedComponentFields& decoded, size_t maxLength) {
+  const auto partNumber = trimCopy(decoded.auxiliaryPartNumber);
+  const auto line = trimCopy(decoded.customerLine);
+  const auto invoice = trimCopy(decoded.invoiceNumber);
+  if (!isBagIdentifier(partNumber) || !isBagIdentifier(line) || !isBagIdentifier(invoice)) return String();
+  if (partNumber.length() > 3U && partNumber.substring(partNumber.length() - 3U) == "-ND") return String();
+  String head = "[)>";
+  head += '\x1E';
+  head += "06";
+  head += '\x1D';
+  head += "14K";
+  head += line;
+  head += '\x1D';
+  head += "11K";
+  head += invoice;
+  head += '\x1D';
+  head += "P";
+  head += partNumber;
+  const auto manufacturer = trimCopy(decoded.manufacturer);
+  if (isSendableManufacturerName(manufacturer)) {
+    String withManufacturer = head;
+    withManufacturer += '\x1D';
+    withManufacturer += "1V";
+    withManufacturer += manufacturer;
+    withManufacturer += '\x1E';
+    withManufacturer += '\x04';
+    if (withManufacturer.length() <= maxLength) return withManufacturer;
+  }
+  head += '\x1E';
+  head += '\x04';
+  return head.length() <= maxLength ? head : String();
 }
 
 // TME bag QR fields the desktop reads: PN (symbol), MPN and QTY.
