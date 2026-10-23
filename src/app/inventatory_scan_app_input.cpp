@@ -124,14 +124,17 @@ void InventatoryScanApp::handleScan(const String& code) {
     const auto& lookupCode = decoded.manufacturerPartNumber;
     const auto& manufacturer = decoded.manufacturer;
     const auto& encodedPartName = decoded.encodedPartName;
-    // The desktop recognises bags by DigiKey part number, so refuse a Data Matrix without one.
-    const auto bagCode = digiKeyBagCodeForSync(decoded.auxiliaryPartNumber, lookupCode, kMaximumBagEventCodeBytes);
+    // The desktop recognises a DigiKey bag by its -ND part number and a Mouser bag by its line and invoice fields.
+    auto bagCode = digiKeyBagCodeForSync(decoded.auxiliaryPartNumber, lookupCode, kMaximumBagEventCodeBytes);
+    const bool mouserBag = bagCode.length() == 0 && decoded.customerLine.length() > 0;
+    if (mouserBag) bagCode = mouserBagCodeForSync(decoded, kMaximumBagEventCodeBytes);
     if (bagCode.length() == 0) {
       showScanRefusal("Not a supported vendor bag. Add the part by hand",
                       "Rejected Data Matrix scan that no supported vendor bag carries.");
       return;
     }
-    const auto forwardedCode = lookupCode.length() > 0 ? lookupCode : encodedPartName;
+    const auto forwardedCode = mouserBag ? trimCopy(decoded.auxiliaryPartNumber)
+                                         : (lookupCode.length() > 0 ? lookupCode : encodedPartName);
     const auto defaultQuantity = decoded.quantity;
     resetPending();
     scannedCode_ = forwardedCode;
@@ -141,7 +144,8 @@ void InventatoryScanApp::handleScan(const String& code) {
     scannedPartName_ = encodedPartName;
     quantity_.setDefaultValue(defaultQuantity);
     pendingScanType_ = PendingScanType::ComponentDataMatrix;
-    // Look up by DigiKey part number (the desktop matches it); manufacturer number is display only.
+    // Look up by DigiKey part number, or a Mouser bag's P field, which the desktop matches as the part's SKU;
+    // manufacturer number is display only.
     activeLookupCode_ = trimCopy(decoded.auxiliaryPartNumber);
     activeLookupId_ = clientConfig_.deviceId + String("-lookup-") + String(lookupSequence_++);
     lookupMissCount_ = 0;

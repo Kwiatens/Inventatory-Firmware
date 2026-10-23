@@ -134,6 +134,59 @@ void test_datamatrix_decoding_fixtures() {
   TEST_ASSERT_FALSE(decodeComponentDataMatrix(oversized, decoded));
 }
 
+// The Mouser bag in the photo (ISO/IEC 15434 Macro 06): customer PO, line, customer part number, quantity,
+// invoice, country and manufacturer. It names no Mouser number and no manufacturer part number.
+void test_mouser_bag_is_decoded_and_rebuilt_for_sync() {
+  const String gs(static_cast<char>(0x1D));
+  const String rs(static_cast<char>(0x1E));
+  const String eot(static_cast<char>(0x04));
+  const String mouserBag = String("[)>") + rs + "06" + gs + "K35194" + gs + "14K003" + gs + "P74279226101" + gs + "Q3" +
+                           gs + "11K088863023" + gs + "4LTW" + gs + "1VWurth" + rs + eot;
+  DecodedComponentFields decoded;
+  TEST_ASSERT_TRUE(decodeComponentDataMatrix(mouserBag, decoded));
+  TEST_ASSERT_EQUAL_STRING("74279226101", decoded.auxiliaryPartNumber.c_str());
+  TEST_ASSERT_EQUAL_STRING("", decoded.manufacturerPartNumber.c_str());
+  TEST_ASSERT_EQUAL_STRING("Wurth", decoded.manufacturer.c_str());
+  TEST_ASSERT_EQUAL_STRING("003", decoded.customerLine.c_str());
+  TEST_ASSERT_EQUAL_STRING("088863023", decoded.invoiceNumber.c_str());
+  TEST_ASSERT_EQUAL_INT(3, decoded.quantity);
+  // A DigiKey bag has no 14K field, so it is never taken for a Mouser bag.
+  DecodedComponentFields digiKey;
+  TEST_ASSERT_TRUE(decodeComponentDataMatrix(String("[)>") + rs + "06" + gs + "P296-1234-1-ND" + gs + "1PSN74LVC1G14DBVR" +
+                                             gs + "11K1" + gs + "Q100" + rs + eot, digiKey));
+  TEST_ASSERT_EQUAL_UINT(0U, digiKey.customerLine.length());
+
+  // What leaves the scanner: the fields the desktop reads, in 49 characters.
+  const auto code = mouserBagCodeForSync(decoded, kMaximumBagEventCodeBytes);
+  const String expected = String("[)>") + rs + "06" + gs + "14K003" + gs + "11K088863023" + gs + "P74279226101" + gs +
+                          "1VWurth" + rs + eot;
+  TEST_ASSERT_EQUAL_UINT(49U, code.length());
+  TEST_ASSERT_EQUAL_STRING(expected.c_str(), code.c_str());
+  TEST_ASSERT_TRUE(code.length() <= kMaximumBagEventCodeBytes);
+
+  // A manufacturer name that does not fit, or is not plain ASCII, is left out; the rest still goes.
+  const auto withoutManufacturer = String("[)>") + rs + "06" + gs + "14K003" + gs + "11K088863023" + gs + "P74279226101" +
+                                   rs + eot;
+  TEST_ASSERT_EQUAL_STRING(withoutManufacturer.c_str(), mouserBagCodeForSync(decoded, 45U).c_str());
+  DecodedComponentFields umlaut = decoded;
+  umlaut.manufacturer = "W\xC3\xBCrth Elektronik";
+  TEST_ASSERT_EQUAL_STRING(withoutManufacturer.c_str(), mouserBagCodeForSync(umlaut, kMaximumBagEventCodeBytes).c_str());
+  TEST_ASSERT_EQUAL_UINT(0U, mouserBagCodeForSync(decoded, 20U).length());
+
+  // Without the line, the invoice or a clean part number there is nothing the desktop would accept.
+  DecodedComponentFields incomplete = decoded;
+  incomplete.customerLine = "";
+  TEST_ASSERT_EQUAL_UINT(0U, mouserBagCodeForSync(incomplete, kMaximumBagEventCodeBytes).length());
+  incomplete = decoded;
+  incomplete.invoiceNumber = "";
+  TEST_ASSERT_EQUAL_UINT(0U, mouserBagCodeForSync(incomplete, kMaximumBagEventCodeBytes).length());
+  incomplete = decoded;
+  incomplete.auxiliaryPartNumber = "74279 226101";
+  TEST_ASSERT_EQUAL_UINT(0U, mouserBagCodeForSync(incomplete, kMaximumBagEventCodeBytes).length());
+  incomplete.auxiliaryPartNumber = "296-1234-1-ND";
+  TEST_ASSERT_EQUAL_UINT(0U, mouserBagCodeForSync(incomplete, kMaximumBagEventCodeBytes).length());
+}
+
 void test_digikey_bag_without_aim_prefix_is_a_vendor_bag() {
   // The GM65 sends this bag with no AIM prefix; the frame ends at its RS EOT trailer.
   const String bag = String("[)>") + static_cast<char>(0x1E) + "06" + static_cast<char>(0x1D) +
@@ -1224,6 +1277,7 @@ void setup() {
   RUN_TEST(test_standardized_scanner_codes);
   RUN_TEST(test_bag_codes_for_sync);
   RUN_TEST(test_datamatrix_decoding_fixtures);
+  RUN_TEST(test_mouser_bag_is_decoded_and_rebuilt_for_sync);
   RUN_TEST(test_digikey_bag_without_aim_prefix_is_a_vendor_bag);
   RUN_TEST(test_quantity_composer_defaults_and_limit);
   RUN_TEST(test_quantity_composer_never_submits_a_value_it_does_not_show);
