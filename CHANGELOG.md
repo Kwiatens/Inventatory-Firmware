@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- A Mouser bag's Data Matrix is read as a vendor bag. The scanner sends its line, invoice and customer part number, plus the manufacturer when it fits, and the desktop adds or finds the part and looks it up on Mouser. Before, a Mouser bag was refused. This needs a desktop with Mouser bag support.
+
 ### Changed
 - The Energy saving screen under Device settings is named Energy, and its row in Device settings reads Energy.
 - A low cell is refused at boot on the battery percent the device shows, and on the voltage only at the 3.30 V floor. A load sags the cell's voltage, so a sagged reading at boot no longer refuses a cell the gauge holds above 10%. The serial log writes a `Boot battery:` line with the estimate, the refusal percent and the charger LED state.
