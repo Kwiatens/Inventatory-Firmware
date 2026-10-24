@@ -6,7 +6,6 @@
 // Copy to config.h and fill in real values. config.h is git-ignored.
 
 const char DEVICE_ID[] = "Inventatory-SCAN-R1";
-const char OTA_PASSWORD[] = "paste-your-ota-password-here";
 
 // Used only if mDNS discovery fails.
 const char FALLBACK_HOST[] = "";

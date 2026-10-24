@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Signed firmware updates over Wi-Fi. The scanner pulls the update from the paired desktop over its authenticated connection and installs it only if an ECDSA P-256 signature by a trusted key covers it, it is for this product and hardware, its security counter is not lower than the scanner's minimum, and the downloaded image matches the signed hash. When the desktop offers an update, the Ready screen says "Update available"; D opens it, and nothing starts on its own. It shows the new version and installs only after A is pressed. Below 30% battery and off the charger it asks to charge first. The format and protocol are in `docs/ota-protocol.md`. The trusted public keys are in `src/config/ota_keys.h`; with none, updates come over USB only. This needs a desktop that offers signed updates, or `tools/ota_serve.py` for testing.
+- `tools/sign_firmware.py` makes the signing key, signs a `firmware.bin` into a `.ota` package, and checks a package. Signing is done on the owner's PC, never in CI. CI publishes the unsigned `firmware.bin` and its SHA-256 for that step.
 - A Mouser bag's Data Matrix is read as a vendor bag. The scanner sends its line, invoice and customer part number, plus the manufacturer when it fits, and the desktop adds or finds the part and looks it up on Mouser. Before, a Mouser bag was refused. This needs a desktop with Mouser bag support.
 
 ### Changed
@@ -112,7 +114,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A sync response with a NUL escape or a repeated name is refused, whether or not the field is read. A repeated name counts as the same name after its escapes are decoded, so `"resultId"` repeats `"resultId"`.
 - An HTTP response with a repeated framing header is refused, and its body is authenticated by its declared length, so a NUL byte cannot truncate it.
 - A provisioning request with a NUL byte in any field is refused.
-- An OTA update is refused while `OTA_PASSWORD` is the example placeholder or shorter than 12 characters. A USB build made from the example configuration accepted an update signed with the public placeholder password.
 - The name from an mDNS answer is used in the HTTP `Host` header only when it holds DNS name characters, so a host on the network cannot add header lines to a sync request.
 - The BLE pairing passkey is drawn after the Bluetooth radio starts, so the hardware random number generator has its entropy source, and without modulo bias.
 - The transport keys derived for each MAC are cleared from memory after use.
@@ -127,8 +128,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The battery curve is approximate and needs calibrating on the device with a full discharge.
 - A barcode that is not recognised shows no code on the screen.
 - After a queue repair, an older firmware cannot read the queue. It reports the queue as unreadable, and its repair menu discards the stored scans. Sync the scans to the PC before you flash an older build over a repaired queue.
-- An OTA update needs a network where no other host can intercept traffic: the password does not protect the image itself (see `SECURITY.md`).
 - The BLE setup session has no hardware test on a board yet. The host tests cover the parser, the queue and the transport, not the Bluetooth stack.
+- A signed release is built from `config.example.h`, so it sets the example `DEVICE_ID`, fallback host and pins. Install it over Wi-Fi only on a scanner built with those settings; a scanner with its own id or pins needs its own build and key until these settings move out of the build.
+
+### Removed
+- ArduinoOTA, the `waveshare_esp32s3_nano_ota` build, `tools/ota_auth.py` and `OTA_PASSWORD`. Updates no longer use a password: the image is signed instead, so a host on the network can no longer install its own firmware during an update. Remove `OTA_PASSWORD` from your `config.h` when convenient; it is ignored.
 
 ## [0.1.0]
 *(Not yet released)*

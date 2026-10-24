@@ -18,7 +18,7 @@ How to use it:
 - [ ] Clean checkout of the commit to release. `cp src/config/config.example.h src/config/config.h`.
 - [ ] `pio run -e waveshare_esp32s3_nano_usb` builds. Note RAM and flash use (last record: 91.3% of the
       application partition).
-- [ ] `pio run -e waveshare_esp32s3_nano_ota` builds (set a throwaway `OTA_PASSWORD` first).
+- [ ] `python3 -m unittest discover -s tools -p 'test_*.py'` passes (signing tool and OTA test server).
 - [ ] `pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing` compiles.
 - [ ] `make -C host-tests SANITIZE=address,undefined test` passes. `python3 tools/check_error_codes.py` passes.
 - [ ] `python3 tools/check_logging.py` passes (the zero-logging check in `AGENTS.md` section 10).
@@ -175,15 +175,34 @@ and 63.
 
 ## 12. OTA (gate 3)
 
-- [ ] `pio run -e waveshare_esp32s3_nano_ota -t upload --upload-port <device host>` succeeds. The
-      update screen shows progress, then "Restarting", then Ready on the new version.
-- [ ] Wrong password: update fails with `OTA-01` and the device returns to normal.
-- [ ] Request an update and send nothing: after 2 minutes `OTA-02` "No update received".
-- [ ] Request an update and press `C` while waiting: cancels back to Ready.
-- [ ] Interrupt an upload (pull Wi-Fi): `OTA-01`, device still works.
-- [ ] Flash a deliberately crashing image over OTA: within 30 s the previous image returns.
-- [ ] OTA a working image, then power off with `*` within 30 s and wake: the new image stays, and the log
+Signed updates (docs/ota-protocol.md). Set up once: make a test key with
+`python3 tools/sign_firmware.py keygen --out <test key>`, put its public key in `src/config/ota_keys.h` slot 0,
+and flash that build over USB. Raise `INVENTATORY_FIRMWARE_VERSION` in `src/config/version.h`, build again,
+then sign the new `firmware.bin` (the tool reads the version from the image itself):
+`python3 tools/sign_firmware.py sign --key <test key> --image .pio/build/waveshare_esp32s3_nano_usb/firmware.bin --out test.ota`.
+Close the desktop app and run `python3 tools/ota_serve.py --package test.ota --device <DEVICE_ID> --token-env TOKEN --mdns`.
+
+- [ ] A build with both key slots empty: Quick settings, 4 shows `OTA-01` "Updates off" at once.
+- [ ] Quick settings, 4: "Install update?" shows the new version. `A` downloads with progress, then
+      "Restarting", then Ready on the new version. The server prints `status: installed`.
+- [ ] The hint: with the server running, wait on the Ready screen. Within a few seconds the second line
+      reads "Update available" and the bar `D Update C Menu`; the screen does not change by itself.
+      `D` opens "Install update?". `C` declines (server prints `declined`), and the mention does not
+      come back until a restart.
+- [ ] No answer to "Install update?" for 60 s: back to Ready, server prints `declined`.
+- [ ] A package signed by another key (`--no-verify` on the server): `OTA-01` "Not signed".
+- [ ] A package with a changed image byte (`--no-verify`): the download completes, then `OTA-01` "Image corrupt";
+      the device restarts into nothing and keeps working on the old version.
+- [ ] Battery below 30 % and not charging: "Charge to update", no code. On the charger the update proceeds.
+- [ ] Request an update with no server running: after 2 minutes `OTA-02` "No update received".
+- [ ] Request an update and press `C` while it connects: cancels back to Ready.
+- [ ] Stop the server halfway through the download: `OTA-01` "Download failed", device still works.
+- [ ] Power off (pull the battery) halfway through the download: the old version boots.
+- [ ] Sign a deliberately crashing image and install it: within 30 s the previous image returns.
+- [ ] Install a working image, then power off with `*` within 30 s and wake: the new image stays, and the log
       reads "Firmware confirmed: powered off after a healthy start".
+- [ ] Security counter: build with `INVENTATORY_FIRMWARE_SECURITY_COUNTER` 2, sign and install it, let it confirm, then offer one
+      with counter 1: `OTA-01` "Older release".
 - [ ] `*` + `D` hold during setup does nothing.
 
 ## 13. Serial log audit (zero sensitive logging)

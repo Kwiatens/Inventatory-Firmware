@@ -38,10 +38,9 @@ is Arduino-ESP32 2.0.17 on ESP-IDF v4.4.7 per `tools/sdk/versions.txt`).
   headers vary by library: `libraries/WiFi` carries LGPL headers;
   `libraries/Preferences` and `libraries/Update` carry Apache-2.0 headers
   (`Update` uses an SPDX tag); `libraries/ESPmDNS` carries an MIT notice;
-  `libraries/BLE/LICENSE` is the Apache-2.0 text; `libraries/ArduinoOTA` has no
-  per-file license header.
-- Linked: `Arduino.h`, `WiFi.h`, `ESPmDNS.h`, `Preferences.h`, `ArduinoOTA.h`,
-  `Update`, and the BLE headers used by `src/setup/ble_provisioning.cpp`.
+  `libraries/BLE/LICENSE` is the Apache-2.0 text.
+- Linked: `Arduino.h`, `WiFi.h`, `ESPmDNS.h`, `Preferences.h`, `Update.h`,
+  and the BLE headers used by `src/setup/ble_provisioning.cpp`.
 - LGPL-2.1 section 6 (text at `share/licenses/gcc/COPYING.LIB` in the
   toolchain package) applies to distributed binaries that link the library: the
   work must carry a prominent notice that the library is used and that it is
@@ -60,7 +59,8 @@ is Arduino-ESP32 2.0.17 on ESP-IDF v4.4.7 per `tools/sdk/versions.txt`).
   pulls in archives including `libbt`, `libbtdm_app`, `libwpa_supplicant`,
   `libnet80211`, `libesp_wifi`, `liblwip`, `libmbedcrypto`, `libmbedtls_2`,
   `libfreertos`, and `libmesh`. The main firmware uses Wi-Fi, BLE, and mbedTLS
-  (`include/InventatoryScanSecurity.h` includes `mbedtls/md.h`), so the same
+  (`include/InventatoryScanSecurity.h` includes `mbedtls/md.h`; signed updates use
+  `mbedtls/ecdsa.h` in `include/InventatoryScanFirmwareCrypto.h`), so the same
   families are expected in the main binary. The main firmware map was not
   generated, so the exact set is not verified.
 - The Wi-Fi, Bluetooth, and PHY binaries (for example `libbtdm_app`,

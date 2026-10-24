@@ -27,10 +27,9 @@ Use these commands to build the firmware targets:
 ```powershell
 # Build standard USB firmware (default environment)
 pio run -e waveshare_esp32s3_nano_usb
-
-# Build isolated OTA firmware
-pio run -e waveshare_esp32s3_nano_ota
 ```
+
+Updates over Wi-Fi are signed packages, not a separate build: see [docs/ota-protocol.md](docs/ota-protocol.md).
 
 Run the host suite first. It needs no hardware, and it runs the same Unity assertions the device runs, with
 stand-ins for the Arduino, NVS and mbedtls APIs (see `host-tests/`). It needs a C++17 compiler, `make` and the

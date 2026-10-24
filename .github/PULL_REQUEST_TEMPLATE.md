@@ -12,7 +12,7 @@
 ## Testing
 - [ ] Host suite passes: `make -C host-tests SANITIZE=address,undefined test`
 - [ ] Unity compile-only image builds: `pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing`
-- [ ] USB and OTA firmware build: `pio run -e waveshare_esp32s3_nano_usb` and `pio run -e waveshare_esp32s3_nano_ota`
+- [ ] Firmware build: `pio run -e waveshare_esp32s3_nano_usb`
 
 ## Hardware testing
 <!-- Specify whether the Unity assertions ran on physical hardware. Compile-only is not a test pass. -->

@@ -162,6 +162,11 @@ void InventatoryScanApp::networkTaskLoop() {
       int status = 0;
       String body;
       const bool sent = WiFi.isConnected() && client_.postSync(payload, status, body);
+      if (!sent) {
+        // Logged here because only the client knows why the exchange failed.
+        deviceLog.print("Sync: no authenticated answer, ");
+        deviceLog.println(WiFi.isConnected() ? client_.lastFailure() : "Wi-Fi down");
+      }
       if (xSemaphoreTake(networkMutex_, portMAX_DELAY) == pdTRUE) {
         syncResultRequestId_ = requestId;
         syncResultSent_ = sent;
@@ -342,6 +347,8 @@ void InventatoryScanApp::processNetworkResult() {
 }
 
 void InventatoryScanApp::handleSyncResponse(const SyncResponse& response) {
+  // Shown on the Ready screen only; the update starts when the user presses D there.
+  noteFirmwareOffer(response.firmwareOffer);
   if (response.hasQuickLabels) {
     quickLabelSnapshotReceived_ = true;
     pcSupportsQuickLabels_ = true;

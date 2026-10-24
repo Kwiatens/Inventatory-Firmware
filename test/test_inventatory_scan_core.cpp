@@ -25,6 +25,7 @@ void registerBlockedHeadTests();
 void registerTextHelperTests();
 void registerBatteryGaugeTests();
 void registerLogLineTests();
+void registerFirmwarePackageTests();
 
 void test_bag_codes_for_sync() {
   // A DigiKey bag code: envelope, DigiKey and manufacturer part numbers (43 characters).
@@ -1274,6 +1275,7 @@ void setup() {
   registerTextHelperTests();
   registerBatteryGaugeTests();
   registerLogLineTests();
+  registerFirmwarePackageTests();
   RUN_TEST(test_standardized_scanner_codes);
   RUN_TEST(test_bag_codes_for_sync);
   RUN_TEST(test_datamatrix_decoding_fixtures);

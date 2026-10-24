@@ -29,7 +29,7 @@ coding agents must operate within explicit operational boundaries:
 
 ### Prohibited without explicit authorization
 - **Never erase the device's flash** (`pio run -t erase` or `esptool.py erase_flash`). Erasing removes the stored Wi-Fi and pairing data. A plain USB upload is permitted (see above).
-- **Never trigger over-the-air updates** (`pio run -e waveshare_esp32s3_nano_ota -t upload`).
+- **Never trigger over-the-air updates** (`tools/ota_serve.py` against a device, or offering an update from the desktop).
 - **Never erase NVS partitions or trigger provisioning resets** (`SetupStateStore::clear()`).
 - **Never perform destructive electrical or hardware testing**.
 - **Never push git branches, open public PRs, create git tags, or publish releases**.
@@ -141,7 +141,7 @@ agents must distinguish between immutable invariants and mutable implementation 
    is confirmed and the queue index update is durably committed to NVS.
 7. **Concurrency boundaries**: No U8g2 display rendering or keypad polling may
    occur from Core 0 (Network worker). No blocking network calls may occur from
-   Core 1 (UI loop), except the ArduinoOTA upload exception in section 6.
+   Core 1 (UI loop), except the signed firmware update exception in section 6.
 8. **NVS namespace safety**: NVS namespace identifiers must not exceed 15
    characters (plus null terminator). Calling `clear()` on the outbox namespace
    is prohibited.
@@ -183,13 +183,14 @@ agents must distinguish between immutable invariants and mutable implementation 
 │   │   ├── inventatory_scan_app.h/.cpp       # State machine, power modes, orchestration
 │   │   ├── inventatory_scan_app_input.cpp   # Keypad dispatch, quantity composition
 │   │   ├── inventatory_scan_app_network.cpp # FreeRTOS network task & HTTP client
-│   │   ├── inventatory_scan_app_ota.cpp     # ArduinoOTA lifecycle and recovery
+│   │   ├── inventatory_scan_app_ota.cpp     # Signed update: offer, consent, download, recovery
 │   │   └── inventatory_scan_app_ui.cpp      # View-model mapping and LCD updates
 │   ├── config/                 # Pinned pins, versioning, and configuration
 │   │   ├── config.example.h    # Tracked template for private settings
 │   │   ├── config.h            # Private, uncommitted build configuration (ignored)
 │   │   ├── hardware.h          # LCD GPIO, contrast, and recovery constants
-│   │   └── version.h           # Firmware version strings
+│   │   ├── ota_keys.h          # Public keys trusted to sign updates (two slots; empty = no Wi-Fi updates)
+│   │   └── version.h           # Firmware version, product, hardware and security counter
 │   ├── display/                # Graphic LCD driver subsystem (U8g2)
 │   │   ├── display_controller.h/.cpp # Contrast persistence & frame scheduling
 │   │   ├── display_model.h     # UI view models, menu trees, connectivity states
@@ -201,7 +202,8 @@ agents must distinguish between immutable invariants and mutable implementation 
 │   ├── keypad/                 # Keypad matrix driver
 │   │   └── keypad.h/.cpp       # 4x4 matrix scanning, debouncing, key event dispatch
 │   ├── ota/                    # OTA image confirmation and rollback report
-│   │   └── firmware_validity.h/.cpp  # Confirms a pending image after a healthy start or before a deliberate power off
+│   │   └── firmware_validity.h/.cpp  # Confirms a pending image after a healthy start or before a deliberate power off;
+│   │                                 # stores the minimum security counter once an update is confirmed
 │   ├── net/                    # HTTP client and transport
 │   │   └── inventatory_client.h/.cpp # Endpoint discovery, HMAC signing, HTTP transport
 │   ├── setup/                  # BLE provisioning
@@ -218,7 +220,9 @@ agents must distinguish between immutable invariants and mutable implementation 
     ├── check_logging.py        # Zero sensitive logging check (CI)
     ├── dev-harness/            # Stub-header syntax check and LCD contact sheet, for work without PlatformIO
     ├── device_log_listener.py  # Shows the over-the-air device log when it is enabled for bench work
-    └── ota_auth.py             # Pre-build script reading OTA password from config.h
+    ├── ota_serve.py            # Serves a signed .ota to a paired scanner, for tests without the desktop
+    ├── sign_firmware.py        # Signing key, package signing and checking (owner's PC only, never CI)
+    └── test_ota_tools.py       # Tests for the two tools above
 ```
 
 ---
@@ -233,10 +237,12 @@ The firmware utilizes both ESP32-S3 cores using FreeRTOS:
 - Polls GM65 UART and parses barcode symbologies.
 - Scans and debounces the 4x4 keypad matrix.
 - Drives U8g2 display rendering and contrast updates.
-- Runs the ArduinoOTA upload (`ArduinoOTA.handle()` in `serviceOta()`) to completion
-  inside `loop()`. This is the only blocking network exception on Core 1. It runs only
-  when an OTA was requested with setup complete and saved Wi-Fi, `networkPauseAcknowledged_`
-  is true, and Wi-Fi is connected. Progress is drawn from the `onProgress` callback.
+- Runs the signed firmware update (`serviceOta()`, `src/app/inventatory_scan_app_ota.cpp`):
+  the offer request, then, after the user presses A, the chunk download into the inactive
+  partition. This is the only blocking network exception on Core 1. It uses `client_`
+  only when an update was requested with setup complete and saved Wi-Fi,
+  `networkPauseAcknowledged_` is true (the worker has stopped using `client_`), and Wi-Fi
+  is connected. Progress is drawn between chunks.
 
 ### Core 0: Background network worker task
 - Runs `networkTaskEntry` pinned to Core 0 with dedicated stack (8,192 bytes).
@@ -250,7 +256,7 @@ The firmware utilizes both ESP32-S3 cores using FreeRTOS:
    U8g2 methods, or keypad polling. All visual updates and hardware input remain
    on Core 1.
 2. **Non-blocking UI**: Core 1 must **never** initiate blocking network calls,
-   except the ArduinoOTA upload under Core 1 above. Jobs are passed to Core 0 via
+   except the signed firmware update under Core 1 above. Jobs are passed to Core 0 via
    `queueSyncJob()`.
 3. **Shared state protection**: Multi-field structures between Core 0 and Core 1
    are protected by `networkMutex_`. Lock contention must be minimal; do not hold
@@ -258,7 +264,7 @@ The firmware utilizes both ESP32-S3 cores using FreeRTOS:
 4. **Atomic flags**: Single-variable state (`networkStarted_`, `networkPaused_`,
    `networkPauseAcknowledged_`, `powerMode_`, `wifiStarted_`, `lastSyncAttempt_`,
    `networkMutex_`) uses `std::atomic<T>`.
-5. **Task lifecycle handshake**: When entering BLE provisioning or ArduinoOTA,
+5. **Task lifecycle handshake**: When entering BLE provisioning or a firmware update,
    Core 1 signals `networkPaused_ = true` and must await `networkPauseAcknowledged_`
    before touching shared NVS namespaces or modifying radio states.
 
@@ -274,6 +280,7 @@ Storage (NVS) partition (`0x5000` / 20 KiB).
   - `inv_outbox`: Offline scan queue.
   - `inv_setup`: Provisioned Wi-Fi credentials and 32-byte pairing token.
   - `inv_device`: Persisted display contrast and device preferences.
+  - `inv_ota`: The minimum security counter for signed updates (`min_counter`).
 - **15-character namespace limit**: NVS namespace strings must not exceed 15
   characters plus null terminator. Longer strings fail silently with `KEY_TOO_LONG`.
 - **Per-record keys**: To avoid multi-page NVS chunk churn that rapidly exhausts
@@ -477,10 +484,9 @@ Copy-Item src/config/config.example.h src/config/config.h
 ```powershell
 # Build standard USB firmware (default environment)
 pio run -e waveshare_esp32s3_nano_usb
-
-# Build isolated OTA firmware
-pio run -e waveshare_esp32s3_nano_ota
 ```
+
+Updates over Wi-Fi are signed packages of this same image (docs/ota-protocol.md).
 
 ### Unity test image compile-only check (no device required)
 Compiles the embedded Unity test image to verify types, syntax, and links without

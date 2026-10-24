@@ -53,12 +53,17 @@ class DisplayController {
   void showPowerOffAfter(const String& label, const String& detail, std::size_t index, std::size_t count);
   void showContrast(uint8_t contrast);
   void showResetConfirm();
+  // A verified update is ready; A installs it, C declines.
+  void showUpdateConfirm(const String& version);
   void showDiscardConfirm();
   void showRepairConfirm(bool everyScanLost = false);
   void showPrinting(const String& label);
   // A failed print shows its code under the message, when there is one.
   void showQuickLabelPrintResult(bool success, const String& message, const String& code = String());
   void setSyncBlocked(bool blocked);
+  // The desktop offers an update: the Ready screen says so, and D opens the offer.
+  void setUpdateAvailable(bool available);
+  bool updateAvailableShown() const;
   void setQueueUnreadable(bool unreadable);
   void setBatteryUnreadable(bool unreadable);
 
@@ -111,6 +116,7 @@ class DisplayController {
   unsigned long lastStartLineRecoveryMs_ = 0;
   bool standby_ = false;
   bool syncBlocked_ = false;
+  bool updateAvailable_ = false;
   bool queueUnreadable_ = false;
   bool batteryUnreadable_ = false;
   // The boot mark's bloom stage while the splash plays; the full mark otherwise.
