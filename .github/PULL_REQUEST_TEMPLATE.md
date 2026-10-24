@@ -1,6 +1,9 @@
 ## Summary
 <!-- Describe the changes and the rationale behind them. -->
 
+## Changelog
+<!-- Plain user-facing wording for CHANGELOG.md, as the maintainer approved it: a Keep a Changelog subsection (### Added, ### Changed, ### Fixed, ...) with bullets, or "No user-visible change." The maintainer collects it into CHANGELOG.md at release time. -->
+
 ## Change type
 <!-- Choose one or more that apply -->
 - [ ] Bug fix (non-breaking change which fixes an issue)
@@ -29,5 +32,6 @@
 - [ ] **Durability**: Newly captured scans that fail NVS write show error banner and are not queued.
 - [ ] **Security**: HMAC mutual auth, directional keys, monotonic counter reservation preserved.
 - [ ] **Zero logging**: Passed CI grep rules (no raw barcodes, UART buffers, or secrets logged).
+- [ ] **Changelog**: The Changelog section has the approved wording, or says there is no user-visible change.
 - [ ] **Working tree**: No modified `config.h`, `.pio/`, `.bin` files, or unrelated user edits in diff.
 - [ ] **Commit format**: Follows AGENTS.md section 12 and the shared standards, and new source files carry the SPDX header.
