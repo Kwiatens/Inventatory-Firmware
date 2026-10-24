@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Host mbedtls HMAC stand-in, backed by OpenSSL EVP_MAC (checked against RFC 4231 vectors).
+// Host mbedtls HMAC and SHA-256 stand-in, backed by OpenSSL EVP_MAC and EVP_MD (checked against RFC 4231
+// and FIPS 180-2 vectors).
 #pragma once
 
 #include <openssl/core_names.h>
@@ -41,4 +42,46 @@ inline int mbedtls_md_hmac(const mbedtls_md_info_t* info, const unsigned char* k
   EVP_MAC_CTX_free(context);
   EVP_MAC_free(mac);
   return result;
+}
+
+// Streaming SHA-256. Only the digest mode (hmac = 0) is provided; the firmware uses mbedtls_md_hmac for HMAC.
+struct mbedtls_md_context_t {
+  EVP_MD_CTX* evp;
+  const mbedtls_md_info_t* info;
+};
+
+inline void mbedtls_md_init(mbedtls_md_context_t* context) {
+  context->evp = nullptr;
+  context->info = nullptr;
+}
+
+inline void mbedtls_md_free(mbedtls_md_context_t* context) {
+  if (context == nullptr) return;
+  EVP_MD_CTX_free(context->evp);
+  context->evp = nullptr;
+  context->info = nullptr;
+}
+
+inline int mbedtls_md_setup(mbedtls_md_context_t* context, const mbedtls_md_info_t* info, int hmac) {
+  if (context == nullptr || info == nullptr || info->type != MBEDTLS_MD_SHA256 || hmac != 0) return -1;
+  context->evp = EVP_MD_CTX_new();
+  context->info = info;
+  return context->evp == nullptr ? -1 : 0;
+}
+
+inline int mbedtls_md_starts(mbedtls_md_context_t* context) {
+  if (context == nullptr || context->evp == nullptr) return -1;
+  return EVP_DigestInit_ex(context->evp, EVP_sha256(), nullptr) == 1 ? 0 : -1;
+}
+
+inline int mbedtls_md_update(mbedtls_md_context_t* context, const unsigned char* input, std::size_t length) {
+  if (context == nullptr || context->evp == nullptr) return -1;
+  if (length == 0) return 0;
+  return EVP_DigestUpdate(context->evp, input, length) == 1 ? 0 : -1;
+}
+
+inline int mbedtls_md_finish(mbedtls_md_context_t* context, unsigned char* output) {
+  if (context == nullptr || context->evp == nullptr || output == nullptr) return -1;
+  unsigned int written = 0;
+  return EVP_DigestFinal_ex(context->evp, output, &written) == 1 && written == 32 ? 0 : -1;
 }

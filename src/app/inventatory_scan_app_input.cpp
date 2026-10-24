@@ -289,6 +289,14 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
     if (provisioning_.locked() && event.type == InventatoryKeyEventType::Add) provisioning_.rearm();
     return;
   }
+  if (otaRequested_ && otaPhase_ == OtaPhase::AwaitConsent) {
+    if (event.type == InventatoryKeyEventType::Add) {
+      acceptOtaUpdate();
+    } else if (event.type == InventatoryKeyEventType::Cancel) {
+      declineOtaUpdate("Update declined.");
+    }
+    return;
+  }
   if (otaRequested_ && !otaUploadStarted_ && event.type == InventatoryKeyEventType::Cancel) {
     abandonOtaWait("OTA wait cancelled.", false);
     return;
@@ -330,6 +338,10 @@ void InventatoryScanApp::handleKey(const InventatoryKeyEvent& event) {
       } else if (state_ == State::AwaitQuantity) {
         quantity_.cycleCursor();
         display_.updateQuantity(quantity_.displayText(), quantity_.cursor());
+      } else if (state_ == State::Idle && powerMode_ == PowerMode::Normal && !display_.errorVisible() &&
+                 display_.updateAvailableShown()) {
+        // D on the Ready screen opens the update the desktop offers; A on the next screen installs it.
+        requestOtaUpdate();
       }
       break;
     case InventatoryKeyEventType::DeleteDigit:

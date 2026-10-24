@@ -12,6 +12,7 @@ static void tick(DisplayController& d, unsigned long ms = 0) { if (ms) delay(ms)
 int main(int argc, char** argv) {
   { SCREEN("boot splash"); d.playBootSplash(1200); }
   { SCREEN("ready"); d.showReady(); tick(d); }
+  { SCREEN("ready update"); d.setUpdateAvailable(true); d.showReady(); tick(d); }
   { SCREEN("ready queued"); d.setConnectivity(DisplayConnectivityState::Syncing, 3); d.showReady(); tick(d); }
   { SCREEN("ready problem"); d.setScannerFault(true); d.showReady(); tick(d); }
   { SCREEN("qty receive 4dig"); d.showQuantity("Checking inventory", "Part RC0603FR-0710KL", "9999", 3, true, QuantityLookupState::Pending); tick(d); }
@@ -29,9 +30,10 @@ int main(int argc, char** argv) {
   { SCREEN("display settings"); d.showDisplaySettings(45, "Auto 5m"); tick(d); }
   { SCREEN("contrast"); d.showContrast(45); tick(d); }
   { SCREEN("backlight"); d.showBacklight("Auto 5 min", "Off after 5 min idle", 4, 6); tick(d); }
-  { SCREEN("energy saving"); d.showEnergySaving(true, "5m", "30m", true); tick(d); }
+  { SCREEN("energy saving"); d.showEnergySaving(true, "5m", "30m", true, 0, "1300 mAh"); tick(d); }
   { SCREEN("confirm reset"); d.showResetConfirm(); tick(d); }
   { SCREEN("confirm discard"); d.showDiscardConfirm(); tick(d); }
+  { SCREEN("confirm update"); d.showUpdateConfirm("0.2.0"); tick(d); }
   { SCREEN("confirm repair"); d.showRepairConfirm(true); tick(d); }
   { SCREEN("fault detail"); d.setScannerFault(true); d.showFaultDetail(); tick(d); }
   { SCREEN("setup ble"); d.showSetup(123456); tick(d); }

@@ -62,11 +62,19 @@ jobs:
       - name: Build USB firmware
         run: pio run -e waveshare_esp32s3_nano_usb
 
-      - name: Build OTA firmware without uploading
-        run: |
-          # The OTA build rejects the example placeholder; use a throwaway value.
-          sed -i "s/paste-your-ota-password-here/ci-only-$(openssl rand -hex 8)/" src/config/config.h
-          pio run -e waveshare_esp32s3_nano_ota
+      - name: Record the image hash
+        # The owner signs releases on their own PC (docs/ota-protocol.md) and checks this hash first.
+        run: sha256sum .pio/build/waveshare_esp32s3_nano_usb/firmware.bin | tee firmware.bin.sha256
+
+      - name: Publish the unsigned image for signing
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: firmware-${{ github.sha }}
+          path: |
+            .pio/build/waveshare_esp32s3_nano_usb/firmware.bin
+            firmware.bin.sha256
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Compile embedded Unity image (assertions not run)
         run: pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
@@ -87,6 +95,9 @@ jobs:
 
       - name: Check the error-code catalogue
         run: python3 tools/check_error_codes.py
+
+      - name: Test the signing and test-server tools
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
 
       - name: Install OpenSSL development headers
         run: sudo apt-get update && sudo apt-get install -y libssl-dev

@@ -80,6 +80,8 @@ void test_sync_corpus_rejects_structural_damage() {
 }
 
 void test_sync_corpus_rejects_bad_field_values() {
+  expectRejected("firmware offer as a string", withMember(String("\"firmwareOffer\":\"true\"")));
+  expectRejected("firmware offer as a number", withMember(String("\"firmwareOffer\":1")));
   expectRejected("protocol version 2",
                  String("{\"protocolVersion\":2,\"requestId\":\"r\",\"acceptedEventIds\":[],\"results\":[]}"));
   expectRejected("protocol version as a string",
@@ -167,6 +169,10 @@ void test_sync_corpus_rejects_oversized_bodies() {
 
 void test_sync_corpus_accepts_well_formed_documents() {
   expectAccepted("minimal document", String(kMinimal));
+  TEST_ASSERT_FALSE(parseSyncResponseJson(String(kMinimal)).firmwareOffer);
+  TEST_ASSERT_TRUE(parseSyncResponseJson(withMember(String("\"firmwareOffer\":true"))).firmwareOffer);
+  TEST_ASSERT_FALSE(parseSyncResponseJson(withMember(String("\"firmwareOffer\":false"))).firmwareOffer);
+  expectAccepted("null firmware offer", withMember(String("\"firmwareOffer\":null")));
   expectAccepted("unknown members of every kind",
                  withMember(String("\"a\":[1,2.5,-3e2,true,false,null,\"x\"],\"b\":{\"c\":{\"d\":[]}}")));
   expectAccepted("whitespace between tokens",

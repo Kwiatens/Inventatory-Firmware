@@ -19,6 +19,8 @@ namespace inventatory_scan {
 namespace {
 
 constexpr unsigned long kHttpResponseTimeoutMs = 600U;
+// A firmware chunk is up to 8 KiB, and the desktop may read it from disk first.
+constexpr unsigned long kFirmwareResponseTimeoutMs = 3000U;
 // Connect and send timeout, in milliseconds. WiFiClient::setTimeout() takes seconds on this core, so the
 // old setTimeout(250) let a host that drops SYNs hold the network worker for minutes.
 constexpr int32_t kTcpConnectTimeoutMs = 1500;
@@ -163,6 +165,7 @@ bool InventatoryClient::resolveEndpoint(bool force) {
 
 bool InventatoryClient::connectToResolved() {
   if (!resolveEndpoint()) {
+    lastFailure_ = "no endpoint";
     return false;
   }
   client_.stop();
@@ -171,6 +174,7 @@ bool InventatoryClient::connectToResolved() {
     client_.setNoDelay(true);
     return true;
   }
+  lastFailure_ = "TCP connect failed";
   deviceLog.print("Inventatory endpoint: TCP connection failed to ");
   deviceLog.print(endpointIp_);
   deviceLog.print(':');
@@ -180,9 +184,11 @@ bool InventatoryClient::connectToResolved() {
   return false;
 }
 
-bool InventatoryClient::sendJson(const char* path, const String& body, int& httpStatus, String& responseBody) {
+bool InventatoryClient::sendJson(const char* path, const String& body, int& httpStatus, String& responseBody,
+                                 unsigned long responseTimeoutMs) {
   httpStatus = 0;
   responseBody.clear();
+  lastFailure_ = "";
 
   if (!connectToResolved()) {
     return false;
@@ -191,12 +197,14 @@ bool InventatoryClient::sendJson(const char* path, const String& body, int& http
   uint64_t counter = 0;
   if (!config_.transportCounterStore->reserveTransportCounter(counter)) {
     client_.stop();
+    lastFailure_ = "no transport counter";
     deviceLog.println("Inventatory endpoint: could not reserve a transport counter");
     return false;
   }
   const auto mac = deviceRequestMac(config_.token, "POST", path, config_.deviceId, counter, body);
   if (mac.length() != 64) {
     client_.stop();
+    lastFailure_ = "no request MAC";
     return false;
   }
 
@@ -211,9 +219,14 @@ bool InventatoryClient::sendJson(const char* path, const String& body, int& http
   client_.printf("Content-Type: application/json\r\n");
   client_.printf("Content-Length: %u\r\n", static_cast<unsigned>(body.length()));
   client_.print("Connection: close\r\n\r\n");
-  client_.write(reinterpret_cast<const uint8_t*>(body.c_str()), body.length());
-
-  const bool authenticated = readResponse(httpStatus, responseBody, counter);
+  // A short write leaves the server waiting for the rest of the body, so no reply can come. Stop here.
+  const auto bodyLength = body.length();
+  const bool bodySent = client_.write(reinterpret_cast<const uint8_t*>(body.c_str()), bodyLength) == bodyLength;
+  if (!bodySent) {
+    client_.stop();
+    lastFailure_ = "request cut short";
+  }
+  const bool authenticated = bodySent && readResponse(httpStatus, responseBody, counter, responseTimeoutMs);
   if (authenticated) {
     failedExchanges_ = 0;
   } else if (++failedExchanges_ >= kMaxFailedExchangesPerEndpoint) {
@@ -224,7 +237,8 @@ bool InventatoryClient::sendJson(const char* path, const String& body, int& http
   return authenticated;
 }
 
-bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint64_t counter) {
+bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint64_t counter,
+                                     unsigned long timeoutMs) {
   httpStatus = 0;
   responseBody.clear();
   String response;
@@ -232,7 +246,7 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
   response.reserve(kMaxHttpResponseBytes);
   int headerEnd = -1;
   const auto started = millis();
-  while (millis() - started < kHttpResponseTimeoutMs) {
+  while (millis() - started < timeoutMs) {
     while (client_.available() > 0) {
       const int raw = client_.read();
       if (raw < 0) {
@@ -240,6 +254,7 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
       }
       if (!httpResponseAppendAllowed(response.length())) {
         client_.stop();
+        lastFailure_ = "response too large";
         return false;
       }
       response += static_cast<char>(raw);
@@ -247,6 +262,7 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
         // NUL is refused in the header: C-string calls stop there and could hide a later header line.
         if (raw == 0) {
           client_.stop();
+          lastFailure_ = "NUL in header";
           return false;
         }
         // The header ends at the first CR LF CR LF; only the newest four bytes need checking.
@@ -258,6 +274,7 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
           // A header may be kMaxHttpHeaderBytes plus the blank line; a longer one is refused early.
           // The exact size is checked again below.
           client_.stop();
+          lastFailure_ = "header too large";
           return false;
         }
       }
@@ -269,8 +286,14 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
   }
 
   client_.stop();
+  const bool timedOut = millis() - started >= timeoutMs;
 
-  if (headerEnd < 0 || !httpHeaderWithinLimit(static_cast<std::size_t>(headerEnd))) {
+  if (headerEnd < 0) {
+    lastFailure_ = timedOut ? "no answer in time" : "connection closed before the header";
+    return false;
+  }
+  if (!httpHeaderWithinLimit(static_cast<std::size_t>(headerEnd))) {
+    lastFailure_ = "header too large";
     return false;
   }
   const auto firstLineEnd = response.indexOf("\r\n");
@@ -296,12 +319,14 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
       !uniqueHeaderValue(headers, "X-Inventatory-Counter", responseCounter) ||
       !uniqueHeaderValue(headers, "X-Inventatory-Mac", responseMac) ||
       !uniqueHeaderValue(headers, "X-Inventatory-Protocol", protocolVersion)) {
+    lastFailure_ = "bad headers";
     return false;
   }
   std::size_t contentLength = 0;
   if (!parseContentLength(contentLengthText, contentLength) ||
       !httpBodyWithinLimit(contentLength) ||
       response.length() != static_cast<std::size_t>(headerEnd + 4) + contentLength) {
+    lastFailure_ = timedOut ? "no answer in time" : "body cut short or too long";
     return false;
   }
   // Copy by declared length: a C-string copy would stop at NUL and authenticate a truncated body.
@@ -314,10 +339,12 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
       !transportMacMatches(deviceResponseMac(config_.token, counter, parsedStatus, responseBody), responseMac)) {
     httpStatus = 0;
     responseBody.clear();
+    lastFailure_ = "reply MAC or counter wrong";
     return false;
   }
   if (parsedStatus < 100) {
     responseBody.clear();
+    lastFailure_ = "bad status line";
     return false;
   }
   httpStatus = parsedStatus;
@@ -325,7 +352,11 @@ bool InventatoryClient::readResponse(int& httpStatus, String& responseBody, uint
 }
 
 bool InventatoryClient::postSync(const String& payload, int& httpStatus, String& responseBody) {
-  return sendJson("/api/v1/device/sync", payload, httpStatus, responseBody);
+  return sendJson("/api/v1/device/sync", payload, httpStatus, responseBody, kHttpResponseTimeoutMs);
+}
+
+bool InventatoryClient::postFirmware(const char* path, const String& body, int& httpStatus, String& responseBody) {
+  return sendJson(path, body, httpStatus, responseBody, kFirmwareResponseTimeoutMs);
 }
 
 }  // namespace inventatory_scan

@@ -46,6 +46,7 @@ void test_client_refuses_when_wifi_is_down();
 void test_client_gives_every_request_a_higher_counter();
 void test_client_connects_with_a_millisecond_timeout();
 void test_client_asks_mdns_again_after_repeated_unauthenticated_exchanges();
+void test_client_firmware_request_carries_a_full_binary_chunk();
 
 namespace {
 
@@ -462,6 +463,37 @@ void test_client_asks_mdns_again_after_repeated_unauthenticated_exchanges() {
   TEST_ASSERT_EQUAL_INT(2, hostNetwork().mdnsQueries);
 }
 
+void test_client_firmware_request_carries_a_full_binary_chunk() {
+  // A firmware chunk is raw image bytes: every byte value, at the body limit, MAC over all of it.
+  resetNetwork();
+  ResponseSpec spec;
+  spec.body.resize(kMaxHttpBodyBytes);
+  for (std::size_t index = 0; index < spec.body.size(); ++index) spec.body[index] = static_cast<char>(index & 0xffU);
+  HostConnection& net = hostNetwork();
+  net.responder = [spec](const std::string& request) { return makeResponse(request, spec); };
+  InventatoryClient client;
+  SetupStateStore store;
+  store.begin();
+  InventatoryClientConfig config;
+  config.deviceId = kDeviceId;
+  config.token = kToken;
+  config.transportCounterStore = &store;
+  TEST_ASSERT_TRUE(client.begin(config));
+  const String requestBody = "{\"offset\":0}";
+  int httpStatus = 0;
+  String responseBody;
+  TEST_ASSERT_TRUE(client.postFirmware("/api/v1/device/firmware/chunk", requestBody, httpStatus, responseBody));
+  TEST_ASSERT_EQUAL_INT(200, httpStatus);
+  TEST_ASSERT_TRUE(toStd(responseBody) == spec.body);
+
+  const std::string& request = net.request;
+  TEST_ASSERT_EQUAL_UINT32(0U, request.find("POST /api/v1/device/firmware/chunk HTTP/1.1\r\n"));
+  const uint64_t counter = std::strtoull(counterOf(request).c_str(), nullptr, 10);
+  const String mac = deviceRequestMac(String(kToken), "POST", "/api/v1/device/firmware/chunk", String(kDeviceId),
+                                      counter, requestBody);
+  TEST_ASSERT_TRUE(request.find(std::string("X-Inventatory-Mac: ") + mac.c_str() + "\r\n") != std::string::npos);
+}
+
 void runHostClientFramingTests() {
   RUN_TEST(test_client_accepts_a_signed_response);
   RUN_TEST(test_client_reports_a_signed_status_other_than_200);
@@ -489,4 +521,5 @@ void runHostClientFramingTests() {
   RUN_TEST(test_client_gives_every_request_a_higher_counter);
   RUN_TEST(test_client_connects_with_a_millisecond_timeout);
   RUN_TEST(test_client_asks_mdns_again_after_repeated_unauthenticated_exchanges);
+  RUN_TEST(test_client_firmware_request_carries_a_full_binary_chunk);
 }

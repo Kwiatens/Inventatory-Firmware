@@ -38,15 +38,19 @@ NVS. Production device policy for secure boot, flash encryption, JTAG, and eFuse
 is set by manufacturing and provisioning, and this source tree does not establish
 it.
 
-Over-the-air updates: an update is accepted only after the operator asks for one on the keypad, only for
-two minutes, and only with the private `OTA_PASSWORD` from `config.h`. The firmware refuses OTA while that
-password is the example placeholder or shorter than 12 characters. The password does not protect the image:
-ArduinoOTA's challenge covers neither the image nor its checksum, and the device downloads the image from
-the uploader's address after the check. A host that can intercept traffic on the network during the update
-can therefore install its own firmware without knowing the password. One captured update also lets an
-observer test password guesses offline, and the password is the same in every image built with it. Treat
-OTA as safe only on a network where no other host can intercept traffic, prefer USB updates, and use a long
-random password such as the output of `openssl rand -hex 16`. Signed images (Secure Boot) would close this.
+Over-the-air updates are signed (docs/ota-protocol.md). The scanner installs an update only if an ECDSA P-256
+signature by a key in `src/config/ota_keys.h` covers its header, the header names this product and hardware,
+its security counter is not below the scanner's minimum, and the downloaded image matches the signed SHA-256.
+The boot partition changes only after all of that, and only after a key press on the scanner. The desktop and
+the network are only couriers: a host that intercepts or answers in the desktop's place can stop an update,
+but cannot install its own firmware. The owner signs releases on their own PC; the private key is never in
+CI. A build with no trusted key accepts no update over Wi-Fi.
+
+This does not lock the hardware. There is no Secure Boot, so anyone with the device and a USB cable can flash
+any image, and the signature check runs only in the firmware that receives the update. The security counter
+stops the reinstall of an older signed release with a known flaw only after a release that raised it has
+been confirmed on the device. If the signing key leaks, ship a release that trusts a new key in the second
+slot and drops the old one.
 
 Other assumptions on the local network: the desktop is found by mDNS, so any host can answer in its place.
 It then receives the scan data, which is not encrypted, but it cannot forge a response without the pairing
