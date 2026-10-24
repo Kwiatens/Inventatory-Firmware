@@ -89,6 +89,8 @@ void DisplayController::refreshReadyContent() {
       model_.secondary = String(model_.queueDepth) + " scans safely queued";
     } else if (model_.connectivity == DisplayConnectivityState::Syncing) {
       model_.secondary = "Sending saved work";
+    } else if (updateAvailableShown()) {
+      model_.secondary = "Update available";
     } else if (model_.connectivity == DisplayConnectivityState::Online) {
       model_.secondary = "Point at a label";
     } else {
@@ -99,7 +101,26 @@ void DisplayController::refreshReadyContent() {
                     ? DisplayRailStyle::Activity
                     : DisplayRailStyle::Static;
   // The # key explains a problem, from the main screen and the menu.
-  model_.actions = problems > 0 ? String("# Fault info C Menu") : String("C Menu");
+  if (problems > 0) {
+    model_.actions = "# Fault info C Menu";
+  } else if (updateAvailableShown()) {
+    model_.actions = "D Update C Menu";
+  } else {
+    model_.actions = "C Menu";
+  }
+}
+
+void DisplayController::setUpdateAvailable(bool available) {
+  if (updateAvailable_ == available) return;
+  updateAvailable_ = available;
+  if (model_.mode == DisplayUiMode::Ready) refreshReadyContent();
+  markDirty();
+}
+
+// Only while the desktop is reachable and nothing more pressing holds the line.
+bool DisplayController::updateAvailableShown() const {
+  return updateAvailable_ && !hasProblem() && !displayQueueDepth(model_.queueDepth) &&
+         model_.connectivity == DisplayConnectivityState::Online;
 }
 
 void DisplayController::setSyncBlocked(bool blocked) {
@@ -658,6 +679,21 @@ void DisplayController::showResetConfirm() {
   model_.primary = "Saved Wi-Fi is erased";
   model_.secondary = "Queued scans are kept";
   model_.actions = "A Confirm C Cancel";
+  markDirty();
+}
+
+void DisplayController::showUpdateConfirm(const String& version) {
+  clearContent();
+  standby_ = false;
+  renderer_.setPowerSave(false);
+  model_.mode = DisplayUiMode::ConfirmReset;
+  model_.bodyKind = DisplayBodyKind::Confirm;
+  model_.rail = DisplayRailStyle::None;
+  model_.showPcStatus = false;
+  model_.header = "Install update?";
+  model_.primary = String("Version ") + version;
+  model_.secondary = "Takes about a minute";
+  model_.actions = "A Install C Cancel";
   markDirty();
 }
 

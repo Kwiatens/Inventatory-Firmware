@@ -6,6 +6,7 @@
 #include "InventatoryScanBattery.h"
 #include "InventatoryScanBlockedHead.h"
 #include "InventatoryScanCore.h"
+#include "InventatoryScanFirmwarePackage.h"
 #include "InventatoryScanSync.h"
 #include "InventatoryScanUiPolicy.h"
 #include "display/backlight.h"
@@ -86,6 +87,8 @@ class InventatoryScanApp {
   // A failed result for a problem on the device itself, shown without waiting for the PC.
   static SyncResult localFailure(const char* id, const char* code, const char* message);
   void requestOtaUpdate();
+  // The desktop's sync response says whether it offers an update; the Ready screen shows it.
+  void noteFirmwareOffer(bool offered);
   void sendDebugMessage(const String& message, const String& level = "info");
   bool startNetworkWorker();
   static void networkTaskEntry(void* context);
@@ -93,7 +96,13 @@ class InventatoryScanApp {
   bool queueSyncJob(const String& requestId, const String& payload);
   void processNetworkResult();
   bool serviceOta();
-  bool startOtaService();
+  void fetchOtaOffer();
+  void acceptOtaUpdate();
+  void declineOtaUpdate(const char* reason);
+  void installOtaUpdate();
+  void sendOtaStatus(const char* state, const char* error, const char* reason);
+  void failOtaUpdate(FirmwareCheck check);
+  void finishOtaQuietly();
   bool ensureWiFiForOta();
   void recoverFromOtaFailure();
   void abandonOtaWait(const char* reason, bool showFailure);
@@ -249,16 +258,23 @@ class InventatoryScanApp {
   std::atomic_bool wifiConnectedReported_{false};
   // Re-pair confirmation opened by holding #; C returns to Ready.
   bool reprovisionFromHold_ = false;
+  // An update runs Connecting (Wi-Fi and the desktop's offer), AwaitConsent (A installs, C declines),
+  // then Installing. otaRequested_ is true for all three; otaActive_ only while flashing.
+  enum class OtaPhase : uint8_t { Idle, Connecting, AwaitConsent, Installing };
+  OtaPhase otaPhase_ = OtaPhase::Idle;
   bool otaRequested_ = false;
   bool otaActive_ = false;
-  // Set by the ArduinoOTA error callback. serviceOta() stops the listener, never the callback,
-  // so a failed update does not leave it bound.
-  bool otaEndPending_ = false;
-  // The OTA wait ends on timeout or C, and normal operation resumes until an uploader starts.
+  // Set once an offer was declined, refused or empty, so the Ready screen stops showing the desktop's
+  // offer until a restart. A new request clears it.
+  bool otaHintsMuted_ = false;
+  // The wait for an offer ends on timeout or C; once the install starts it runs to the end.
   unsigned long otaRequestedAt_ = 0;
+  unsigned long otaLastOfferAttempt_ = 0;
+  unsigned long otaConsentShownAt_ = 0;
   bool otaUploadStarted_ = false;
-  // Last percent drawn. ArduinoOTA reports progress per chunk, far more often than
-  // the percent changes.
+  // The verified header of the offered package; cleared when the update ends.
+  FirmwarePackageHeader otaHeader_;
+  // Last percent drawn; redraw only when it changes.
   int otaDisplayedPercent_ = -1;
   std::atomic_bool pcOnline_{false};
   bool syncInFlight_ = false;
