@@ -521,7 +521,7 @@ python3 tools/check_error_codes.py
 python3 tools/check_error_codes.py --site path/to/Inventatory-Site/src/content/docs/docs/scanner/error-codes.md
 ```
 A gap fails the check: `SCN-01` followed by `SCN-03` is an error. To remove a code, renumber the rest
-of its area and update the public reference, this file and `CHANGELOG.md` in the same change.
+of its area and update the public reference and this file in the same change. The removal goes in the pull request's Changelog section.
 
 ### Standalone display smoke test
 ```powershell
@@ -594,6 +594,10 @@ The firmware-specific rules are:
 - **Content**: Describe the change. Never include prompts, conversation IDs,
   credentials, device identifiers, or local paths. Do not commit build artifacts
   (`.pio/`, `src/config/config.h`).
+- **Changelog**: Do not edit `CHANGELOG.md` in a feature branch. The completion summary (section 13)
+  proposes the entry you would add, in Keep a Changelog form and plain user terms. The maintainer rewrites
+  it, and the approved wording goes in the pull request's Changelog section, copied as written. Release
+  notes are collected from those sections into `CHANGELOG.md` at release time.
 
 ---
 
@@ -608,6 +612,9 @@ When concluding any task, the agent must provide a factual summary containing:
    physical hardware tests, live desktop sync) and why.
 5. **Known discrepancies or remaining risks**: Any residual architectural
    concerns or unverified release-gate items.
+6. **Changelog proposal**: For a user-visible change, the entry you would add (section 12), in Keep a
+   Changelog form and plain user terms, for the maintainer to rewrite. Otherwise, state that the change is
+   not user-visible.
 
 ---
 
@@ -623,4 +630,5 @@ When concluding any task, the agent must provide a factual summary containing:
 - [ ] Zero logging: `python3 tools/check_logging.py` passes (no raw barcodes, UART buffers, or secrets logged).
 - [ ] Verification: `make -C host-tests test` passes, `python3 tools/check_error_codes.py` passes, `pio test ... --without-uploading --without-testing` passes, and firmware builds pass.
 - [ ] Working tree: No modified `config.h`, `.pio/`, `.bin` files, or unrelated user edits in diff.
+- [ ] Changelog: `CHANGELOG.md` is not edited on this branch. The proposed entry is in the completion summary, and the approved wording is in the pull request's Changelog section.
 - [ ] Commit format: Follows section 12 and the shared standards. New source files carry the SPDX header.

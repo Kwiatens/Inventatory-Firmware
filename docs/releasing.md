@@ -6,7 +6,7 @@ This document contains the checklist for cutting a release for the Inventatory S
 
 - [ ] **Version Bump**: Update `INVENTATORY_FIRMWARE_VERSION` in `src/config/version.h` to the new version. Raise
   `INVENTATORY_FIRMWARE_SECURITY_COUNTER` only if the release fixes a security flaw (docs/ota-protocol.md).
-- [ ] **Changelog**: Update `CHANGELOG.md` with the new version and release date.
+- [ ] **Changelog**: Add the approved entries from the Changelog section of each pull request merged since the last release to `CHANGELOG.md`, copied as written, together with any `[Unreleased]` entries, under the new version and release date.
 - [ ] **Builds**: Run all firmware builds to ensure successful compilation:
   - `pio run -e waveshare_esp32s3_nano_usb`
 - [ ] **Host Tests**: `make -C host-tests SANITIZE=address,undefined test` passes on a clean checkout (the CI `host-tests` job runs the same command).
