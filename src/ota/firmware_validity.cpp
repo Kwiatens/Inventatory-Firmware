@@ -3,9 +3,11 @@
 
 #include "ota/firmware_validity.h"
 
+#include "config/version.h"
 #include "log/device_log.h"
 
 #include <Arduino.h>
+#include <Preferences.h>
 #ifdef CONFIG_APP_ROLLBACK_ENABLE
 #include <esp_ota_ops.h>
 #endif
@@ -16,7 +18,43 @@
 extern "C" bool verifyRollbackLater() { return true; }
 #endif
 
+// The firmware identity that tools/sign_firmware.py reads from firmware.bin. Nothing reads it at run time;
+// the linker keeps it through -u inventatory_firmware_identity in platformio.ini.
+extern "C" __attribute__((used)) const char inventatory_firmware_identity[] = INVENTATORY_FIRMWARE_IDENTITY;
+
 namespace inventatory_scan {
+
+namespace {
+
+constexpr char kOtaNamespace[] = "inv_ota";
+static_assert(sizeof(kOtaNamespace) <= 16, "NVS namespace exceeds ESP32's 15-character limit");
+constexpr char kMinimumCounterKey[] = "min_counter";
+
+uint32_t storedMinimumCounter() {
+  Preferences prefs;
+  if (!prefs.begin(kOtaNamespace, true)) return 0;
+  const uint32_t stored = prefs.getUInt(kMinimumCounterKey, 0);
+  prefs.end();
+  return stored;
+}
+
+// Best effort: a failed write leaves the minimum at the running image's counter, which still applies.
+void raiseMinimumCounter() {
+  if (storedMinimumCounter() >= kFirmwareSecurityCounter) return;
+  Preferences prefs;
+  if (!prefs.begin(kOtaNamespace, false)) return;
+  if (prefs.putUInt(kMinimumCounterKey, kFirmwareSecurityCounter) != sizeof(uint32_t)) {
+    deviceLog.println("Could not store the update security counter.");
+  }
+  prefs.end();
+}
+
+}  // namespace
+
+uint32_t minimumFirmwareSecurityCounter() {
+  const uint32_t stored = storedMinimumCounter();
+  return stored > kFirmwareSecurityCounter ? stored : kFirmwareSecurityCounter;
+}
 
 void confirmRunningFirmware(const char* reason) {
 #ifdef CONFIG_APP_ROLLBACK_ENABLE
@@ -35,6 +73,7 @@ void confirmRunningFirmware(const char* reason) {
     confirmed = true;
     deviceLog.print("Firmware confirmed: ");
     deviceLog.println(reason);
+    raiseMinimumCounter();
   }
 #else
   (void)reason;

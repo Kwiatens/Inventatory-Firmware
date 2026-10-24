@@ -62,6 +62,8 @@ struct SyncResponse {
   String quickLabelPrintStatus;
   String quickLabelPrintCode;
   String quickLabelPrintMessage;
+  // The desktop offers a signed update (docs/ota-protocol.md). A hint only: the package is checked on its own.
+  bool firmwareOffer = false;
 };
 
 inline bool isInventoryResultStatus(const String& status) {
@@ -787,6 +789,12 @@ inline SyncResponse parseSyncResponseJson(const String& body) {
       return response;
     }
     response.hasQuickLabelPrintResult = true;
+  }
+
+  JsonValueView firmwareOffer;
+  if (!parser.objectMember(root, "firmwareOffer", firmwareOffer, found)) return response;
+  if (isPresentOptionalMember(firmwareOffer, found) && !parser.readBoolean(firmwareOffer, response.firmwareOffer)) {
+    return response;
   }
 
   response.valid = true;

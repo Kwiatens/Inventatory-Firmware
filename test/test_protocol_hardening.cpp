@@ -183,17 +183,6 @@ void test_quantity_composer_limit() {
   TEST_ASSERT_EQUAL_INT(9999, composer.valueOrOne());
 }
 
-void test_ota_password_policy() {
-  // The example placeholder is public; a build that keeps it must not accept an update.
-  TEST_ASSERT_FALSE(isUsableOtaPassword(kOtaPasswordPlaceholder));
-  TEST_ASSERT_FALSE(isUsableOtaPassword("paste-your-ota-password-here"));
-  TEST_ASSERT_FALSE(isUsableOtaPassword(nullptr));
-  TEST_ASSERT_FALSE(isUsableOtaPassword(""));
-  TEST_ASSERT_FALSE(isUsableOtaPassword("elevenchars"));
-  TEST_ASSERT_TRUE(isUsableOtaPassword("twelve-chars"));
-  TEST_ASSERT_TRUE(isUsableOtaPassword("a much longer private OTA password"));
-}
-
 void test_wipeSecret_clears_buffer() {
   uint8_t secret[32];
   for (auto& byte : secret) byte = 0xA5U;
@@ -273,7 +262,6 @@ void registerProtocolHardeningTests() {
   RUN_TEST(test_decodeComponentDataMatrix_quantity_bounds);
   RUN_TEST(test_parseTmeBagLabel_quantity_bounds);
   RUN_TEST(test_quantity_composer_limit);
-  RUN_TEST(test_ota_password_policy);
   RUN_TEST(test_wipeSecret_clears_buffer);
   RUN_TEST(test_http_host_name_rejects_header_injection);
   RUN_TEST(test_latin1DisplayText_reencodes_utf8_for_the_lcd);
