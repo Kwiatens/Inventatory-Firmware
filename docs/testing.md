@@ -34,8 +34,17 @@ The embedded image is compiled but not run by CI, and it is not uploaded:
 ```bash
 pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
 pio run -e waveshare_esp32s3_nano_usb
-pio run -e waveshare_esp32s3_nano_ota
 ```
+
+The signing tool and the OTA test server have their own tests, which CI runs too:
+
+```bash
+python3 -m unittest discover -s tools -p 'test_*.py'
+```
+
+`test/test_firmware_package.cpp` checks signed packages against vectors in
+`test/firmware_package_vectors.h`. After a change to the package format, regenerate them with
+`python3 test/make_firmware_package_vectors.py`; it makes new throwaway keys each time.
 
 Running the assertions on a board uploads the image. That needs an explicit request.
 

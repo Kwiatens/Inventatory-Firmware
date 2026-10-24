@@ -42,6 +42,11 @@ cp src/config/config.example.h src/config/config.h
 pio run -e waveshare_esp32s3_nano_usb
 ```
 
+Flash over USB with `pio run -e waveshare_esp32s3_nano_usb -t upload`. USB always works, whatever is installed.
+Updates over Wi-Fi install only packages signed by a key in `src/config/ota_keys.h`. If you build your own
+firmware, put your own public key there and sign with `tools/sign_firmware.py`; see
+[docs/ota-protocol.md](docs/ota-protocol.md).
+
 ## Test
 
 The host suite runs on any machine with a C++17 compiler and OpenSSL headers. It needs no device.
@@ -59,6 +64,7 @@ pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
 - [Architecture and invariants](AGENTS.md), also the guide for coding agents
 - [Changelog](CHANGELOG.md)
 - [Release steps](docs/releasing.md)
+- [Signed updates over Wi-Fi](docs/ota-protocol.md): package format and the pull protocol the desktop follows
 - [Wiring notes](docs/wiring.md), including the GM65 cable colour warning
 
 ## License

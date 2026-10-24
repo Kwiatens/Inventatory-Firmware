@@ -19,7 +19,7 @@ hardware or production provisioning evidence.
 | --- | --- | --- | --- | --- |
 | FW-001 | P1 | Implemented | Outbox slot/header mutations are staged and committed without destructive namespace clearing; failed pop retains the event. `prepareOutboxPop` regression coverage and test-image compilation pass. | Execute NVS write/read/power-loss fault matrix on hardware. |
 | FW-002 | P1 | Implemented | One scan completed during `WaitingForResult` is retained in `deferredScan_` and processed after the result. Only one scan is kept: further scans during the wait are drained from the UART and ignored with a serial note. | Hardware UART test with result delay, repeated scans, and buffer saturation. |
-| FW-003 | P1 | Implemented | Every handled OTA failure clears OTA state, restores Wi-Fi sleep, resumes the network worker, and returns UI state to idle. | Inject each ArduinoOTA error on hardware and verify scanning/reconnection. |
+| FW-003 | P1 | Implemented | Every handled OTA failure clears OTA state, restores Wi-Fi sleep, resumes the network worker, and returns UI state to idle. | Run the signed-update failures in board-day-checklist section 12 and verify scanning/reconnection. |
 | FW-004 | P1 | Verified statically | Tests now assert protocol v1 paths/vectors and current display clipping behavior; firmware and embedded test images compile. | Run Unity assertions on a connected ESP32-S3. |
 | FW-005 | P1 | Implemented | Root GPL-3.0-only license, clean-checkout configuration bootstrap, and build/upload documentation added. | Repeat on a fresh public clone in CI. |
 | FW-006 | P2 | Implemented | Inventory and quick-label result statuses use explicit allowlists; malformed/unknown statuses invalidate the whole response and display code fails closed. Regression cases compile. | Execute Unity cases on hardware and compatibility test against desktop app. |
@@ -146,7 +146,8 @@ Repository scan: no credentials, private keys, personal paths, host names or add
 tree or in the history of every branch, `src/config/config.h` was never committed, and the PNG and SVG
 files carry no personal metadata.
 
-Still open, and not changed here: the OTA image is not signed (ArduinoOTA checks only the password); every
+Still open, and not changed here: the OTA image is not signed (ArduinoOTA checks only the password; since
+replaced by signed updates, see docs/ota-protocol.md); every
 build from the example configuration shares the device id `Inventatory-SCAN-R1`, so two such scanners on one
 network share an mDNS name; `bootNonce_` and the first outbox sequence are drawn before the radio starts,
 which affects only their uniqueness, not a secret.
@@ -159,10 +160,10 @@ Arduino-ESP32 sources the build uses. Dispositions:
 | Finding | Disposition | Verification |
 | --- | --- | --- |
 | Self-hosted hardware runner reachable from fork pull requests | Fixed in CI: the self-hosted `hardware-tests` job is removed, so every job runs on GitHub-hosted runners, and hardware tests run on the bench PC by hand. A pull request could still add a workflow for a runner that stays registered, so `docs/releasing.md` says to remove it. | owner action pending: unregister the runner |
-| ArduinoOTA does not authenticate the image; a LAN man-in-the-middle can install firmware during a real update | Documented in `SECURITY.md` and the changelog. Fixing it needs signed images (Secure Boot) or an update pulled over the authenticated channel. | open |
+| ArduinoOTA does not authenticate the image; a LAN man-in-the-middle can install firmware during a real update | Fixed: ArduinoOTA is removed. The scanner pulls a signed package over the authenticated channel and installs it only after the ECDSA P-256 signature, the product, the security counter and the image hash check out (docs/ota-protocol.md). | host (signed vectors), hardware pending (board-day-checklist section 12) |
 | Legacy BLE pairing accepted when the central lacks LE Secure Connections | Fixed: `ESP_BLE_SM_ONLY_ACCEPT_SPECIFIED_SEC_AUTH` refuses it. | stub, hardware pending (pair with an SC-capable PC, and confirm a legacy-only central is refused) |
 | `WiFiClient::setTimeout(250)` is seconds, so a SYN-dropping host stalls the worker | Fixed: `connect()` with 1500 ms; the host shim has no `setTimeout`, so a call fails the host build. | host, hardware pending |
-| OTA password crackable offline, fleet-wide, on the command line | Documented (random password, verbose uploads). A per-device OTA secret is a possible follow-up. | open |
+| OTA password crackable offline, fleet-wide, on the command line | Resolved: the OTA password and `espota` are removed with ArduinoOTA; signed packages need no shared secret. | host |
 | Wi-Fi driver kept its own SSID, password and PMK in `nvs.net80211` | Fixed: `WiFi.persistent(false)` before any `WiFi.mode()`, the namespace erased at boot and on re-pair. | host, hardware pending (read the NVS partition of a provisioned unit) |
 | First mDNS answer pinned even when it never authenticates | Fixed: dropped after three exchanges in a row without a signed reply. Only the first mDNS answer is still tried. | host |
 | Signed but unreadable 200 stalled the queue silently | Fixed: counts toward "Sync blocked". The desktop should also replace invalid UTF-8 in `jsonEscape`. | stub; desktop change open |
