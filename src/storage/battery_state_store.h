@@ -12,7 +12,8 @@
 namespace inventatory_scan {
 
 // Keeps the gauge state across power-off in its own NVS namespace. An out-of-range stored value is
-// rejected, not clamped; the gauge then starts from the cell voltage.
+// rejected, not clamped; the gauge then starts from the cell voltage. The first layout's charge (rem_uah) is read
+// once and replaced at the next save.
 class BatteryStateStore {
  public:
   bool begin();
@@ -25,6 +26,8 @@ class BatteryStateStore {
   mutable Preferences prefs_;
   mutable BatteryGaugeState last_;
   mutable bool haveLast_ = false;
+  // Loaded from the first layout: the next save writes every key and removes the old ones.
+  mutable bool legacy_ = false;
 };
 
 }  // namespace inventatory_scan

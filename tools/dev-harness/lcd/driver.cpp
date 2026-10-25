@@ -49,8 +49,10 @@ int main(int argc, char** argv) {
   { SCREEN("battery empty"); d.showCountdownWarning("Battery empty", "Charge to power on", "Powering off", -1, 0); tick(d); }
   { SCREEN("sleep warning"); d.showCountdownWarning("Going to sleep", "Any key stays on", "Sleeping in 12 s", 12, 40); tick(d); }
   { SCREEN("printing"); d.showPrinting("Resistors"); tick(d); }
-  { SCREEN("header estimate"); d.setBatteryStatus(60, false, false, "~6h 20m left"); d.showReady(); delay(6000); tick(d); }
-  { SCREEN("card on battery"); d.showBatteryCard(false, false, 60, "~6h 20m left", 2500); tick(d, 800); }
+  { SCREEN("header estimate"); d.setBatteryStatus(60, false, false, "~1.8 d left"); d.showReady(); delay(6000); tick(d); }
+  { SCREEN("header estimate hours"); d.setBatteryStatus(30, false, false, "14 h left"); d.showReady(); delay(6000); tick(d); }
+  { SCREEN("header estimate charging"); d.setBatteryStatus(45, true, false, "Full: ~2h 15m"); d.showReady(); delay(6000); tick(d); }
+  { SCREEN("card on battery"); d.showBatteryCard(false, false, 60, "1.8 d left", 2500); tick(d, 800); }
   { SCREEN("*power warning"); d.showReady(); tick(d); d.showPowerWarning(); tick(d, 100); tick(d, 1400); tick(d, 1400); }
   { SCREEN("*power off"); d.showReady(); tick(d); d.playPowerOffSink(); }
   return 0;
