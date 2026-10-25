@@ -12,6 +12,8 @@
 #include "ota/firmware_validity.h"
 
 #include <esp_sleep.h>
+#include <esp_system.h>
+#include <sys/time.h>
 
 namespace inventatory_scan {
 
@@ -37,7 +39,35 @@ constexpr unsigned long kBatteryLogIntervalMs = 10000UL;
 // Charger sample interval. A removal is seen within this time, even in dock standby.
 constexpr unsigned long kChargerSampleIntervalMs = 100UL;
 
+// When the device powered off, kept in RTC memory through deep sleep, so the gauge knows how long the cell rested.
+// The system clock keeps counting in deep sleep. A power-on reset clears both, and the time off is unknown.
+constexpr uint32_t kPowerOffTimeMagic = 0x42A77E57UL;
+// A longer time off is a wrong clock: unknown.
+constexpr int64_t kMaxPowerOffUs = 30LL * 86400LL * 1000000LL;
+RTC_DATA_ATTR uint32_t rtcPowerOffMagic = 0;
+RTC_DATA_ATTR int64_t rtcPowerOffUs = 0;
+
+int64_t systemClockUs() {
+  timeval now;
+  gettimeofday(&now, nullptr);
+  return static_cast<int64_t>(now.tv_sec) * 1000000LL + now.tv_usec;
+}
+
 }  // namespace
+
+void InventatoryScanApp::markPowerOffTime() {
+  rtcPowerOffUs = systemClockUs();
+  rtcPowerOffMagic = kPowerOffTimeMagic;
+}
+
+uint32_t InventatoryScanApp::takeBatteryOffMs() {
+  const bool marked = rtcPowerOffMagic == kPowerOffTimeMagic && esp_reset_reason() == ESP_RST_DEEPSLEEP;
+  rtcPowerOffMagic = 0;
+  if (!marked) return kBatteryOffUnknownMs;
+  const int64_t offUs = systemClockUs() - rtcPowerOffUs;
+  if (offUs < 0 || offUs > kMaxPowerOffUs) return kBatteryOffUnknownMs;
+  return static_cast<uint32_t>(offUs / 1000LL);
+}
 
 // Deep sleep. Only '*' wakes the device: the charger pins cannot wake it with the current divider.
 void InventatoryScanApp::enterPowerOff() {
@@ -92,6 +122,7 @@ void InventatoryScanApp::enterPowerOff() {
   scanner_.deepSleep();
   deviceLog.println("Powered off. Press * to wake.");
   saveBatteryState();
+  markPowerOffTime();
   // Waking from deep sleep is a reset: an update still pending would be rolled back.
   if (loopStarted_) confirmRunningFirmware("powered off after a healthy start");
   esp_deep_sleep_start();
@@ -179,13 +210,23 @@ void InventatoryScanApp::serviceBattery() {
   display_.setBatteryStatus(percent, docked, chargeDone, estimate);
   saveBatteryStateIfDue(now);
 
-  // Status line for bench checks: cell voltage and both charger midpoints.
+  // Status line for bench checks: cell voltage, both charger midpoints, and the gauge's working values.
   if (lastBatteryLogAt_ == 0 || now - lastBatteryLogAt_ >= kBatteryLogIntervalMs) {
     lastBatteryLogAt_ = now;
+    const BatteryGauge& gauge = batteryTracker_.gauge();
     deviceLog.printf("Battery %lu mV, charger input %lu mV (%s), LED %lu mV (%s).\r\n",
                   static_cast<unsigned long>(batteryMv), static_cast<unsigned long>(battery_.connectorMillivolts()),
                   chargerPlugged_ ? "plugged" : "unplugged", static_cast<unsigned long>(battery_.chargingLedMillivolts()),
                   chargerLedLit_ ? "lit" : "dark");
+    deviceLog.printf("Gauge %d%% (shown %d%%, +-%u.%u), rest %lu mV, load %lu mA x%u.%02u, %ld min (raw %ld).\r\n",
+                  batteryTracker_.estimatePercent(), batteryTracker_.percent(),
+                  static_cast<unsigned>(gauge.uncertainty() * 100.0),
+                  static_cast<unsigned>(gauge.uncertainty() * 1000.0) % 10U,
+                  static_cast<unsigned long>(gauge.compensatedMillivolts()),
+                  static_cast<unsigned long>(batteryLoadMilliamps()), static_cast<unsigned>(gauge.loadScale()),
+                  static_cast<unsigned>(gauge.loadScale() * 100.0 + 0.5) % 100U,
+                  static_cast<long>(batteryTracker_.minutesRemaining()),
+                  static_cast<long>(gauge.rawMinutesRemaining()));
   }
 
   if (docked != lastCharging_ || chargeDone != lastChargeDone_) {
