@@ -118,6 +118,9 @@ class InventatoryScanApp {
   void saveBatteryStateIfDue(unsigned long now);
   void saveBatteryState();
   uint32_t batteryLoadMilliamps() const;
+  // Marks the power-off time in RTC memory; the next boot reads how long the device was off, once.
+  static void markPowerOffTime();
+  static uint32_t takeBatteryOffMs();
   void serviceBacklight();
   void serviceEnergySaving();
   void startEnergySleepWarning();

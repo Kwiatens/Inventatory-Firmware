@@ -418,7 +418,10 @@ preserved:
   Scanning is paused only during BLE pairing, standby, destructive confirmation
   dialogs, OTA updates, or active label printing.
 - **Top bar battery**: The right-hand slot cycles through the status, the battery level and
-  the runtime estimate (from the load the firmware draws, marked "~" until enough load has been observed) (`headerPageAt`).
+  the runtime estimate (`headerPageAt`). The time left is the charge over the average awake load, so it means time left
+  awake. It counts down with the clock and moves toward a new estimate by at most 3% a minute, so it never jumps. It is
+  rounded: minutes under an hour, "2h 15m" under 3 hours, whole hours under a day, then days ("1.8 d left"). A "~"
+  marks a charge estimate that is still uncertain (`kBatteryApproximateSigma`), or a charge time from the prior rate.
   While the dock supplies power the status reads "Charging", or "Charged" once the cell is full and the
   charger LED is dark. A bolt sits left of the battery icon while the dock supplies power. The dock connect and
   disconnect show a short full-screen card (`showBatteryCard`); it appears on the Ready screen only.
@@ -437,10 +440,15 @@ preserved:
   consecutive one-second samples. The low warning latches and powers off after 60 s unless the dock connects.
   A low cell that is not docked is refused at boot with a notice, then the chip sleeps again. The
   refusal uses the estimate, and the voltage only at or below `kBatteryFloorMv`: a load sags the reading, so a
-  sagged reading at boot does not refuse a cell the gauge holds above the low threshold. The percent comes from `BatteryGauge`, not
-  from the voltage: a load or a radio burst does not move it, and the charger's raised voltage never
-  does. The first reading after a boot is the exception: it checks a stored charge against the voltage
-  (`kBatteryRestoreTolerancePercent`). Undocked, a cell at or below `kBatteryFloorMv` is critical whatever the percent says.
+  sagged reading at boot does not refuse a cell the gauge holds above the low threshold. The percent comes from `BatteryGauge`, a
+  one-state Kalman filter: the load the firmware draws is counted out, and every 10 s the voltage, smoothed and corrected for
+  the load's sag (`kBatteryInternalMilliohms`), corrects it by how far each can be trusted. A radio burst barely moves it, and
+  the charger's raised voltage is never read. On battery the shown percent falls one point per 30 s at most and rises only
+  past a 3-point margin. The gauge learns one scale for the load guesses (`load_ppm`), over spans
+  of 10% of the cell; a span in progress is stored (`learn_used`, `learn_corr`) and goes on after less than 30 min off. At boot, the time off (kept in RTC
+  memory through deep sleep) decides the weight of the first reading: after 30 min or more off, or an unknown time, it is a
+  resting voltage and a stored charge that disagrees is replaced. While charging, a stored charge is only lowered, by more
+  than `kBatteryRestoreTolerancePercent`. Undocked, a cell at or below `kBatteryFloorMv` is critical whatever the percent says.
 - **Device log over the air**: off in a release (`kLogOverAirEnabled` is false), because any host on the network can
   read it. Set to true for bench work: each line of the serial log is then also broadcast as one UDP datagram on
   `kLogUdpPort` (5140) to the local network, as `<milliseconds> <text>`. `tools/device_log_listener.py` shows it on a
@@ -458,7 +466,8 @@ preserved:
   standby as before. On the charger (charging or charged) the device is never put to sleep by this timer.
 - **Battery capacity**: page 2 of the Energy screen (`D` moves between the two pages). Type the capacity in mAh,
   100 to 9999, and `A` saves it; `C` leaves it unchanged. Stored under `batt_mah` in `inv_device`, default 3400. The
-  stored charge and charge rate are on the 1300 mAh reference scale (`kBatteryReferenceCapacityUah`), so a change keeps the
+  stored charge is a share of the cell (`soc_ppm` in `inv_battery`) and the charge rate is on the 1300 mAh reference scale
+  (`kBatteryReferenceCapacityUah`), so a change keeps the
   shown percent.
 - **Dock mode**: row 4 of the Energy screen, off by default and independent of the energy saving
   switch. While it is on, the device goes to standby about 5 s after the charger is plugged in

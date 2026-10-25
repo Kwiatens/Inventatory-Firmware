@@ -104,14 +104,16 @@ and 63.
 - [ ] Red LED lit = Charging. LED dark with the cell at 4.10 V or more = Charged, 100%. LED dark below that =
       on battery. The top bar and card agree.
 - [ ] Bounce the charger contact: the card does not re-appear on every flicker.
-- [ ] Time left shows a `~` estimate straight away, and the `~` goes once enough load has been observed.
-      **Calibrate** the load values (`kBatteryLoad*Ma`), `kBatteryReferenceCapacityUah`, `kBatteryRestDwellMs`,
-      `kBatteryPriorChargeMsPerPercent` and `kBatteryFloorMv` from the bench run in the battery plan
-      (assumed: 3.7 V nominal LiPo of 1300 mAh, about 80 mA in use, 93.6 s per percent while charging at 500 mA).
-      Also calibrate `kBatteryChargedMv` (4.10 V) and `kBatteryChargedReleaseMv` (4.00 V) against a full charge.
+- [ ] Power on awake after a night off: the time left shows at once and does not fall more than one step in the
+      first minutes. The serial log shows "off for N min" at boot and a "Gauge" line every 10 s.
+- [ ] Turn the backlight off: the time left rises slowly (at most 3% a minute), never in a jump.
+      **Calibrate** the load values (`kBatteryLoad*Ma`, measured with a meter in series for each state),
+      `kBatteryInternalMilliohms`, `kBatteryPriorChargeMsPerPercent` and the curve (`kBatteryCurve`, from a logged
+      discharge of the 3400 mAh 18650 at a known load) and `kBatteryFloorMv` (against a real Wi-Fi sync).
+      Also calibrate `kBatteryChargedMv` (4.00 V) and `kBatteryChargedReleaseMv` (3.90 V) against a full charge.
+      The "Gauge" line's load scale (`x1.00`) shows how far the load values are off once the gauge has learned it.
 - [ ] Charging: the percent rises, never falls, stops at 99 and shows 100 once the LED goes dark with the cell full.
-- [ ] Unplug a full cell: it reads Charged until its voltage falls below 4.00 V, then the percent restarts from
-      the voltage. This is the known limit of the voltage-only charged state.
+- [ ] Unplug a full cell: the percent counts down from 100 with no jump.
 - [ ] A WiFi sync or a scan does not move the percent.
 - [ ] Low battery (10% or less, not docked): warning counts down 60 s, then powers off. Docking cancels it.
 - [ ] Empty (3% or less): "Battery empty" notice, then power off. Boot on a low cell, undocked: refused
