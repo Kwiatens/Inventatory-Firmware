@@ -148,7 +148,7 @@ files carry no personal metadata.
 
 Still open, and not changed here: the OTA image is not signed (ArduinoOTA checks only the password; since
 replaced by signed updates, see docs/ota-protocol.md); every
-build from the example configuration shares the device id `Inventatory-SCAN-R1`, so two such scanners on one
+build from the example configuration shares the device id `Inventatory-SCANNER-R1`, so two such scanners on one
 network share an mDNS name; `bootNonce_` and the first outbox sequence are drawn before the radio starts,
 which affects only their uniqueness, not a secret.
 

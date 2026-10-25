@@ -74,7 +74,7 @@ bool waitFor(Done done) {
 }  // namespace
 
 bool InventatoryScanApp::begin() {
-  deviceLog.println("Inventatory Scan R1 booting");
+  deviceLog.println("Inventatory Scanner R1 booting");
   // Before any WiFi.mode(): the driver picks flash or RAM storage once, at its first start, and in flash
   // it keeps its own copy of the SSID, password and PMK. A copy left by an earlier build is erased too.
   WiFi.persistent(false);

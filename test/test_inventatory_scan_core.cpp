@@ -307,8 +307,8 @@ void test_json_escapes_datamatrix_separators() {
 }
 
 void test_request_id_format() {
-  const auto requestId = makeRequestId("  Inventatory-SCAN-R1  ", 42);
-  TEST_ASSERT_EQUAL_STRING("Inventatory-SCAN-R1-42", requestId.c_str());
+  const auto requestId = makeRequestId("  Inventatory-SCANNER-R1  ", 42);
+  TEST_ASSERT_EQUAL_STRING("Inventatory-SCANNER-R1-42", requestId.c_str());
 }
 
 void test_fixed_ring_buffer_fifo_and_overwrite() {
@@ -448,9 +448,9 @@ void test_quick_label_protocol_extensions() {
 void test_transport_authentication_vectors() {
   const String token = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
   TEST_ASSERT_EQUAL_STRING(
-      "d99b3246f156ffc7b1cf9507f98aeb47603e93f103945badc3e95641e5c8f685",
+      "ae44ba492ad3904c9cc811175493d3be47f86b46c8f91389471716142986a018",
       deviceRequestMac(token, "POST", "/api/v1/device/sync", "r1-test", 42, "{\"protocolVersion\":1}").c_str());
-  TEST_ASSERT_EQUAL_STRING("ec5e858f7b38260c65df43b570e13a7dceab39361d4f17ebf3fe8d4523024423",
+  TEST_ASSERT_EQUAL_STRING("8ecd193c2722b403a2424662a00f80010bbeef54076bbefb9c9f68c95976113f",
                            deviceResponseMac(token, 42, 200, "{\"ok\":true}").c_str());
   TEST_ASSERT_FALSE(transportMacMatches(deviceRequestMac(token, "POST", "/api/v1/device/sync", "r1-test", 42,
                                                             "{\"protocolVersion\":1}"),

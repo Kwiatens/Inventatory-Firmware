@@ -211,7 +211,7 @@ bool InventatoryClient::sendJson(const char* path, const String& body, int& http
   const String hostHeader = endpointName_.length() > 0 ? endpointName_ : endpointIp_.toString();
   client_.printf("POST %s HTTP/1.1\r\n", path);
   client_.printf("Host: %s:%u\r\n", hostHeader.c_str(), endpointPort_);
-  client_.printf("User-Agent: Inventatory-Scan-R1/%s\r\n", kFirmwareVersion);
+  client_.printf("User-Agent: Inventatory-Scanner-R1/%s\r\n", kFirmwareVersion);
   client_.printf("X-Inventatory-Protocol: %d\r\n", kInventatoryScanProtocolVersion);
   client_.printf("X-Inventatory-Device: %s\r\n", config_.deviceId.c_str());
   client_.printf("X-Inventatory-Counter: %llu\r\n", static_cast<unsigned long long>(counter));

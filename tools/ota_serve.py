@@ -10,7 +10,7 @@ the same mDNS service.
 
 Usage, from the repository root:
 
-    python3 tools/ota_serve.py --package firmware.ota --device Inventatory-SCAN-R1 --token <pairing token>
+    python3 tools/ota_serve.py --package firmware.ota --device Inventatory-SCANNER-R1 --token <pairing token>
 
 The pairing token is the 64 hex characters the desktop shows for the scanner. Pass it with
 --token-env VAR to keep it out of the shell history. The package is checked against
@@ -42,16 +42,16 @@ TOKEN_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def direction_key(token, direction):
-    return hmac.new(bytes.fromhex(token), f"Inventatory Scan R1 transport v1 {direction}".encode(), "sha256").digest()
+    return hmac.new(bytes.fromhex(token), f"Inventatory Scanner R1 transport v1 {direction}".encode(), "sha256").digest()
 
 
 def request_mac(token, method, path, device_id, counter, body):
-    message = f"Inventatory Scan R1/v1\nrequest\n{method}\n{path}\n{device_id}\n{counter}\n".encode() + body
+    message = f"Inventatory Scanner R1/v1\nrequest\n{method}\n{path}\n{device_id}\n{counter}\n".encode() + body
     return hmac.new(direction_key(token, "client-to-server"), message, "sha256").hexdigest()
 
 
 def response_mac(token, counter, status, body):
-    message = f"Inventatory Scan R1/v1\nresponse\n{counter}\n{status}\n".encode() + body
+    message = f"Inventatory Scanner R1/v1\nresponse\n{counter}\n{status}\n".encode() + body
     return hmac.new(direction_key(token, "server-to-client"), message, "sha256").hexdigest()
 
 

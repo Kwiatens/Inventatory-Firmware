@@ -31,7 +31,7 @@ NUL inside the field, and padded with zero bytes to the field size.
 | 4 | 2 | format, `1` | must be 1 |
 | 6 | 2 | header size, `256` | must be 256 |
 | 8 | 8 | key id | must name a trusted key (first 8 bytes of SHA-256 of the 65-byte public key) |
-| 16 | 32 | product, `Inventatory-Scan-R1` | must equal the running firmware's product |
+| 16 | 32 | product, `Inventatory-Scanner-R1` | must equal the running firmware's product |
 | 48 | 32 | hardware, `waveshare-esp32s3-nano` | must equal the running firmware's hardware |
 | 80 | 32 | version, for example `0.2.0` | shown on the LCD; not compared |
 | 112 | 4 | security counter | must be at or above the scanner's minimum |
@@ -92,7 +92,7 @@ update from the menu asks again at once.
 Request body:
 
 ```json
-{"product":"Inventatory-Scan-R1","hardware":"waveshare-esp32s3-nano","version":"0.1.0",
+{"product":"Inventatory-Scanner-R1","hardware":"waveshare-esp32s3-nano","version":"0.1.0",
  "securityCounter":1,"keyIds":["0123456789abcdef"]}
 ```
 
