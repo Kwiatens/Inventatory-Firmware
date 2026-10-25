@@ -51,7 +51,7 @@ void test_client_firmware_request_carries_a_full_binary_chunk();
 namespace {
 
 const char kToken[] = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
-const char kDeviceId[] = "Inventatory-SCAN-R1";
+const char kDeviceId[] = "Inventatory-SCANNER-R1";
 
 // Keeps NUL bytes, which String(const char*) would truncate.
 String toFirmwareString(const std::string& text) {

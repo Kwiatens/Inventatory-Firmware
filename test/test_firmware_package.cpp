@@ -57,7 +57,7 @@ FirmwareInstallPolicy policyWith(const FirmwareTrustedKey& slot0, const Firmware
   gKeys[0] = slot0;
   gKeys[1] = slot1;
   FirmwareInstallPolicy policy;
-  policy.product = "Inventatory-Scan-R1";
+  policy.product = "Inventatory-Scanner-R1";
   policy.hardware = "waveshare-esp32s3-nano";
   policy.minimumSecurityCounter = minimumCounter;
   policy.partitionBytes = 0x190000U;
@@ -106,7 +106,7 @@ void test_firmware_sha256_matches_the_fips_vector() {
 
 void test_firmware_package_accepts_the_valid_vector() {
   TEST_ASSERT_EQUAL(static_cast<int>(FirmwareCheck::Ok), static_cast<int>(check(kVectorValid, policyA())));
-  TEST_ASSERT_EQUAL_STRING("Inventatory-Scan-R1", gHeader.product);
+  TEST_ASSERT_EQUAL_STRING("Inventatory-Scanner-R1", gHeader.product);
   TEST_ASSERT_EQUAL_STRING("waveshare-esp32s3-nano", gHeader.hardware);
   TEST_ASSERT_EQUAL_STRING(kVectorVersion, gHeader.version);
   TEST_ASSERT_EQUAL_UINT32(kVectorSecurityCounter, gHeader.securityCounter);
@@ -303,9 +303,9 @@ void test_firmware_offer_request_lists_the_trusted_key_ids() {
   gKeys[1] = keyFrom(kVectorPublicKeyB);
   uint8_t idB[kFirmwareKeyIdBytes]{};
   TEST_ASSERT_TRUE(firmwareKeyId(kVectorPublicKeyB, idB));
-  const auto body = buildFirmwareOfferRequestJson("Inventatory-Scan-R1", "waveshare-esp32s3-nano", "0.1.0", 1U, gKeys,
+  const auto body = buildFirmwareOfferRequestJson("Inventatory-Scanner-R1", "waveshare-esp32s3-nano", "0.1.0", 1U, gKeys,
                                                   kFirmwareTrustedKeySlots);
-  const String expected = String("{\"product\":\"Inventatory-Scan-R1\",\"hardware\":\"waveshare-esp32s3-nano\","
+  const String expected = String("{\"product\":\"Inventatory-Scanner-R1\",\"hardware\":\"waveshare-esp32s3-nano\","
                                  "\"version\":\"0.1.0\",\"securityCounter\":1,\"keyIds\":[\"") +
                           transportHex(idB, sizeof(idB)) + "\"]}";
   TEST_ASSERT_EQUAL_STRING(expected.c_str(), body.c_str());

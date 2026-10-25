@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Inventatory Scan R1 device preferences kept independently from Wi-Fi provisioning.
+// Inventatory Scanner R1 device preferences kept independently from Wi-Fi provisioning.
 #pragma once
 
 #include <Arduino.h>

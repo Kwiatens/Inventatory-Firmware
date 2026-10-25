@@ -28,7 +28,7 @@ void drawScreen(uint32_t seconds) {
   lcd.clearBuffer();
   lcd.setFont(u8g2_font_6x12_tf);
   // 12 px font cell: baselines 12 px apart keep all text within rows 0..63.
-  lcd.drawStr(7, 11, "Inventatory Scan R1");  // rows 2..14
+  lcd.drawStr(7, 11, "Inventatory Scanner R1");  // rows 2..14
   lcd.drawHLine(0, 15, kScreenWidth);
   lcd.drawStr(8, 27, "GMG12864");             // rows 18..30
   lcd.drawStr(8, 39, "Display OK");           // rows 30..42

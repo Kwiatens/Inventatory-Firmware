@@ -1,6 +1,6 @@
 # Third-party notices
 
-This file lists the third-party software used by the Inventatory Scan R1
+This file lists the third-party software used by the Inventatory Scanner R1
 firmware, the license terms found in the files installed for this build, and
 whether each item is linked into the shipped firmware binary. The firmware's own
 code is licensed under GPL-3.0-only (see [LICENSE](LICENSE)).

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// BLE-only first-use provisioning for Inventatory Scan R1.
+// BLE-only first-use provisioning for Inventatory Scanner R1.
 #pragma once
 
 #include "setup/setup_state_store.h"

@@ -1,8 +1,8 @@
-# Inventatory Scan R1 firmware coding-agent guide
+# Inventatory Scanner R1 firmware coding-agent guide
 
 This document is the authoritative repository-level operating guide for coding
 agents (Codex, Gemini CLI, Claude, and autonomous tools) working on the
-Inventatory Scan R1 firmware.
+Inventatory Scanner R1 firmware.
 
 The goal of this guide is to enable autonomous agents to make safe, verified, and
 minimal changes without compromising firmware correctness, mutual transport
@@ -63,7 +63,7 @@ Do not guess protocol or hardware requirements when an authoritative document ex
 
 ## 3. Project overview and hardware specifications
 
-Inventatory Scan R1 is an embedded C++17 firmware application running on the
+Inventatory Scanner R1 is an embedded C++17 firmware application running on the
 Waveshare ESP32-S3-Nano microcontroller board.
 
 ### Target microcontroller
@@ -359,12 +359,12 @@ preserved:
 - **Root pairing secret**: A 32-byte cryptographic random secret (represented as
   64 hexadecimal characters) provisioned via BLE. Pairing uses a passkey shown on the device LCD that changes after every attempt; three failed attempts or a five-minute advertising window lock pairing until `A` is pressed on the device.
 - **Directional keys**:
-  - Request key: `HMAC-SHA256(rootToken, "Inventatory Scan R1 transport v1 client-to-server")`
-  - Response key: `HMAC-SHA256(rootToken, "Inventatory Scan R1 transport v1 server-to-client")`
+  - Request key: `HMAC-SHA256(rootToken, "Inventatory Scanner R1 transport v1 client-to-server")`
+  - Response key: `HMAC-SHA256(rootToken, "Inventatory Scanner R1 transport v1 server-to-client")`
 - **Request MAC calculation**: Computed over:
-  `"Inventatory Scan R1/v1\nrequest\n" + method + '\n' + path + '\n' + deviceId + '\n' + counter + '\n' + body`
+  `"Inventatory Scanner R1/v1\nrequest\n" + method + '\n' + path + '\n' + deviceId + '\n' + counter + '\n' + body`
 - **Response MAC calculation**: Computed over:
-  `"Inventatory Scan R1/v1\nresponse\n" + counter + '\n' + status + '\n' + body`
+  `"Inventatory Scanner R1/v1\nresponse\n" + counter + '\n' + status + '\n' + body`
 - **Constant-time comparison**: Response MAC verification must use constant-time
   comparison (`transportMacMatches`) to prevent timing side-channels.
 

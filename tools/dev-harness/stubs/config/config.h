@@ -5,7 +5,7 @@
 
 // Copy to config.h and fill in real values. config.h is git-ignored.
 
-const char DEVICE_ID[] = "Inventatory-SCAN-R1";
+const char DEVICE_ID[] = "Inventatory-SCANNER-R1";
 
 // Used only if mDNS discovery fails.
 const char FALLBACK_HOST[] = "";
