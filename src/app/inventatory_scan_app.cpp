@@ -103,9 +103,16 @@ bool InventatoryScanApp::begin() {
   // because the stored charge is a share of it.
   BatteryGaugeState storedBattery;
   batteryTracker_.setCapacity(batteryCapacityUah(batteryCapacity_));
-  if (batteryStore_.begin() && batteryStore_.load(storedBattery)) batteryTracker_.restore(storedBattery);
+  // Read before Wi-Fi starts: after a long time off this is the cell's resting voltage, the gauge's best reading.
+  const uint32_t offMs = takeBatteryOffMs();
+  if (batteryStore_.begin() && batteryStore_.load(storedBattery)) batteryTracker_.restore(storedBattery, offMs);
   const uint32_t bootMillivolts = battery_.readMillivolts();
-  deviceLog.printf("Battery %lu mV\r\n", static_cast<unsigned long>(bootMillivolts));
+  if (offMs == kBatteryOffUnknownMs) {
+    deviceLog.printf("Battery %lu mV, time off unknown\r\n", static_cast<unsigned long>(bootMillivolts));
+  } else {
+    deviceLog.printf("Battery %lu mV, off for %lu min\r\n", static_cast<unsigned long>(bootMillivolts),
+                     static_cast<unsigned long>(offMs / 60000UL));
+  }
   // Charger signals are sampled once here. A level at boot is not an edge, so nothing starts.
   chargerLedLit_ = signalHighNext(false, battery_.chargingLedMillivolts());
   chargerPlugged_ = signalHighNext(false, battery_.connectorMillivolts());

@@ -14,7 +14,7 @@ namespace inventatory_scan {
 class BatteryMonitor {
  public:
   void begin();
-  // Battery voltage in millivolts, averaged over several calibrated conversions.
+  // Battery voltage in millivolts: the middle half of 32 calibrated conversions, averaged.
   uint32_t readMillivolts() const;
   // Charger LED midpoint in millivolts, averaged. About 2200 lit, 0 dark.
   uint32_t chargingLedMillivolts() const;

@@ -911,9 +911,9 @@ void test_energy_saving_policy() {
 void test_battery_curve_policy() {
   TEST_ASSERT_EQUAL_UINT8(100, batteryPercentFromMillivolts(4300));
   TEST_ASSERT_EQUAL_UINT8(100, batteryPercentFromMillivolts(4200));
-  TEST_ASSERT_EQUAL_UINT8(90, batteryPercentFromMillivolts(4100));
-  // Halfway between 3.7 V (28%) and 3.8 V (45%): 36.5% rounds to 37.
-  TEST_ASSERT_EQUAL_UINT8(37, batteryPercentFromMillivolts(3750));
+  TEST_ASSERT_EQUAL_UINT8(95, batteryPercentFromMillivolts(4100));
+  // A third of the way from 3.74 V (50%) to 3.77 V (55%): 51.7% rounds to 52.
+  TEST_ASSERT_EQUAL_UINT8(52, batteryPercentFromMillivolts(3750));
   TEST_ASSERT_EQUAL_UINT8(0, batteryPercentFromMillivolts(3300));
   TEST_ASSERT_EQUAL_UINT8(0, batteryPercentFromMillivolts(2000));
   uint8_t previous = 0;
@@ -934,10 +934,10 @@ void test_battery_tracker_guards_and_debounce() {
   TEST_ASSERT_TRUE(tracker.level() == BatteryLevel::Ok);
 
   tracker.update(4000, false, 1000);
-  TEST_ASSERT_EQUAL_INT(78, tracker.percent());
+  TEST_ASSERT_EQUAL_INT(86, tracker.percent());
   // A voltage dip is not a change of charge (see test_battery_gauge.cpp).
   tracker.update(3600, false, 2000);
-  TEST_ASSERT_EQUAL_INT(78, tracker.percent());
+  TEST_ASSERT_EQUAL_INT(86, tracker.percent());
 
   // Low needs four consecutive seconds below 10%; a charging cell never warns.
   BatteryTracker low;
@@ -1075,14 +1075,23 @@ void test_battery_estimate_text() {
   TEST_ASSERT_FALSE(formatBatteryDuration(text, 4, 42));
 
   TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 380, false, 60));
-  TEST_ASSERT_EQUAL_STRING("6h 20m left", text);
+  TEST_ASSERT_EQUAL_STRING("6 h left", text);
+  TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 135, false, 60));
+  TEST_ASSERT_EQUAL_STRING("2h 15m left", text);
+  // From a day the time is in days: a tenth of a day under 10 days, whole days after.
+  TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 2592, false, 60));
+  TEST_ASSERT_EQUAL_STRING("1.8 d left", text);
+  TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 1440, false, 60));
+  TEST_ASSERT_EQUAL_STRING("1.0 d left", text);
+  TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 20160, false, 60));
+  TEST_ASSERT_EQUAL_STRING("14 d left", text);
   TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 80, true, 60));
   TEST_ASSERT_EQUAL_STRING("Full: 1h 20m", text);
   TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 0, true, 100));
   TEST_ASSERT_EQUAL_STRING("Fully charged", text);
   // From the typical rate: marked with "~".
   TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 380, false, 60, true));
-  TEST_ASSERT_EQUAL_STRING("~6h 20m left", text);
+  TEST_ASSERT_EQUAL_STRING("~6 h left", text);
   TEST_ASSERT_TRUE(formatBatteryEstimate(text, sizeof(text), 80, true, 60, true));
   TEST_ASSERT_EQUAL_STRING("Full: ~1h 20m", text);
   // No reading: nothing is shown.

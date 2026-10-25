@@ -151,6 +151,11 @@ class Preferences {
     return readFixed(key, value) ? value : defaultValue;
   }
   std::size_t putUInt(const char* key, std::uint32_t value) { return putBytes(key, &value, sizeof(value)); }
+  std::int32_t getInt(const char* key, std::int32_t defaultValue = 0) {
+    std::int32_t value = 0;
+    return readFixed(key, value) ? value : defaultValue;
+  }
+  std::size_t putInt(const char* key, std::int32_t value) { return putBytes(key, &value, sizeof(value)); }
   std::uint64_t getULong64(const char* key, std::uint64_t defaultValue = 0) {
     std::uint64_t value = 0;
     return readFixed(key, value) ? value : defaultValue;
