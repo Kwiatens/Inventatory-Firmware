@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import sign_firmware as sf  # noqa: E402
 
 OUT = ROOT / "test" / "firmware_package_vectors.h"
-PRODUCT = "Inventatory-Scan-R1"
+PRODUCT = "Inventatory-Scanner-R1"
 HARDWARE = "waveshare-esp32s3-nano"
 VERSION = "0.2.0"
 COUNTER = 2

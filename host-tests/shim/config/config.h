@@ -5,7 +5,7 @@
 // Values match config.example.h and contain no secrets.
 #pragma once
 
-const char DEVICE_ID[] = "Inventatory-SCAN-R1";
+const char DEVICE_ID[] = "Inventatory-SCANNER-R1";
 const char MDNS_SERVICE[] = "inventatory";
 const char MDNS_PROTOCOL[] = "tcp";
 const unsigned long WIFI_RECONNECT_INTERVAL_MS = 15000;

@@ -66,7 +66,7 @@ inline String transportMac(const String& token, const char* direction, const Str
   uint8_t mac[32]{};
   const bool computed =
       decodeTransportToken(token, root) &&
-      transportHmac(root, sizeof(root), String("Inventatory Scan R1 transport v1 ") + direction, key) &&
+      transportHmac(root, sizeof(root), String("Inventatory Scanner R1 transport v1 ") + direction, key) &&
       transportHmac(key, sizeof(key), input, mac);
   wipeSecret(root, sizeof(root));
   wipeSecret(key, sizeof(key));
@@ -76,13 +76,13 @@ inline String transportMac(const String& token, const char* direction, const Str
 
 inline String deviceRequestMac(const String& token, const char* method, const char* path, const String& deviceId,
                                uint64_t counter, const String& body) {
-  return transportMac(token, "client-to-server", String("Inventatory Scan R1/v1\nrequest\n") + method + '\n' +
+  return transportMac(token, "client-to-server", String("Inventatory Scanner R1/v1\nrequest\n") + method + '\n' +
                                                  path + '\n' + deviceId + '\n' +
                                                  String(static_cast<unsigned long long>(counter)) + '\n' + body);
 }
 
 inline String deviceResponseMac(const String& token, uint64_t counter, int status, const String& body) {
-  return transportMac(token, "server-to-client", String("Inventatory Scan R1/v1\nresponse\n") +
+  return transportMac(token, "server-to-client", String("Inventatory Scanner R1/v1\nresponse\n") +
                                                  String(static_cast<unsigned long long>(counter)) +
                                                  '\n' + String(status) + '\n' + body);
 }
