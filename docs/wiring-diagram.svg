@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1020" width="1920" height="1020" role="img">
-<title>Inventatory Scan R1 wiring diagram</title>
+<title>Inventatory Scanner R1 wiring diagram</title>
 <desc>Pixel-art wiring for the Waveshare ESP32-S3-Nano: GMG12864-06D LCD, 4x4 keypad with the * power key, GM65 scanner, 1S LiPo UPS and LiPo voltage divider.</desc>
 <g shape-rendering="crispEdges">
 <path fill="#0d1010" d="M0 0h1920v1020h-1920z"/>

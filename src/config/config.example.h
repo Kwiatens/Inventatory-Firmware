@@ -7,7 +7,7 @@
 
 // Letters, digits and '-' only, up to 63 characters. Give each scanner its own id: it names the device on
 // the network (mDNS), in Bluetooth setup and in its event ids.
-const char DEVICE_ID[] = "Inventatory-SCAN-R1";
+const char DEVICE_ID[] = "Inventatory-SCANNER-R1";
 // Updates over Wi-Fi need no setting here: they are signed, and the trusted keys are in ota_keys.h.
 
 // Used only if mDNS discovery fails.

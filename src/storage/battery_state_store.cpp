@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Inventatory Scan R1 battery gauge state, kept across power-off.
+// Inventatory Scanner R1 battery gauge state, kept across power-off.
 
 #include "storage/battery_state_store.h"
 

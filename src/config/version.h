@@ -9,7 +9,7 @@ namespace inventatory_scan {
 
 #define INVENTATORY_FIRMWARE_VERSION "0.1.0"
 
-#define INVENTATORY_FIRMWARE_PRODUCT "Inventatory-Scan-R1"
+#define INVENTATORY_FIRMWARE_PRODUCT "Inventatory-Scanner-R1"
 #define INVENTATORY_FIRMWARE_HARDWARE "waveshare-esp32s3-nano"
 
 // Raise this only when a release fixes a security vulnerability

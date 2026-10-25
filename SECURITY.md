@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest released Inventatory Scan R1
+Security fixes are provided for the latest released Inventatory Scanner R1
 firmware. Before reporting a problem, reproduce it against the current release
 when doing so is safe and does not risk inventory data or a production device.
 

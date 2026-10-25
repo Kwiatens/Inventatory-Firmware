@@ -1,9 +1,9 @@
 <!-- SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski -->
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
 
-# Contributing to Inventatory Scan R1 Firmware
+# Contributing to Inventatory Scanner R1 Firmware
 
-Thank you for contributing to the Inventatory Scan R1 firmware!
+Thank you for contributing to the Inventatory Scanner R1 firmware!
 
 ## Start with an issue
 

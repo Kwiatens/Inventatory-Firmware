@@ -25,7 +25,7 @@ import ota_serve  # noqa: E402
 import sign_firmware as sf  # noqa: E402
 
 TOKEN = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
-DEVICE = "Inventatory-SCAN-R1"
+DEVICE = "Inventatory-SCANNER-R1"
 
 
 def make_key(folder, name):
@@ -48,7 +48,7 @@ class SignFirmwareTests(unittest.TestCase):
         cls.folder.cleanup()
 
     def package(self, **overrides):
-        values = dict(product="Inventatory-Scan-R1", hardware="waveshare-esp32s3-nano", version="0.2.0",
+        values = dict(product="Inventatory-Scanner-R1", hardware="waveshare-esp32s3-nano", version="0.2.0",
                       security_counter=1)
         values.update(overrides)
         package, _ = sf.build_package(self.key, self.image, **values)
@@ -95,22 +95,22 @@ class SignFirmwareTests(unittest.TestCase):
 
     def test_refuses_images_that_are_not_app_images(self):
         with self.assertRaises(sf.SignError):
-            sf.build_package(self.key, b"\x00" + self.image[1:], "Inventatory-Scan-R1", "waveshare-esp32s3-nano",
+            sf.build_package(self.key, b"\x00" + self.image[1:], "Inventatory-Scanner-R1", "waveshare-esp32s3-nano",
                              "0.2.0", 1)
         with self.assertRaises(sf.SignError):
-            sf.build_package(self.key, b"\xe9" * (sf.PARTITION_BYTES + 1), "Inventatory-Scan-R1",
+            sf.build_package(self.key, b"\xe9" * (sf.PARTITION_BYTES + 1), "Inventatory-Scanner-R1",
                              "waveshare-esp32s3-nano", "0.2.0", 1)
         with self.assertRaises(sf.SignError):
-            sf.build_package(self.key, self.image, "Inventatory-Scan-R1", "waveshare-esp32s3-nano", "x" * 32, 1)
+            sf.build_package(self.key, self.image, "Inventatory-Scanner-R1", "waveshare-esp32s3-nano", "x" * 32, 1)
 
     def test_der_round_trip(self):
         raw = bytes(range(1, 33)) + bytes(range(2, 34))
         self.assertEqual(sf.der_signature_to_raw(sf.raw_signature_to_der(raw)), raw)
 
     def test_reads_the_identity_from_the_image(self):
-        identity = b"IVFWID1;version=0.2.0;product=Inventatory-Scan-R1;hardware=waveshare-esp32s3-nano;counter=3;\0"
+        identity = b"IVFWID1;version=0.2.0;product=Inventatory-Scanner-R1;hardware=waveshare-esp32s3-nano;counter=3;\0"
         values = sf.read_image_identity(self.image + identity + b"\x01\x02")
-        self.assertEqual(values, {"version": "0.2.0", "product": "Inventatory-Scan-R1",
+        self.assertEqual(values, {"version": "0.2.0", "product": "Inventatory-Scanner-R1",
                                   "hardware": "waveshare-esp32s3-nano", "counter": 3})
         with self.assertRaises(sf.SignError):
             sf.read_image_identity(self.image)
@@ -126,9 +126,9 @@ class OtaServeTests(unittest.TestCase):
     def test_macs_match_the_firmware(self):
         self.assertEqual(ota_serve.request_mac(TOKEN, "POST", "/api/v1/device/firmware/chunk", DEVICE, 42,
                                                b'{"offset":0}'),
-                         "ab390b42ad5e13e82b773225a6918d615a73bb6be6fded3ff3799cc4c68f52c8")
+                         "ff279cb81e37cdd42bdec6d731be9e0eff8df774afdef3cf458b2b150e512b7f")
         self.assertEqual(ota_serve.response_mac(TOKEN, 42, 200, b"abc"),
-                         "57e008fac417a21c157d6bc51dd2caacf366d89a9f232426a490fcfa3fe04601")
+                         "c8b04f175307281e5385c0114cb15bfd782ecfb6d817b0fe0de97417b2dad799")
 
     @classmethod
     def setUpClass(cls):

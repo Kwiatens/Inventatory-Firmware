@@ -1,6 +1,6 @@
 # Releasing
 
-This document contains the checklist for cutting a release for the Inventatory Scan R1 firmware. Note that releasing is a manual process and is not automated.
+This document contains the checklist for cutting a release for the Inventatory Scanner R1 firmware. Note that releasing is a manual process and is not automated.
 
 ## Pre-Release Checklist
 

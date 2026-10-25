@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Paweł Kwiatkowski
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Inventatory Scan R1 persistent provisioning state.
+// Inventatory Scanner R1 persistent provisioning state.
 #pragma once
 
 #include <Arduino.h>
