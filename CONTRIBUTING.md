@@ -47,20 +47,17 @@ pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
 Running the assertions on a board is a manual step, which needs an attached Scan R1 and is recorded in the
 pull request.
 
-[docs/testing.md](docs/testing.md) explains the test layers, how to add a test, the known-defect convention and
-the coverage report (`make -C host-tests coverage`).
+The coverage report is `make -C host-tests coverage`. Test rules are in [AGENTS.md](AGENTS.md) section 11.
 
 ## Code
 
 - Follow the code around your change and the ownership and invariant rules in [AGENTS.md](AGENTS.md).
-- Source files (C, C++, Python) carry the SPDX header described in the
-  [shared project standards](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/project-standards.md).
+- Source files (C, C++, Python) carry the SPDX header described in [AGENTS.md](AGENTS.md) section 12.
 
 ## Commits and pull requests
 
 - Write each commit subject as `type(scope): subject`, with a scope from [AGENTS.md](AGENTS.md) section 12,
-  72 characters or fewer. The shared rules are in the
-  [shared project standards](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/project-standards.md).
+  72 characters or fewer.
 - Keep one logical change per commit.
 - **Testing**: The build and the Unity compile-only check must pass. State whether the change was tested on
   physical hardware.
