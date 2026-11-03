@@ -50,12 +50,10 @@ Before proposing or modifying firmware behavior, consult the authoritative
 specifications in the tree:
 
 - `README.md`: overview, build and test commands, and the documentation map. The hardware pinout is in section 3 of this file.
-- `SECURITY.md`: Vulnerability reporting process and transport security boundaries.
-- `docs/release-audit-remediation.md`: Authoritative remediation ledger (FW-001
-  through FW-014), verification status, and hardware release gates.
+- `SECURITY.md`: how to report a vulnerability.
+- `docs/ota-protocol.md`: the signed update package and pull protocol.
 - [Shared transport v1 protocol specification](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/scanner-transport-security.md): replay counter
   mechanics and 8 KiB response-body bounds.
-- [Shared project standards](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/project-standards.md): commit, changelog, licensing, secrets and verification rules that both repositories follow.
 
 Do not guess protocol or hardware requirements when an authoritative document exists.
 
@@ -163,8 +161,7 @@ agents must distinguish between immutable invariants and mutable implementation 
 ```text
 ├── boards/                     # Custom PlatformIO board definitions
 │   └── waveshare_esp32s3_nano.json
-├── docs/                       # Architectural documentation and audit ledgers
-│   └── release-audit-remediation.md
+├── docs/                       # Protocol spec, wiring notes, error-screen images
 ├── examples/                   # Standalone smoke-test examples
 │   └── gmg12864_spi_test/      # Independent SPI display verification
 ├── include/                    # Protocol definitions and core parsing algorithms
@@ -564,23 +561,60 @@ Agents must state explicitly which level was executed and must never claim a tes
 
 ---
 
-## 11. Release-audit status and release gates
+## 11. Audit rules, testing and releases
 
-Before modifying security-sensitive or protocol-related subsystems, inspect
-`docs/release-audit-remediation.md`. The ledger tracks audit findings (FW-001
-through FW-014):
+Rules that came out of the firmware audit. Keep them:
 
-- **Completed remediations**: Outbox staged commits (FW-001), deferred scan
-  retention (FW-002), OTA error recovery (FW-003), protocol allowlists (FW-006),
-  token validation (FW-007), scanner boot flush (FW-009), GM65 error propagation
-  (FW-011), serial log sanitization (FW-012), and dependency pinning (FW-013).
-- **Outstanding hardware release gates**:
-  1. Execution of embedded Unity suite on physical Scan R1 hardware.
-  2. NVS write/power-loss fault injection testing (FW-001, FW-010).
-  3. Live delayed-result scanning and OTA error injection on hardware.
-  4. End-to-end 8 KiB body boundary validation with the released desktop application.
-  5. Documenting manufacturing provisioning controls (secure boot, flash encryption,
-     eFuses).
+- Refuse HTTP host names with non-DNS characters (`isSafeHttpHostName`). Wipe derived
+  keys with `wipeSecret`.
+- Never call `WiFiClient::setTimeout` (it takes seconds). Use `connect()` with 1500 ms;
+  the host shim fails the build otherwise.
+- BLE pairing uses `ESP_BLE_SM_ONLY_ACCEPT_SPECIFIED_SEC_AUTH`. No legacy pairing.
+- Draw `esp_random()` only after the radio has started (`BLEDevice::init`).
+- Call `WiFi.persistent(false)` before any `WiFi.mode()`. Erase `nvs.net80211` at boot
+  and on re-pair.
+- Drop a pinned mDNS answer after three unsigned exchanges.
+- Cut UTF-8 only at character boundaries. Refuse `\u0000` and repeated member names in
+  sync responses, and a NUL in any BLE field.
+- Clear `networkPauseAcknowledged_` before requesting a new pause. BLE status is written
+  only from Core 1.
+- Refuse a TME QTY above 9999.
+- A 5xx, or a signed but unreadable 200, counts toward "Sync blocked".
+- Confirm a pending OTA image before a deliberate power-off or re-pair restart. A
+  start-up refusal leaves it pending.
+- Device logging over the air stays off in a release build.
+
+Testing:
+
+- Unit tests run on the host (`host-tests/`) and as Unity tests on the board (`test/`).
+  Host shims must never be more permissive than the real libraries. Use the fake clock.
+- A host test goes in `host-tests/tests/`, registered with its `register…Tests()` and
+  `RUN_TEST`. Each test starts from empty NVS. No real time, sockets or unseeded
+  randomness.
+- A bug fix gets a test first, and it must fail without the fix.
+- Keep locals in `test/` small (8 KiB loop stack). Read frame sizes from objdump
+  (`entry a1, N`).
+- A known defect uses `TEST_IGNORE_MESSAGE("KNOWN DEFECT: …")`. Never weaken an
+  assertion. A release branch has no ignored test without an issue.
+- Also run `python3 -m unittest discover -s tools -p 'test_*.py'`. After a package
+  format change run `python3 test/make_firmware_package_vectors.py`. Coverage:
+  `make -C host-tests coverage`.
+- Both the device build and the host suite must pass before a merge.
+
+Releases:
+
+1. Bump `INVENTATORY_FIRMWARE_VERSION` in `src/config/version.h`. Raise
+   `INVENTATORY_FIRMWARE_SECURITY_COUNTER` only for a security fix.
+2. Run the host tests from a clean checkout and the history secret scan, then tag
+   `vX.Y.Z`.
+3. Take the CI artifact `firmware-<commit>` and check its sha256.
+4. Sign on the owner's PC only, never in CI: `tools/sign_firmware.py sign`, then `verify`.
+   Attach `firmware.bin`, its checksum and `firmware.ota`.
+5. The private key never leaves the owner's PC. If it leaks, ship a release that trusts a
+   new key in the second slot of `src/config/ota_keys.h`.
+
+Never register a self-hosted runner. CI has no hardware job; hardware tests run on the
+bench by hand.
 
 Agents must not declare the firmware "release-ready" based solely on compilation
 success or static analysis.
@@ -589,9 +623,14 @@ success or static analysis.
 
 ## 12. Change and commit standards
 
-The commit format, changelog rules and AI co-author trailers are in the
-[shared project standards](https://github.com/Kwiatens/Inventatory-Software/blob/main/docs/project-standards.md).
-The firmware-specific rules are:
+- **Format**: `type(scope): subject`. Imperative, lowercase after the colon, no full
+  stop, 72 characters or fewer. A breaking change gets `!` after the scope.
+- **Never** put prompts, conversation ids, local paths, credentials, device ids or real
+  inventory data in commits, branch names or pull requests.
+- **SPDX header**: every new first-party C, C++ or Python file starts with
+  `// SPDX-FileCopyrightText: <year> Paweł Kwiatkowski` and
+  `// SPDX-License-Identifier: GPL-3.0-only` (after a shebang, `#` in Python).
+  Third-party code keeps its own licence and is listed in `THIRD_PARTY_NOTICES.md`.
 
 - **Allowed types**: `feat`, `fix`, `refactor`, `perf`, `style`, `test`, `docs`,
   `build`, `ci`, `chore`, `revert`.
@@ -629,7 +668,7 @@ When concluding any task, the agent must provide a factual summary containing:
 
 ## 14. Pre-commit checklist
 
-- [ ] Authority: Checked `README.md`, `SECURITY.md`, and `docs/release-audit-remediation.md`.
+- [ ] Authority: Checked `README.md`, `SECURITY.md`, and section 11.
 - [ ] Autonomy: No flash erase, OTA deployment, or credential resets performed. Any USB upload was a plain upload, as section 1 allows.
 - [ ] Memory safety: Zero dynamic `String` loops, bounded buffers, zero PSRAM respected.
 - [ ] Concurrency: No display calls from Core 0 worker; no blocking network calls on Core 1.
@@ -640,4 +679,4 @@ When concluding any task, the agent must provide a factual summary containing:
 - [ ] Verification: `make -C host-tests test` passes, `python3 tools/check_error_codes.py` passes, `pio test ... --without-uploading --without-testing` passes, and firmware builds pass.
 - [ ] Working tree: No modified `config.h`, `.pio/`, `.bin` files, or unrelated user edits in diff.
 - [ ] Changelog: `CHANGELOG.md` is not edited on this branch. The proposed entry is in the completion summary, and the approved wording is in the pull request's Changelog section.
-- [ ] Commit format: Follows section 12 and the shared standards. New source files carry the SPDX header.
+- [ ] Commit format: Follows section 12. New source files carry the SPDX header.

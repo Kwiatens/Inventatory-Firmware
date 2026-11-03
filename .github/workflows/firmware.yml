@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 # Every job runs on a GitHub-hosted runner. A self-hosted runner on a public repository runs whatever
-# workflow a pull request brings, so the hardware tests run on the bench PC by hand (docs/testing.md).
+# workflow a pull request brings, so the hardware tests run on the bench PC by hand.
 
 jobs:
   build:

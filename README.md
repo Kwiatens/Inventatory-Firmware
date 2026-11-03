@@ -50,7 +50,6 @@ firmware, put your own public key there and sign with `tools/sign_firmware.py`; 
 ## Test
 
 The host suite runs on any machine with a C++17 compiler and OpenSSL headers. It needs no device.
-The layers, the commands and how to add a test are in [docs/testing.md](docs/testing.md).
 
 ```bash
 make -C host-tests test
@@ -63,7 +62,6 @@ pio test -e waveshare_esp32s3_nano_usb --without-uploading --without-testing
 - [Security](SECURITY.md)
 - [Architecture and invariants](AGENTS.md), also the guide for coding agents
 - [Changelog](CHANGELOG.md)
-- [Release steps](docs/releasing.md)
 - [Signed updates over Wi-Fi](docs/ota-protocol.md): package format and the pull protocol the desktop follows
 - [Wiring notes](docs/wiring.md), including the GM65 cable colour warning
 
